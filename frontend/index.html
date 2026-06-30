@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="uz">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>UzYolButlash ERP</title>
+    <link rel="stylesheet" href="/static/styles.css?v=20260629-fluid-wizard" />
+  </head>
+  <body>
+    <header class="app-topbar">
+      <a class="top-brand" href="/dashboard">
+        <span class="brand-mark">B</span>
+        <strong>UzYolButlash</strong>
+      </a>
+      <nav class="top-nav" aria-label="Asosiy navigatsiya">
+        <div class="top-nav-group">
+          <button type="button">Hisobotlar</button>
+          <div class="top-nav-menu">
+            <a href="/dashboard">Boshqaruv paneli</a>
+            <a href="/profit">Foyda</a>
+            <a href="/cashflow">Pul oqimi</a>
+          </div>
+        </div>
+        <div class="top-nav-group">
+          <button type="button">Sotuv</button>
+          <div class="top-nav-menu">
+            <a href="/clients">Mijozlar</a>
+            <a href="/contracts">Shartnomalar</a>
+            <a href="/orders">Buyurtmalar</a>
+          </div>
+        </div>
+        <div class="top-nav-group">
+          <button type="button">Yetkazib berish</button>
+          <div class="top-nav-menu">
+            <a href="/delivery-batches">Partiyalar</a>
+            <a href="/logistics">Logistika</a>
+            <a href="/transports">Transportlar</a>
+          </div>
+        </div>
+        <div class="top-nav-group">
+          <button type="button">Ta'minot</button>
+          <div class="top-nav-menu">
+            <a href="/suppliers">Ta'minotchilar</a>
+            <a href="/procurements">Xaridlar</a>
+            <a href="/exchange-tickets">Birja ticketlari</a>
+            <a href="/stock">Zaxira</a>
+          </div>
+        </div>
+        <div class="top-nav-group">
+          <button type="button">Moliya</button>
+          <div class="top-nav-menu top-nav-menu-wide">
+            <a href="/receivables">Debitorlik</a>
+            <a href="/payables">Kreditorlik</a>
+            <a href="/customer-invoices">Mijoz hisoblari</a>
+            <a href="/customer-payments">Mijoz to'lovlari</a>
+            <a href="/supplier-invoices">Ta'minotchi hisoblari</a>
+            <a href="/supplier-payments">Ta'minotchi to'lovlari</a>
+          </div>
+        </div>
+      </nav>
+      <div class="top-actions">
+        <button class="top-icon-btn" type="button" aria-label="Qidirish" title="Qidirish">⌕</button>
+        <button class="top-icon-btn" type="button" aria-label="Bildirishnomalar" title="Bildirishnomalar">!</button>
+        <div class="top-user">
+          <span>UzYolButlash</span>
+          <strong>Operatsiyalar</strong>
+        </div>
+      </div>
+    </header>
+    <button class="sidebar-toggle sidebar-toggle-floating" type="button" data-sidebar-toggle aria-label="Yon menyuni ochish/yopish" title="Yon menyuni ochish/yopish">
+      <span></span>
+      <span></span>
+      <span></span>
+    </button>
+    <aside class="sidebar">
+      <div class="sidebar-top">
+        <div class="brand">
+          <span class="brand-mark">B</span>
+          <div class="brand-copy">
+            <strong>Bitum ERP</strong>
+            <small>Operatsiyalar</small>
+          </div>
+        </div>
+        <button class="sidebar-toggle" type="button" data-sidebar-toggle aria-label="Yon menyuni ochish/yopish" title="Yon menyuni ochish/yopish">
+          <span></span>
+          <span></span>
+          <span></span>
+        </button>
+      </div>
+      <nav class="side-nav" aria-label="Asosiy navigatsiya">
+        <section class="nav-section">
+          <h2>Hisobotlar</h2>
+          <a href="/dashboard" data-short="BP" title="Boshqaruv paneli"><span>Boshqaruv paneli</span></a>
+          <a href="/profit" data-short="F" title="Foyda"><span>Foyda</span></a>
+          <a href="/cashflow" data-short="OP" title="Pul oqimi"><span>Pul oqimi</span></a>
+        </section>
+        <section class="nav-section">
+          <h2>Moliya</h2>
+          <a href="/receivables" data-short="QD" title="Debitorlik"><span>Debitorlik</span></a>
+          <a href="/payables" data-short="KQ" title="Kreditorlik"><span>Kreditorlik</span></a>
+          <a href="/customer-invoices" data-short="MH" title="Mijoz hisoblari"><span>Mijoz hisoblari</span></a>
+          <a href="/customer-payments" data-short="MT" title="Mijoz to'lovlari"><span>Mijoz to'lovlari</span></a>
+          <a href="/supplier-invoices" data-short="SH" title="Ta'minotchi hisoblari"><span>Ta'minotchi hisoblari</span></a>
+          <a href="/supplier-payments" data-short="ST" title="Ta'minotchi to'lovlari"><span>Ta'minotchi to'lovlari</span></a>
+        </section>
+        <section class="nav-section">
+          <h2>Sotuv</h2>
+          <a class="active" href="/clients" data-short="M" title="Mijozlar"><span>Mijozlar</span></a>
+          <a href="/contracts" data-short="SH" title="Shartnomalar"><span>Shartnomalar</span></a>
+          <a href="/orders" data-short="B" title="Buyurtmalar"><span>Buyurtmalar</span></a>
+        </section>
+        <section class="nav-section">
+          <h2>Yetkazib berish</h2>
+          <a href="/delivery-batches" data-short="PB" title="Partiyalar"><span>Partiyalar</span></a>
+          <a href="/logistics" data-short="L" title="Logistika"><span>Logistika</span></a>
+          <a href="/transports" data-short="TR" title="Transportlar"><span>Transportlar</span></a>
+        </section>
+        <section class="nav-section">
+          <h2>Ta'minot</h2>
+          <a href="/suppliers" data-short="T" title="Ta'minotchilar"><span>Ta'minotchilar</span></a>
+          <a href="/procurements" data-short="X" title="Xaridlar"><span>Xaridlar</span></a>
+          <a href="/exchange-tickets" data-short="BT" title="Birja ticketlari"><span>Birja ticketlari</span></a>
+          <a href="/stock" data-short="Z" title="Zaxira"><span>Zaxira</span></a>
+        </section>
+      </nav>
+    </aside>
+    <main class="app-shell">
+      <div id="toast" class="toast" hidden></div>
+      <div id="app"></div>
+    </main>
+    <script src="/static/app.js?v=20260629-frontend-modules" defer></script>
+    <script src="/static/src/utils/formatters.js?v=20260629-frontend-refactor" defer></script>
+    <script src="/static/src/api/client.js?v=20260629-frontend-refactor" defer></script>
+    <script src="/static/src/api/ordersApi.js?v=20260629-frontend-refactor" defer></script>
+    <script src="/static/src/api/contractsApi.js?v=20260629-frontend-refactor" defer></script>
+    <script src="/static/src/api/batchesApi.js?v=20260629-frontend-refactor" defer></script>
+    <script src="/static/src/api/logisticsApi.js?v=20260629-frontend-refactor" defer></script>
+    <script src="/static/src/api/invoicesApi.js?v=20260629-frontend-refactor" defer></script>
+    <script src="/static/src/api/stockApi.js?v=20260629-frontend-refactor" defer></script>
+    <script src="/static/src/components/FormField.js?v=20260629-global-number-format" defer></script>
+    <script src="/static/src/components/Stepper.js?v=20260629-frontend-refactor" defer></script>
+    <script src="/static/src/components/Panels.js?v=20260629-frontend-refactor" defer></script>
+    <script src="/static/src/index.js?v=20260629-frontend-refactor" defer></script>
+    <script src="/static/src/config/constants.js?v=20260629-frontend-modules" defer></script>
+    <script src="/static/src/core/runtime.js?v=20260629-global-number-format" defer></script>
+    <script src="/static/src/pages/clients.js?v=20260629-frontend-modules" defer></script>
+    <script src="/static/src/pages/contracts.js?v=20260629-global-number-format" defer></script>
+    <script src="/static/src/pages/orders.js?v=20260629-stock-order-safe" defer></script>
+    <script src="/static/src/pages/delivery.js?v=20260629-transports-module" defer></script>
+    <script src="/static/src/pages/transports.js?v=20260629-transports-module" defer></script>
+    <script src="/static/src/pages/customerFinance.js?v=20260629-global-number-format" defer></script>
+    <script src="/static/src/pages/supply.js?v=20260629-stock-order-safe" defer></script>
+    <script src="/static/src/pages/dashboard.js?v=20260629-frontend-modules" defer></script>
+    <script src="/static/src/router.js?v=20260629-transports-module" defer></script>
+  </body>
+</html>

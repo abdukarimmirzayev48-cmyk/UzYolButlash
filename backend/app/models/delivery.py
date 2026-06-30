@@ -1,0 +1,210 @@
+from datetime import date, datetime
+from decimal import Decimal
+from enum import Enum
+
+from sqlalchemy import Date, DateTime, Enum as SAEnum, ForeignKey, Numeric, String, Text
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+
+from backend.app.db.session import Base
+from backend.app.models.client import TimestampMixin
+
+
+class BatchStatus(str, Enum):
+    planned = "planned"
+    supplier_preparing = "supplier_preparing"
+    ready_for_loading = "ready_for_loading"
+    waiting_payment = "waiting_payment"
+    loading = "loading"
+    loaded = "loaded"
+    in_transit = "in_transit"
+    arrived = "arrived"
+    unloading = "unloading"
+    accepted = "accepted"
+    quantity_difference = "quantity_difference"
+    documents_pending = "documents_pending"
+    completed = "completed"
+    cancelled = "cancelled"
+    issue = "issue"
+
+
+class AutoDeliveryMethod(str, Enum):
+    auto = "auto"
+
+
+class LogisticsStatus(str, Enum):
+    not_assigned = "not_assigned"
+    carrier_search = "carrier_search"
+    carrier_assigned = "carrier_assigned"
+    vehicle_assigned = "vehicle_assigned"
+    loading = "loading"
+    loaded = "loaded"
+    in_transit = "in_transit"
+    arrived = "arrived"
+    unloading = "unloading"
+    delivered = "delivered"
+    accepted = "accepted"
+    completed = "completed"
+    cancelled = "cancelled"
+    issue = "issue"
+
+
+class PaidBy(str, Enum):
+    company = "company"
+    customer = "customer"
+    supplier = "supplier"
+
+
+class BatchDocumentType(str, Enum):
+    ttn = "ttn"
+    acceptance_act = "acceptance_act"
+    quality_certificate = "quality_certificate"
+    supplier_invoice = "supplier_invoice"
+    customer_invoice = "customer_invoice"
+    photo = "photo"
+    other = "other"
+
+
+class LogisticsDocumentType(str, Enum):
+    transport_invoice = "transport_invoice"
+    driver_document = "driver_document"
+    vehicle_document = "vehicle_document"
+    loading_photo = "loading_photo"
+    delivery_photo = "delivery_photo"
+    ttn = "ttn"
+    other = "other"
+
+
+class DeliveryBatch(Base, TimestampMixin):
+    __tablename__ = "delivery_batches"
+
+    id: Mapped[int] = mapped_column(primary_key=True, index=True)
+    order_id: Mapped[int] = mapped_column(ForeignKey("orders.id", ondelete="RESTRICT"), index=True)
+    contract_id: Mapped[int] = mapped_column(ForeignKey("contracts.id", ondelete="RESTRICT"), index=True)
+    client_id: Mapped[int] = mapped_column(ForeignKey("clients.id", ondelete="RESTRICT"), index=True)
+    batch_number: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
+    batch_date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
+    planned_loading_date: Mapped[date | None] = mapped_column(Date)
+    planned_delivery_date: Mapped[date | None] = mapped_column(Date, index=True)
+    actual_loading_date: Mapped[date | None] = mapped_column(Date)
+    actual_delivery_date: Mapped[date | None] = mapped_column(Date)
+    accepted_date: Mapped[date | None] = mapped_column(Date)
+    status: Mapped[BatchStatus] = mapped_column(SAEnum(BatchStatus), default=BatchStatus.planned, nullable=False, index=True)
+    fulfillment_type: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    source_type: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    delivery_method: Mapped[AutoDeliveryMethod] = mapped_column(SAEnum(AutoDeliveryMethod), default=AutoDeliveryMethod.auto, nullable=False)
+    supplier_id: Mapped[int | None] = mapped_column(index=True)
+    supplier_name: Mapped[str | None] = mapped_column(String(255), index=True)
+    notes: Mapped[str | None] = mapped_column(Text)
+    created_by: Mapped[str | None] = mapped_column(String(255))
+
+    client: Mapped["Client"] = relationship(back_populates="delivery_batches")
+    contract: Mapped["Contract"] = relationship(back_populates="delivery_batches")
+    order: Mapped["Order"] = relationship(back_populates="delivery_batches")
+    items: Mapped[list["DeliveryBatchItem"]] = relationship(back_populates="batch", cascade="all, delete-orphan", order_by="DeliveryBatchItem.id")
+    logistics: Mapped["Logistics | None"] = relationship(back_populates="batch", cascade="all, delete-orphan", uselist=False)
+    documents: Mapped[list["DeliveryBatchDocument"]] = relationship(back_populates="batch", cascade="all, delete-orphan", order_by="DeliveryBatchDocument.uploaded_at.desc()")
+    notes_history: Mapped[list["DeliveryBatchNote"]] = relationship(back_populates="batch", cascade="all, delete-orphan", order_by="DeliveryBatchNote.created_at.desc()")
+    customer_invoices: Mapped[list["CustomerInvoice"]] = relationship(back_populates="delivery_batch")
+
+
+class DeliveryBatchItem(Base, TimestampMixin):
+    __tablename__ = "delivery_batch_items"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    delivery_batch_id: Mapped[int] = mapped_column(ForeignKey("delivery_batches.id", ondelete="CASCADE"), index=True)
+    order_item_id: Mapped[int] = mapped_column(ForeignKey("order_items.id", ondelete="RESTRICT"), index=True)
+    contract_item_id: Mapped[int] = mapped_column(ForeignKey("contract_items.id", ondelete="RESTRICT"), index=True)
+    product_name: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    unit: Mapped[str] = mapped_column(String(64), nullable=False)
+    planned_quantity: Mapped[Decimal] = mapped_column(Numeric(18, 3), nullable=False)
+    loaded_quantity: Mapped[Decimal | None] = mapped_column(Numeric(18, 3))
+    accepted_quantity: Mapped[Decimal | None] = mapped_column(Numeric(18, 3))
+    difference_quantity: Mapped[Decimal | None] = mapped_column(Numeric(18, 3))
+    comment: Mapped[str | None] = mapped_column(Text)
+
+    batch: Mapped[DeliveryBatch] = relationship(back_populates="items")
+    order_item: Mapped["OrderItem"] = relationship(back_populates="delivery_batch_items")
+
+
+class Logistics(Base, TimestampMixin):
+    __tablename__ = "logistics"
+
+    id: Mapped[int] = mapped_column(primary_key=True, index=True)
+    delivery_batch_id: Mapped[int] = mapped_column(ForeignKey("delivery_batches.id", ondelete="CASCADE"), unique=True, index=True)
+    logistics_number: Mapped[str | None] = mapped_column(String(128), unique=True, index=True)
+    delivery_method: Mapped[AutoDeliveryMethod] = mapped_column(SAEnum(AutoDeliveryMethod), default=AutoDeliveryMethod.auto, nullable=False)
+    status: Mapped[LogisticsStatus] = mapped_column(SAEnum(LogisticsStatus), default=LogisticsStatus.not_assigned, nullable=False, index=True)
+    carrier_id: Mapped[int | None] = mapped_column(index=True)
+    carrier_name: Mapped[str | None] = mapped_column(String(255), index=True)
+    driver_name: Mapped[str | None] = mapped_column(String(255), index=True)
+    driver_phone: Mapped[str | None] = mapped_column(String(64), index=True)
+    vehicle_number: Mapped[str | None] = mapped_column(String(64), index=True)
+    trailer_number: Mapped[str | None] = mapped_column(String(64))
+    loading_address: Mapped[str | None] = mapped_column(Text)
+    delivery_address: Mapped[str | None] = mapped_column(Text)
+    planned_pickup_date: Mapped[date | None] = mapped_column(Date)
+    planned_delivery_date: Mapped[date | None] = mapped_column(Date, index=True)
+    actual_pickup_date: Mapped[date | None] = mapped_column(Date)
+    actual_delivery_date: Mapped[date | None] = mapped_column(Date)
+    cost_amount: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
+    customer_price: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
+    paid_by: Mapped[PaidBy | None] = mapped_column(SAEnum(PaidBy))
+    notes: Mapped[str | None] = mapped_column(Text)
+    created_by: Mapped[str | None] = mapped_column(String(255))
+
+    batch: Mapped[DeliveryBatch] = relationship(back_populates="logistics")
+    documents: Mapped[list["LogisticsDocument"]] = relationship(back_populates="logistics", cascade="all, delete-orphan", order_by="LogisticsDocument.uploaded_at.desc()")
+    notes_history: Mapped[list["LogisticsNote"]] = relationship(back_populates="logistics", cascade="all, delete-orphan", order_by="LogisticsNote.created_at.desc()")
+    customer_invoices: Mapped[list["CustomerInvoice"]] = relationship(back_populates="logistics")
+
+
+class DeliveryBatchDocument(Base):
+    __tablename__ = "delivery_batch_documents"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    delivery_batch_id: Mapped[int] = mapped_column(ForeignKey("delivery_batches.id", ondelete="CASCADE"), index=True)
+    document_type: Mapped[BatchDocumentType] = mapped_column(SAEnum(BatchDocumentType), nullable=False, index=True)
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    file_url: Mapped[str | None] = mapped_column(Text)
+    uploaded_by: Mapped[str | None] = mapped_column(String(255))
+    uploaded_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+
+    batch: Mapped[DeliveryBatch] = relationship(back_populates="documents")
+
+
+class DeliveryBatchNote(Base):
+    __tablename__ = "delivery_batch_notes"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    delivery_batch_id: Mapped[int] = mapped_column(ForeignKey("delivery_batches.id", ondelete="CASCADE"), index=True)
+    note: Mapped[str] = mapped_column(Text, nullable=False)
+    created_by: Mapped[str | None] = mapped_column(String(255))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+
+    batch: Mapped[DeliveryBatch] = relationship(back_populates="notes_history")
+
+
+class LogisticsDocument(Base):
+    __tablename__ = "logistics_documents"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    logistics_id: Mapped[int] = mapped_column(ForeignKey("logistics.id", ondelete="CASCADE"), index=True)
+    document_type: Mapped[LogisticsDocumentType] = mapped_column(SAEnum(LogisticsDocumentType), nullable=False, index=True)
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    file_url: Mapped[str | None] = mapped_column(Text)
+    uploaded_by: Mapped[str | None] = mapped_column(String(255))
+    uploaded_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+
+    logistics: Mapped[Logistics] = relationship(back_populates="documents")
+
+
+class LogisticsNote(Base):
+    __tablename__ = "logistics_notes"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    logistics_id: Mapped[int] = mapped_column(ForeignKey("logistics.id", ondelete="CASCADE"), index=True)
+    note: Mapped[str] = mapped_column(Text, nullable=False)
+    created_by: Mapped[str | None] = mapped_column(String(255))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+
+    logistics: Mapped[Logistics] = relationship(back_populates="notes_history")
