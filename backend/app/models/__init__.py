@@ -68,6 +68,14 @@ from backend.app.models.inventory import (
     StockMovement,
 )
 from backend.app.models.transport import Transport
+from backend.app.models.product import Product, ProductCategory
+from backend.app.models.customer_request import (
+    CompanyRegistry,
+    CustomerRequest,
+    CustomerRequestSchedule,
+    CustomerRequestStatusHistory,
+)
+from backend.app.models.attendance import AttendanceRecord, Employee
 
 __all__ = [
     "Client",
@@ -124,4 +132,12 @@ __all__ = [
     "StockLot",
     "StockMovement",
     "Transport",
+    "Product",
+    "ProductCategory",
+    "CompanyRegistry",
+    "CustomerRequest",
+    "CustomerRequestSchedule",
+    "CustomerRequestStatusHistory",
+    "AttendanceRecord",
+    "Employee",
 ]

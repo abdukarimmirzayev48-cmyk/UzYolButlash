@@ -524,6 +524,7 @@ function collectOrderWizardPayload(state) {
 
 async function renderOrderWizard() {
   const params = new URLSearchParams(location.search);
+  const preselectedContractId = params.get("contract_id") ? Number(params.get("contract_id")) : null;
   const state = {
     step: 1,
     orderDate: new Date().toISOString().slice(0, 10),
@@ -535,7 +536,10 @@ async function renderOrderWizard() {
     preselectedStockLotId: params.get("stock_lot_id") || "",
     stockLotWarning: "",
   };
-  state.contractOptions = await orderWizardContractOptions();
+  state.contractOptions = await orderWizardContractOptions(preselectedContractId);
+  if (preselectedContractId) {
+    await enrichOrderWizardContract(state, preselectedContractId);
+  }
 
   async function loadStockLots() {
     const products = orderWizardTotals(state).selected.map((item) => item.product_name);

@@ -1,7 +1,15 @@
 async function render() {
   try {
+    const isPublicRequestRoute = location.pathname === "/talabnoma" || location.pathname === "/request";
+    document.body.classList.toggle("public-layout", isPublicRequestRoute);
+    if (isPublicRequestRoute) {
+      await renderPublicTalabnoma();
+      return;
+    }
     updateSidebarActiveLink();
-    if (location.pathname === "/dashboard") {
+    if (location.pathname === "/attendance") {
+      await renderAttendanceList();
+    } else if (location.pathname === "/dashboard") {
       await renderDashboardOverview();
     } else if (location.pathname === "/profit") {
       await renderProfitPage();
@@ -27,6 +35,12 @@ async function render() {
       await renderSupplierPaymentDetail(getSupplierPaymentIdFromPath());
     } else if (location.pathname === "/supplier-payments") {
       await renderSupplierPaymentsList();
+    } else if (/^\/customer-requests\/\d+\/edit$/.test(location.pathname)) {
+      await renderEditCustomerRequest(getCustomerRequestIdFromPath());
+    } else if (/^\/customer-requests\/\d+$/.test(location.pathname)) {
+      await renderCustomerRequestDetail(getCustomerRequestIdFromPath());
+    } else if (location.pathname === "/customer-requests") {
+      await renderCustomerRequestsList();
     } else if (location.pathname === "/exchange-tickets/new") {
       await renderNewExchangeTicket();
     } else if (/^\/exchange-tickets\/\d+$/.test(location.pathname)) {
@@ -91,6 +105,8 @@ async function render() {
       await renderOrderDetail(getOrderIdFromPath());
     } else if (location.pathname === "/orders") {
       await renderOrdersList();
+    } else if (location.pathname === "/contracts/upload") {
+      await renderContractUpload();
     } else if (location.pathname === "/contracts/new") {
       await renderNewContract();
     } else if (/^\/contracts\/\d+\/edit$/.test(location.pathname)) {
@@ -99,6 +115,12 @@ async function render() {
       await renderContractDetail(getContractIdFromPath());
     } else if (location.pathname === "/contracts") {
       await renderContractsList();
+    } else if (location.pathname === "/products/new") {
+      await renderNewProduct();
+    } else if (/^\/products\/\d+\/edit$/.test(location.pathname)) {
+      await renderEditProduct(getProductIdFromPath());
+    } else if (location.pathname === "/products") {
+      await renderProductsList();
     } else if (location.pathname === "/clients/new") {
       await renderNewClient();
     } else if (/^\/clients\/\d+\/edit$/.test(location.pathname)) {

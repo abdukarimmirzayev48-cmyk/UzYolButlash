@@ -211,6 +211,16 @@ function getStockLotIdFromPath() {
   return match ? Number(match[1]) : null;
 }
 
+function getProductIdFromPath() {
+  const match = location.pathname.match(/^\/products\/(\d+)/);
+  return match ? Number(match[1]) : null;
+}
+
+function getCustomerRequestIdFromPath() {
+  const match = location.pathname.match(/^\/customer-requests\/(\d+)/);
+  return match ? Number(match[1]) : null;
+}
+
 function field(form, name) {
   const input = form.elements[name];
   if (!input) return null;
@@ -259,6 +269,22 @@ function addDays(dateString, days = 0) {
   const value = Number(days);
   const date = new Date(`${dateString}T00:00:00`);
   if (Number.isFinite(value)) date.setDate(date.getDate() + value);
+  return date.toISOString().slice(0, 10);
+}
+
+// Skips Saturday/Sunday only (standard Mon-Fri work week) — does not account
+// for public holidays, since this app has no holiday calendar to check against.
+function addBusinessDays(dateString, days = 0) {
+  const value = Number(days);
+  const date = new Date(`${dateString}T00:00:00`);
+  if (!Number.isFinite(value) || value === 0) return date.toISOString().slice(0, 10);
+  const step = value > 0 ? 1 : -1;
+  let remaining = Math.trunc(Math.abs(value));
+  while (remaining > 0) {
+    date.setDate(date.getDate() + step);
+    const day = date.getDay();
+    if (day !== 0 && day !== 6) remaining -= 1;
+  }
   return date.toISOString().slice(0, 10);
 }
 

@@ -80,7 +80,7 @@ async function invoiceForm(invoice = null) {
   const selectedOrderId = invoice?.order_id || params.get("order_id");
   const selectedBatchId = invoice?.delivery_batch_id || params.get("delivery_batch_id");
   const invoiceDate = invoice?.invoice_date || today;
-  const dueDate = invoice?.due_date || addDays(invoiceDate, prefillContract?.payment_terms?.advance_due_days || 0);
+  const dueDate = invoice?.due_date || addBusinessDays(invoiceDate, prefillContract?.payment_terms?.advance_due_days || 0);
   const invoiceType = invoice?.invoice_type || (selectedBatchId || selectedOrderId ? "batch_payment" : selectedContractId ? "advance" : "other");
   let batchPrefill = null;
   if (!invoice && selectedBatchId) {

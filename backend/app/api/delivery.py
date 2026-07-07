@@ -25,6 +25,7 @@ from backend.app.models.delivery import (
     LogisticsStatus,
     PaidBy,
 )
+from backend.app.models.finance import CustomerInvoice
 from backend.app.models.inventory import StockAllocation
 from backend.app.models.order import Order, OrderItem
 from backend.app.models.procurement import SupplierAddress, SupplierAddressType
@@ -637,6 +638,11 @@ def update_batch(batch_id: int, payload: DeliveryBatchUpdate, db: Session = Depe
 @router.delete("/{batch_id}", status_code=204)
 def delete_batch(batch_id: int, db: Session = Depends(get_db)):
     batch = get_batch_or_404(db, batch_id)
+    if db.scalar(select(func.count()).where(CustomerInvoice.delivery_batch_id == batch_id)):
+        raise HTTPException(
+            status_code=422,
+            detail="Cannot delete a delivery batch that has customer invoices. Remove them first.",
+        )
     order = batch.order
     db.query(StockAllocation).filter(StockAllocation.delivery_batch_id == batch_id).update(
         {StockAllocation.delivery_batch_id: None},

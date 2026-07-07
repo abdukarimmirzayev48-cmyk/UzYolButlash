@@ -15,6 +15,8 @@ from backend.app.models.client import (
     ClientNote,
 )
 from backend.app.models.contract import Contract
+from backend.app.models.delivery import DeliveryBatch
+from backend.app.models.finance import CustomerInvoice, CustomerPayment
 from backend.app.models.order import Order
 from backend.app.schemas.client import (
     ClientAddressCreate,
@@ -205,9 +207,26 @@ def update_client(client_id: int, payload: ClientUpdate, db: Session = Depends(g
     return client
 
 
+def ensure_client_has_no_activity(db: Session, client_id: int) -> None:
+    checks = (
+        (Contract, "shartnomalari"),
+        (Order, "buyurtmalari"),
+        (DeliveryBatch, "yetkazib berish partiyalari"),
+        (CustomerInvoice, "hisob-fakturalari"),
+        (CustomerPayment, "to'lovlari"),
+    )
+    for model, label in checks:
+        if db.scalar(select(func.count()).where(model.client_id == client_id)):
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"Mijozni o'chirib bo'lmaydi: uning {label} mavjud. Avval ularni o'chiring yoki boshqa mijozga bog'lang.",
+            )
+
+
 @router.delete("/{client_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_client(client_id: int, db: Session = Depends(get_db)):
     client = get_client_or_404(db, client_id)
+    ensure_client_has_no_activity(db, client_id)
     db.delete(client)
     db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)

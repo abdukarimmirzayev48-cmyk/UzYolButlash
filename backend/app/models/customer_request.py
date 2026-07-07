@@ -1,0 +1,117 @@
+from datetime import datetime
+from decimal import Decimal
+from enum import Enum
+
+from sqlalchemy import DateTime, Enum as SAEnum, ForeignKey, Numeric, String, Text
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+
+from backend.app.db.session import Base
+from backend.app.models.client import TimestampMixin
+
+
+class CustomerType(str, Enum):
+    internal_organization = "internal_organization"
+    external_customer = "external_customer"
+
+
+class PaymentSource(str, Enum):
+    treasury = "treasury"
+    bank = "bank"
+
+
+class CustomerRequestStatus(str, Enum):
+    new = "new"
+    reviewing = "reviewing"
+    negotiation = "negotiation"
+    contract_preparation = "contract_preparation"
+    contract_signed = "contract_signed"
+    converted_to_order = "converted_to_order"
+    rejected = "rejected"
+
+
+class CompanyRegistry(Base, TimestampMixin):
+    __tablename__ = "company_registry"
+
+    id: Mapped[int] = mapped_column(primary_key=True, index=True)
+    inn: Mapped[str] = mapped_column(String(32), nullable=False, unique=True, index=True)
+    company_name: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    region: Mapped[str | None] = mapped_column(String(255), index=True)
+    activity_type: Mapped[str | None] = mapped_column(Text)
+    function_description: Mapped[str | None] = mapped_column(Text)
+    privatization_project_name: Mapped[str | None] = mapped_column(String(255))
+    oked: Mapped[str | None] = mapped_column(String(32))
+    director_full_name: Mapped[str | None] = mapped_column(String(255))
+    legal_address: Mapped[str | None] = mapped_column(Text)
+    bank_account: Mapped[str | None] = mapped_column(String(64))
+    bank_name: Mapped[str | None] = mapped_column(String(255))
+    mfo: Mapped[str | None] = mapped_column(String(32))
+    phone: Mapped[str | None] = mapped_column(String(64))
+
+
+class CustomerRequest(Base, TimestampMixin):
+    __tablename__ = "customer_requests"
+
+    id: Mapped[int] = mapped_column(primary_key=True, index=True)
+    request_number: Mapped[str] = mapped_column(String(32), nullable=False, unique=True, index=True)
+    customer_type: Mapped[CustomerType] = mapped_column(SAEnum(CustomerType), nullable=False, index=True)
+    payment_source: Mapped[PaymentSource] = mapped_column(SAEnum(PaymentSource), nullable=False, index=True)
+    company_name: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    inn: Mapped[str | None] = mapped_column(String(32), index=True)
+    region: Mapped[str | None] = mapped_column(String(255), index=True)
+    activity_type: Mapped[str | None] = mapped_column(Text)
+    function_description: Mapped[str | None] = mapped_column(Text)
+    privatization_project_name: Mapped[str | None] = mapped_column(String(255))
+    oked: Mapped[str | None] = mapped_column(String(32))
+    director_full_name: Mapped[str | None] = mapped_column(String(255))
+    legal_address: Mapped[str | None] = mapped_column(Text)
+    bank_account: Mapped[str | None] = mapped_column(String(64))
+    bank_name: Mapped[str | None] = mapped_column(String(255))
+    mfo: Mapped[str | None] = mapped_column(String(32))
+    phone: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    contact_full_name: Mapped[str | None] = mapped_column(String(255), index=True)
+    contact_phone: Mapped[str | None] = mapped_column(String(64))
+    product_id: Mapped[int] = mapped_column(ForeignKey("products.id"), nullable=False, index=True)
+    total_quantity: Mapped[Decimal] = mapped_column(Numeric(18, 3), nullable=False)
+    unit: Mapped[str] = mapped_column(String(64), nullable=False)
+    status: Mapped[CustomerRequestStatus] = mapped_column(
+        SAEnum(CustomerRequestStatus), nullable=False, default=CustomerRequestStatus.new, index=True
+    )
+    internal_comment: Mapped[str | None] = mapped_column(Text)
+    rejection_reason: Mapped[str | None] = mapped_column(Text)
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime)
+    contract_signed_at: Mapped[datetime | None] = mapped_column(DateTime)
+    converted_to_order_at: Mapped[datetime | None] = mapped_column(DateTime)
+
+    product: Mapped["Product"] = relationship()
+    schedules: Mapped[list["CustomerRequestSchedule"]] = relationship(
+        back_populates="request", cascade="all, delete-orphan", order_by="CustomerRequestSchedule.id"
+    )
+    status_history: Mapped[list["CustomerRequestStatusHistory"]] = relationship(
+        back_populates="request", cascade="all, delete-orphan", order_by="CustomerRequestStatusHistory.created_at.desc()"
+    )
+
+
+class CustomerRequestSchedule(Base, TimestampMixin):
+    __tablename__ = "customer_request_schedules"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    request_id: Mapped[int] = mapped_column(ForeignKey("customer_requests.id", ondelete="CASCADE"), index=True)
+    year: Mapped[int] = mapped_column(nullable=False)
+    month: Mapped[int] = mapped_column(nullable=False)
+    quantity: Mapped[Decimal] = mapped_column(Numeric(18, 3), nullable=False)
+
+    request: Mapped[CustomerRequest] = relationship(back_populates="schedules")
+
+
+class CustomerRequestStatusHistory(Base):
+    __tablename__ = "customer_request_status_history"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    request_id: Mapped[int] = mapped_column(ForeignKey("customer_requests.id", ondelete="CASCADE"), index=True)
+    old_status: Mapped[CustomerRequestStatus | None] = mapped_column(SAEnum(CustomerRequestStatus), nullable=True)
+    new_status: Mapped[CustomerRequestStatus] = mapped_column(SAEnum(CustomerRequestStatus), nullable=False, index=True)
+    changed_by: Mapped[str | None] = mapped_column(String(255))
+    comment: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+
+    request: Mapped[CustomerRequest] = relationship(back_populates="status_history")

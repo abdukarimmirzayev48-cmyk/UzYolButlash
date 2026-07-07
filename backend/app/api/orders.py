@@ -115,6 +115,14 @@ def get_contract_or_400(db: Session, contract_id: int) -> Contract:
     return contract
 
 
+def ensure_contract_has_client(contract: Contract) -> None:
+    if contract.client_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Bu shartnoma mijozga bog'lanmagan. Avval shartnomani ERP mijozi bilan bog'lang.",
+        )
+
+
 def calculate_item(item: OrderItem) -> None:
     item.subtotal = money(item.quantity * item.unit_price)
     item.vat_amount = money(item.subtotal * item.vat_rate / Decimal("100"))
@@ -391,6 +399,7 @@ def list_orders(
 @router.post("", response_model=OrderDetail, status_code=status.HTTP_201_CREATED)
 def create_order(payload: OrderCreate, db: Session = Depends(get_db)):
     contract = get_contract_or_400(db, payload.contract_id)
+    ensure_contract_has_client(contract)
     contract_items = validate_items_against_contract(db, contract, payload.items)
     data = payload.model_dump(exclude={"items", "supplier_options", "documents", "initial_note"})
     for protected_field in ("status", "supplier_id", "supplier_name", "supplier_status"):
@@ -452,6 +461,7 @@ def update_order(order_id: int, payload: OrderUpdate, db: Session = Depends(get_
     for protected_field in ("status", "supplier_id", "supplier_name", "supplier_status"):
         data.pop(protected_field, None)
     if "contract_id" in data:
+        ensure_contract_has_client(contract)
         data["client_id"] = contract.client_id
     update_model(order, data)
     if payload.items is not None:
@@ -489,6 +499,16 @@ def update_order_status(order_id: int, payload: OrderManualStatusUpdate, db: Ses
 @router.delete("/{order_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_order(order_id: int, db: Session = Depends(get_db)):
     order = get_order_or_404(db, order_id)
+    if db.scalar(select(func.count()).where(DeliveryBatch.order_id == order_id)):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Cannot delete an order that has delivery batches. Remove them first.",
+        )
+    if db.scalar(select(func.count()).where(CustomerInvoice.order_id == order_id)):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Cannot delete an order that has customer invoices. Remove them first.",
+        )
     contract_id = order.contract_id
     db.delete(order)
     db.flush()

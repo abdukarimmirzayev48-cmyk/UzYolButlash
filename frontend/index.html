@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>UzYolButlash ERP</title>
-    <link rel="stylesheet" href="/static/styles.css?v=20260629-fluid-wizard" />
+    <link rel="stylesheet" href="/static/styles.css?v=20260706-attendance-module" />
   </head>
   <body>
     <header class="app-topbar">
@@ -22,11 +22,19 @@
           </div>
         </div>
         <div class="top-nav-group">
+          <button type="button">Xodimlar</button>
+          <div class="top-nav-menu">
+            <a href="/attendance">Davomat</a>
+          </div>
+        </div>
+        <div class="top-nav-group">
           <button type="button">Sotuv</button>
           <div class="top-nav-menu">
             <a href="/clients">Mijozlar</a>
+            <a href="/customer-requests">Talabnomalar</a>
             <a href="/contracts">Shartnomalar</a>
             <a href="/orders">Buyurtmalar</a>
+            <a href="/products">Mahsulotlar</a>
           </div>
         </div>
         <div class="top-nav-group">
@@ -106,8 +114,10 @@
         <section class="nav-section">
           <h2>Sotuv</h2>
           <a class="active" href="/clients" data-short="M" title="Mijozlar"><span>Mijozlar</span></a>
+          <a href="/customer-requests" data-short="T" title="Talabnomalar"><span>Talabnomalar</span></a>
           <a href="/contracts" data-short="SH" title="Shartnomalar"><span>Shartnomalar</span></a>
           <a href="/orders" data-short="B" title="Buyurtmalar"><span>Buyurtmalar</span></a>
+          <a href="/products" data-short="MH" title="Mahsulotlar"><span>Mahsulotlar</span></a>
         </section>
         <section class="nav-section">
           <h2>Yetkazib berish</h2>
@@ -121,6 +131,10 @@
           <a href="/procurements" data-short="X" title="Xaridlar"><span>Xaridlar</span></a>
           <a href="/exchange-tickets" data-short="BT" title="Birja ticketlari"><span>Birja ticketlari</span></a>
           <a href="/stock" data-short="Z" title="Zaxira"><span>Zaxira</span></a>
+        </section>
+        <section class="nav-section">
+          <h2>Xodimlar</h2>
+          <a href="/attendance" data-short="DV" title="Davomat"><span>Davomat</span></a>
         </section>
       </nav>
     </aside>
@@ -144,6 +158,8 @@
     <script src="/static/src/config/constants.js?v=20260629-frontend-modules" defer></script>
     <script src="/static/src/core/runtime.js?v=20260629-global-number-format" defer></script>
     <script src="/static/src/pages/clients.js?v=20260629-frontend-modules" defer></script>
+    <script src="/static/src/pages/customerRequests.js?v=20260705-customer-requests" defer></script>
+    <script src="/static/src/pages/publicTalabnoma.js?v=20260705-public-request" defer></script>
     <script src="/static/src/pages/contracts.js?v=20260629-global-number-format" defer></script>
     <script src="/static/src/pages/orders.js?v=20260629-stock-order-safe" defer></script>
     <script src="/static/src/pages/delivery.js?v=20260629-transports-module" defer></script>
@@ -151,6 +167,8 @@
     <script src="/static/src/pages/customerFinance.js?v=20260629-global-number-format" defer></script>
     <script src="/static/src/pages/supply.js?v=20260629-stock-order-safe" defer></script>
     <script src="/static/src/pages/dashboard.js?v=20260629-frontend-modules" defer></script>
-    <script src="/static/src/router.js?v=20260629-transports-module" defer></script>
+    <script src="/static/src/pages/products.js?v=20260701-products-module" defer></script>
+    <script src="/static/src/pages/attendance.js?v=20260706-attendance-module" defer></script>
+    <script src="/static/src/router.js?v=20260706-attendance-module" defer></script>
   </body>
 </html>

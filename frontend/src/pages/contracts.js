@@ -7,16 +7,62 @@ async function fetchClientsForSelect(selectedId = null) {
   `).join("");
 }
 
-function contractItemRow(item = {}, index = 0) {
+let _contractPageProducts = [];
+
+function buildProductOptions(products, selectedId = null) {
+  const grouped = {};
+  products.forEach((p) => {
+    const cat = p.category?.name || "Boshqa";
+    if (!grouped[cat]) grouped[cat] = [];
+    grouped[cat].push(p);
+  });
+  let html = `<option value="">Boshqa (qo'lda kiriting)</option>`;
+  for (const [cat, prods] of Object.entries(grouped)) {
+    html += `<optgroup label="${esc(cat)}">`;
+    for (const p of prods) {
+      const sel = Number(selectedId) === Number(p.id) ? " selected" : "";
+      html += `<option value="${p.id}"${sel} data-name="${esc(p.name)}" data-unit="${esc(p.unit)}">${esc(p.name)}</option>`;
+    }
+    html += `</optgroup>`;
+  }
+  return html;
+}
+
+function bindProductSelects(form) {
+  form.querySelectorAll("[data-item-product-select]").forEach((sel) => {
+    const applySelection = () => {
+      const idx = sel.dataset.itemProductSelect;
+      const opt = sel.options[sel.selectedIndex];
+      const nameInput = form.elements[`product_name_${idx}`];
+      const unitInput = form.elements[`unit_${idx}`];
+      if (sel.value && opt?.dataset.name) {
+        if (nameInput) { nameInput.value = opt.dataset.name; nameInput.readOnly = true; }
+        if (unitInput) { unitInput.value = opt.dataset.unit || ""; unitInput.readOnly = true; }
+      } else {
+        if (nameInput) nameInput.readOnly = false;
+        if (unitInput) unitInput.readOnly = false;
+      }
+    };
+    sel.addEventListener("change", applySelection);
+    if (sel.value) applySelection();
+  });
+}
+
+function contractItemRow(item = {}, index = 0, products = []) {
   return `
     <div class="item-row" data-item-row>
-      ${textField(`product_name_${index}`, "Product", item.product_name)}
-      ${textField(`product_code_${index}`, "Code", item.product_code)}
-      ${textField(`unit_${index}`, "Unit", item.unit || "tonna")}
-      ${textField(`quantity_${index}`, "Quantity", item.quantity ?? "", "number")}
-      ${textField(`unit_price_${index}`, "Unit price", item.unit_price ?? "", "number")}
-      ${textField(`vat_rate_${index}`, "VAT %", item.vat_rate ?? 12, "number")}
-      <button type="button" class="btn danger" data-remove-item>Remove</button>
+      <label>Mahsulot katalogi
+        <select name="product_id_${index}" data-item-product-select="${index}">
+          ${buildProductOptions(products, item.product_id)}
+        </select>
+      </label>
+      ${textField(`product_name_${index}`, "Nomi (qo'lda)", item.product_name || "")}
+      ${textField(`product_code_${index}`, "Kodi", item.product_code || "")}
+      ${textField(`unit_${index}`, "Birlik", item.unit || "tonna")}
+      ${textField(`quantity_${index}`, "Miqdor", item.quantity ?? "", "number")}
+      ${textField(`unit_price_${index}`, "Birlik narxi", item.unit_price ?? "", "number")}
+      ${textField(`vat_rate_${index}`, "QQS %", item.vat_rate ?? 12, "number")}
+      <button type="button" class="btn danger" data-remove-item>Olib tashlash</button>
     </div>
   `;
 }
@@ -56,7 +102,9 @@ function collectContractItems(form) {
   return [...form.querySelectorAll("[data-item-row]")].map((row) => {
     const get = (prefix) => row.querySelector(`[name^='${prefix}_']`)?.value.trim();
     const getNumber = (prefix) => normalizeNumberInputValue(get(prefix));
+    const productId = get("product_id");
     return {
+      product_id: productId ? Number(productId) : null,
       product_name: get("product_name"),
       product_code: get("product_code") || null,
       unit: get("unit"),
@@ -64,7 +112,7 @@ function collectContractItems(form) {
       unit_price: getNumber("unit_price"),
       vat_rate: getNumber("vat_rate") || "12",
     };
-  }).filter((item) => item.product_name || item.quantity || item.unit_price);
+  }).filter((item) => item.product_name && item.unit && Number(item.quantity) > 0);
 }
 
 function collectContractPayload(form) {
@@ -81,7 +129,6 @@ function collectContractPayload(form) {
     items: collectContractItems(form),
     payment_terms: {
       advance_percent: field(form, "advance_percent") || "30",
-      remaining_percent: field(form, "remaining_percent") || "70",
       advance_due_days: Number(field(form, "advance_due_days") || 10),
       batch_payment_due_days: Number(field(form, "batch_payment_due_days") || 3),
       remaining_payment_rule: field(form, "remaining_payment_rule") || "Payment of the remaining amount is made per ready delivery batch based on invoice.",
@@ -96,8 +143,13 @@ function collectContractPayload(form) {
 }
 
 async function contractForm(contract = null) {
-  const clientOptions = await fetchClientsForSelect(contract?.client_id);
+  const [clientOptions, products] = await Promise.all([
+    fetchClientsForSelect(contract?.client_id),
+    api("/api/products"),
+  ]);
+  _contractPageProducts = products;
   const today = new Date().toISOString().slice(0, 10);
+  const oneYearLater = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
   const payment = contract?.payment_terms || {};
   const transport = contract?.transport_terms || {};
   const rows = contract?.items?.length ? contract.items : [{}];
@@ -115,7 +167,7 @@ async function contractForm(contract = null) {
           <div class="grid">
             ${textField("contract_number", "Contract number", contract?.contract_number)}
             ${textField("contract_date", "Contract date", contract?.contract_date || today, "date")}
-            ${textField("valid_until", "Valid until", contract?.valid_until || today, "date")}
+            ${textField("valid_until", "Valid until", contract?.valid_until || oneYearLater, "date")}
             <label>Client<select name="client_id"><option value="">Select client</option>${clientOptions}</select></label>
             ${textField("title", "Title", contract?.title)}
             ${selectField("status", "Status", contractStatuses, contract?.status || "draft")}
@@ -124,7 +176,7 @@ async function contractForm(contract = null) {
           </div>
         `)}
         ${section("Specification", `
-          <div id="contract-items">${rows.map(contractItemRow).join("")}</div>
+          <div id="contract-items">${rows.map((item, i) => contractItemRow(item, i, products)).join("")}</div>
           <button type="button" class="btn" id="add-item">Add product</button>
           <div class="totals-bar">
             <div class="total-box"><span>Total quantity</span><strong data-total-quantity>${dash}</strong></div>
@@ -136,7 +188,7 @@ async function contractForm(contract = null) {
         ${section("Payment terms", `
           <div class="grid">
             ${textField("advance_percent", "Advance percent", payment.advance_percent ?? 30, "number")}
-            ${textField("remaining_percent", "Remaining percent", payment.remaining_percent ?? 70, "number")}
+            ${textField("remaining_percent", "Remaining percent (auto)", payment.remaining_percent ?? 70, "number", { readonly: true, disabled: true })}
             ${textField("advance_due_days", "Advance due days", payment.advance_due_days ?? 10, "number")}
             ${textField("batch_payment_due_days", "Batch payment due days", payment.batch_payment_due_days ?? 3, "number")}
             ${textArea("remaining_payment_rule", "Remaining payment rule", payment.remaining_payment_rule || "Payment of the remaining amount is made per ready delivery batch based on invoice.")}
@@ -167,10 +219,12 @@ async function contractForm(contract = null) {
 function bindContractForm(contract = null) {
   const form = document.querySelector("#contract-form");
   const refresh = () => calculateContractForm(form);
+  bindProductSelects(form);
   form.addEventListener("input", refresh);
   document.querySelector("#add-item").addEventListener("click", () => {
     const index = form.querySelectorAll("[data-item-row]").length;
-    document.querySelector("#contract-items").insertAdjacentHTML("beforeend", contractItemRow({}, index));
+    document.querySelector("#contract-items").insertAdjacentHTML("beforeend", contractItemRow({}, index, _contractPageProducts));
+    bindProductSelects(form);
     refresh();
   });
   form.addEventListener("click", (event) => {
@@ -321,10 +375,16 @@ function contractWizardMainPanel(state) {
 function contractWizardProductsPanel(state) {
   const totals = contractWizardTotals(state);
   const rows = state.items || [];
+  const products = state.products || [];
   return `${tableOrEmpty(rows, ['Mahsulot <span class="required-mark">*</span>', "Mahsulot kodi", 'Birlik <span class="required-mark">*</span>', 'Miqdor <span class="required-mark">*</span>', 'Birlik narxi <span class="required-mark">*</span>', 'QQS % <span class="required-mark">*</span>', "Oraliq summa", "QQS summasi", "Jami summa", ""], (item, index) => {
     const calc = totals.rows[index] || {};
     return `<tr data-contract-wizard-item="${index}">
-      <td><input name="product_name_${index}" value="${esc(item.product_name || "")}" required /></td>
+      <td>
+        <select name="product_id_${index}" data-item-product-select="${index}" style="width:100%;margin-bottom:4px">
+          ${buildProductOptions(products, item.product_id)}
+        </select>
+        <input name="product_name_${index}" value="${esc(item.product_name || "")}" placeholder="Mahsulot nomi" style="width:100%" />
+      </td>
       <td><input name="product_code_${index}" value="${esc(item.product_code || "")}" /></td>
       <td><input name="unit_${index}" value="${esc(item.unit || "tonna")}" required /></td>
       <td><input type="number" step="any" min="0" name="quantity_${index}" value="${esc(item.quantity || "")}" required /></td>
@@ -469,14 +529,18 @@ function syncContractWizardInputs(state) {
 
   const itemRows = [...form.querySelectorAll("[data-contract-wizard-item]")];
   if (itemRows.length) {
-    state.items = itemRows.map((row, index) => ({
-      product_name: form.elements[`product_name_${index}`]?.value.trim() || "",
-      product_code: form.elements[`product_code_${index}`]?.value.trim() || "",
-      unit: form.elements[`unit_${index}`]?.value.trim() || "tonna",
-      quantity: normalizeNumberInputValue(form.elements[`quantity_${index}`]?.value || ""),
-      unit_price: normalizeNumberInputValue(form.elements[`unit_price_${index}`]?.value || ""),
-      vat_rate: normalizeNumberInputValue(form.elements[`vat_rate_${index}`]?.value || "12"),
-    }));
+    state.items = itemRows.map((row, index) => {
+      const productIdVal = form.elements[`product_id_${index}`]?.value;
+      return {
+        product_id: productIdVal ? Number(productIdVal) : null,
+        product_name: form.elements[`product_name_${index}`]?.value.trim() || "",
+        product_code: form.elements[`product_code_${index}`]?.value.trim() || "",
+        unit: form.elements[`unit_${index}`]?.value.trim() || "tonna",
+        quantity: normalizeNumberInputValue(form.elements[`quantity_${index}`]?.value || ""),
+        unit_price: normalizeNumberInputValue(form.elements[`unit_price_${index}`]?.value || ""),
+        vat_rate: normalizeNumberInputValue(form.elements[`vat_rate_${index}`]?.value || "12"),
+      };
+    });
   }
   const documentRows = [...form.querySelectorAll("[data-contract-wizard-document]")];
   if (documentRows.length) {
@@ -528,6 +592,7 @@ function collectContractWizardPayload(state) {
     currency: state.currency || "UZS",
     notes: state.notes || null,
     items: (state.items || []).map((item) => ({
+      product_id: item.product_id || null,
       product_name: item.product_name,
       product_code: item.product_code || null,
       unit: item.unit || "tonna",
@@ -566,6 +631,7 @@ async function uploadContractWizardDocuments(contractId, state) {
 
 function bindContractWizard(state, draw) {
   const form = document.querySelector("#contract-wizard-form");
+  if (form) bindProductSelects(form);
   if (form?.querySelector("[data-contract-wizard-item]")) updateContractWizardProductTotals(state);
   document.querySelector("[data-contract-wizard-cancel]")?.addEventListener("click", () => navigate("/contracts"));
   form?.elements.client_id?.addEventListener("change", async (event) => {
@@ -590,7 +656,7 @@ function bindContractWizard(state, draw) {
   });
   document.querySelector("[data-contract-wizard-add-item]")?.addEventListener("click", async () => {
     syncContractWizardInputs(state);
-    state.items.push({ product_name: "", product_code: "", unit: "tonna", quantity: "", unit_price: "", vat_rate: "12" });
+    state.items.push({ product_id: null, product_name: "", product_code: "", unit: "tonna", quantity: "", unit_price: "", vat_rate: "12" });
     await draw();
   });
   document.querySelectorAll("[data-contract-wizard-remove-item]").forEach((button) => button.addEventListener("click", async () => {
@@ -647,12 +713,12 @@ async function renderContractWizard() {
     clientOptions: [],
     contractNumber: "",
     contractDate: today,
-    validUntil: today,
+    validUntil: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
     title: "",
     status: "draft",
     currency: "UZS",
     notes: "",
-    items: [{ product_name: "", product_code: "", unit: "tonna", quantity: "", unit_price: "", vat_rate: "12" }],
+    items: [{ product_id: null, product_name: "", product_code: "", unit: "tonna", quantity: "", unit_price: "", vat_rate: "12" }],
     advancePercent: "30",
     advanceDueDays: "10",
     batchPaymentDueDays: "3",
@@ -663,7 +729,11 @@ async function renderContractWizard() {
     transportNotes: "",
     documents: [],
   };
-  state.clientOptions = await contractWizardClientOptions(state.clientId);
+  [state.clientOptions, state.products, state.contractNumber] = await Promise.all([
+    contractWizardClientOptions(state.clientId),
+    api("/api/products"),
+    api("/api/contracts/next-number").then((data) => data.contract_number).catch(() => ""),
+  ]);
   if (state.clientId) state.client = await api(`/api/clients/${state.clientId}`);
 
   async function draw() {
@@ -682,19 +752,150 @@ async function renderContractsList() {
     className: "contracts-ops-page",
     title: "Shartnomalar",
     tabs: [{ label: "Mijozlar", path: "/clients" }, { label: "Shartnomalar", active: true }, { label: "Buyurtmalar", path: "/orders" }],
-    createPath: "/contracts/new",
+    createPath: "/contracts/upload",
+    createLabel: "PDF orqali yaratish",
     clearPath: "/contracts",
-    counter: `${fmt(data.total)} ta shartnoma`,
+    counter: `<button class="btn" data-nav="/contracts/new">Yangi shartnoma</button><span>${fmt(data.total)} ta shartnoma</span>`,
     formId: "contract-search-form",
     filters: `<input name="contract_number" placeholder="Shartnoma raqami" value="${esc(params.get("contract_number") || "")}" /><input name="client_name" placeholder="Mijoz" value="${esc(params.get("client_name") || "")}" /><input name="inn" placeholder="STIR" value="${esc(params.get("inn") || "")}" /><input name="product_name" placeholder="Mahsulot" value="${esc(params.get("product_name") || "")}" /><select name="status"><option value="">Status</option>${contractStatuses.map(([key, label]) => `<option value="${key}" ${params.get("status") === key ? "selected" : ""}>${label}</option>`).join("")}</select>`,
-    headers: ["Shartnoma raqami", "Sana", "Mijoz", "Mahsulot", "Jami miqdor", "Jami summa", "Amal qilish muddati", "Yetkazilgan", "Qoldiq", "Status", "Oxirgi faollik", ""],
-    rows: data.items.map((contract) => `<tr><td><button class="ops-primary-link" data-nav="/contracts/${contract.id}">${fmt(contract.contract_number)}</button></td><td>${fmt(contract.contract_date)}</td><td>${fmt(contract.client?.name)}</td><td>${fmt(contract.product)}</td><td>${fmtQty(contract.total_quantity)}</td><td class="ops-money">${fmtMoney(contract.total_amount)}</td><td>${fmt(contract.valid_until)}</td><td>${fmtQty(contract.delivered_quantity)}</td><td class="${numberValue(contract.remaining_quantity) > 0 ? "ops-warning" : ""}">${fmtQty(contract.remaining_quantity)}</td><td>${statusBadge(contract.status)}</td><td>${fmtDate(contract.last_activity)}</td><td><div class="ops-row-actions"><button class="link-btn" data-nav="/contracts/${contract.id}">Ochish</button><button class="link-btn" data-nav="/contracts/${contract.id}/edit">Tahrirlash</button><button class="link-btn" data-nav="/contracts/${contract.id}?tab=documents">Hujjatlar</button><button class="link-btn" data-nav="/orders/new">Buyurtma</button></div></td></tr>`).join(""),
+    headers: ["Shartnoma raqami", "Sana", "Amal qilish muddati", "Buyurtmachi", "STIR", "Umumiy summa", "Status", "Amallar"],
+    rows: data.items.map((contract) => `<tr><td><button class="ops-primary-link" data-nav="/contracts/${contract.id}">${fmt(contract.contract_number)}</button></td><td>${fmt(contract.contract_date)}</td><td>${fmt(contract.valid_until)}</td><td>${fmt(contract.customer_name || contract.client?.name)}</td><td>${fmt(contract.customer_inn || contract.client?.inn)}</td><td class="ops-money">${fmtMoney(contract.total_amount)}</td><td>${statusBadge(contract.status)}</td><td><div class="ops-row-actions"><button class="link-btn" data-nav="/contracts/${contract.id}">Ko'rish</button><button class="link-btn" data-nav="/contracts/${contract.id}/edit">Tahrirlash</button>${contract.source_file_path ? `<a class="link-btn" target="_blank" href="/api/contracts/${contract.id}/file">Faylni ko'rish</a>` : ""}</div></td></tr>`).join(""),
     emptyText: "Shartnomalar topilmadi.",
     colspan: 12,
     footer: opsFooter(data, "contract"),
   });
   bindOpsSearch("contract-search-form", "/contracts", ["contract_number", "client_name", "inn", "product_name", "status"]);
   bindOpsPagination("contract", "/contracts");
+}
+
+function parsedItemRow(item = {}, index = 0, products = []) {
+  return `<tr data-parsed-item="${index}">
+    <td><input name="item_product_name_${index}" value="${esc(item.product_name || "")}" /></td>
+    <td><input name="item_product_brand_${index}" value="${esc(item.product_brand || "")}" /></td>
+    <td><input name="item_catalog_code_${index}" value="${esc(item.catalog_code || "")}" /></td>
+    <td><input name="item_unit_${index}" value="${esc(item.unit || "tonna")}" /></td>
+    <td><input data-format-number name="item_quantity_${index}" value="${esc(item.quantity ?? "")}" /></td>
+    <td><input data-format-number name="item_unit_price_${index}" value="${esc(item.unit_price ?? "")}" /></td>
+    <td><input data-format-number name="item_amount_without_vat_${index}" value="${esc(item.amount_without_vat ?? "")}" /></td>
+    <td><input data-format-number name="item_vat_rate_${index}" value="${esc(item.vat_rate ?? 12)}" /></td>
+    <td><input data-format-number name="item_vat_amount_${index}" value="${esc(item.vat_amount ?? "")}" /></td>
+    <td><input data-format-number name="item_amount_with_vat_${index}" value="${esc(item.amount_with_vat ?? "")}" /></td>
+    <td><select name="item_product_id_${index}">${buildProductOptions(products, item.product_id)}</select></td>
+  </tr>`;
+}
+
+function collectParsedContractPayload(form, parsedState) {
+  const rows = [...form.querySelectorAll("[data-parsed-item]")];
+  return {
+    parse_session_id: parsedState.parse_session_id,
+    customer_id: field(form, "customer_id") ? Number(field(form, "customer_id")) : null,
+    customer_request_id: field(form, "customer_request_id") ? Number(field(form, "customer_request_id")) : null,
+    contract_number: field(form, "contract_number"),
+    contract_date: field(form, "contract_date"),
+    valid_until: field(form, "valid_until"),
+    place: field(form, "place"),
+    customer_name: field(form, "customer_name"),
+    customer_director_full_name: field(form, "customer_director_full_name"),
+    customer_inn: field(form, "customer_inn"),
+    customer_oked: field(form, "customer_oked"),
+    customer_legal_address: field(form, "customer_legal_address"),
+    customer_bank_account: field(form, "customer_bank_account"),
+    customer_bank_name: field(form, "customer_bank_name"),
+    customer_mfo: field(form, "customer_mfo"),
+    executor_name: field(form, "executor_name"),
+    executor_director_full_name: field(form, "executor_director_full_name"),
+    executor_inn: field(form, "executor_inn"),
+    executor_oked: field(form, "executor_oked"),
+    executor_legal_address: field(form, "executor_legal_address"),
+    executor_bank_account: field(form, "executor_bank_account"),
+    executor_bank_name: field(form, "executor_bank_name"),
+    executor_mfo: field(form, "executor_mfo"),
+    total_without_vat: field(form, "total_without_vat"),
+    vat_rate: field(form, "vat_rate"),
+    vat_amount: field(form, "vat_amount"),
+    total_with_vat: field(form, "total_with_vat"),
+    prepayment_percent: field(form, "prepayment_percent"),
+    prepayment_amount: field(form, "prepayment_amount"),
+    remaining_payment_percent: field(form, "remaining_payment_percent"),
+    payment_terms_text: field(form, "payment_terms_text"),
+    transport_cost_separate: field(form, "transport_cost_separate"),
+    didox_id: field(form, "didox_id"),
+    rouming_id: field(form, "rouming_id"),
+    status: field(form, "status") || "active",
+    items: rows.map((row) => {
+      const index = row.dataset.parsedItem;
+      const get = (name) => field(form, `${name}_${index}`);
+      return {
+        product_id: get("item_product_id") ? Number(get("item_product_id")) : null,
+        product_name: get("item_product_name"),
+        product_brand: get("item_product_brand"),
+        catalog_code: get("item_catalog_code"),
+        unit: get("item_unit"),
+        quantity: get("item_quantity"),
+        unit_price: get("item_unit_price"),
+        amount_without_vat: get("item_amount_without_vat"),
+        vat_rate: get("item_vat_rate"),
+        vat_amount: get("item_vat_amount"),
+        amount_with_vat: get("item_amount_with_vat"),
+      };
+    }),
+  };
+}
+
+async function contractParsedReview(parsedState) {
+  const parsed = parsedState.parsed || {};
+  const [clientOptions, products, requests, suggestedNumber] = await Promise.all([
+    fetchClientsForSelect(parsedState.suggestions?.customer?.id),
+    api("/api/products"),
+    api("/api/customer-requests?page_size=100").catch(() => ({ items: [] })),
+    parsed.contract_number ? Promise.resolve(null) : api("/api/contracts/next-number").then((data) => data.contract_number).catch(() => ""),
+  ]);
+  if (!parsed.contract_number && suggestedNumber) parsed.contract_number = suggestedNumber;
+  const requestOptions = (requests.items || []).map((r) => `<option value="${r.id}" ${Number(parsed.customer_request_id) === r.id ? "selected" : ""}>${fmt(r.request_number)} - ${fmt(r.company_name)}${r.inn ? ` - ${fmt(r.inn)}` : ""}</option>`).join("");
+  const items = parsed.items?.length ? parsed.items : [{}];
+  (parsedState.suggestions?.products || []).forEach((suggestion) => {
+    if (items[suggestion.item_index] && suggestion.product_id && !items[suggestion.item_index].product_id) {
+      items[suggestion.item_index].product_id = suggestion.product_id;
+    }
+  });
+  return `<form id="contract-parsed-form">
+    ${section("Aniqlik darajasi", `<div class="summary-grid">${summaryCards([["Aniqlik darajasi", `${Math.round(Number(parsedState.confidence || 0) * 100)}%`], ["Ogohlantirishlar", parsedState.warnings?.length || 0]])}</div>${parsedState.warnings?.length ? `<div class="warning-message">${parsedState.warnings.map(esc).join("<br>")}</div>` : ""}`)}
+    ${section("Asosiy ma'lumotlar", `<div class="grid">${textField("contract_number", "Shartnoma raqami", parsed.contract_number, "text", { required: true })}${textField("contract_date", "Shartnoma sanasi", parsed.contract_date || "", "date", { required: true })}${textField("valid_until", "Amal qilish muddati", parsed.valid_until || "", "date")}${textField("place", "Tuzilgan joy", parsed.place)}${selectField("status", "Status", contractStatuses.filter(([key]) => ["draft","active","completed","cancelled"].includes(key)), parsed.status || "active")}</div>`)}
+    ${section("Bajaruvchi", `<div class="grid">${textField("executor_name", "Bajaruvchi nomi", parsed.executor_name)}${textField("executor_director_full_name", "Direktor F.I.Sh.", parsed.executor_director_full_name)}${textField("executor_inn", "STIR", parsed.executor_inn)}${textField("executor_oked", "OKED", parsed.executor_oked)}${textArea("executor_legal_address", "Yuridik manzil", parsed.executor_legal_address)}${textField("executor_bank_account", "Hisob raqami", parsed.executor_bank_account)}${textField("executor_bank_name", "Bank nomi", parsed.executor_bank_name)}${textField("executor_mfo", "MFO", parsed.executor_mfo)}</div>`)}
+    ${section("Buyurtmachi", `<div class="grid">${textField("customer_name", "Buyurtmachi nomi", parsed.customer_name, "text", { required: true })}${textField("customer_director_full_name", "Direktor F.I.Sh.", parsed.customer_director_full_name)}${textField("customer_inn", "STIR", parsed.customer_inn, "text", { required: true })}${textField("customer_oked", "OKED", parsed.customer_oked)}${textArea("customer_legal_address", "Yuridik manzil", parsed.customer_legal_address)}${textField("customer_bank_account", "Hisob raqami", parsed.customer_bank_account)}${textField("customer_bank_name", "Bank nomi", parsed.customer_bank_name)}${textField("customer_mfo", "MFO", parsed.customer_mfo)}</div>`)}
+    ${section("Mahsulotlar", `<div class="table-wrap"><table><thead><tr><th>Mahsulot</th><th>Marka</th><th>Katalog kodi</th><th>O'lchov birligi</th><th>Miqdor</th><th>Birlik narxi</th><th>QQSsiz summa</th><th>QQS stavkasi</th><th>QQS summasi</th><th>QQS bilan summa</th><th>ERP mahsuloti bilan bog'lash</th></tr></thead><tbody>${items.map((item, i) => parsedItemRow(item, i, products)).join("")}</tbody></table></div>`)}
+    ${section("Hisob-kitob", `<div class="grid">${textField("total_without_vat", "QQSsiz umumiy summa", parsed.total_without_vat, "number")}${textField("vat_rate", "QQS stavkasi", parsed.vat_rate || 12, "number")}${textField("vat_amount", "QQS summasi", parsed.vat_amount, "number")}${textField("total_with_vat", "QQS bilan umumiy summa", parsed.total_with_vat, "number")}</div>`)}
+    ${section("To'lov shartlari", `<div class="grid">${textField("prepayment_percent", "Oldindan to'lov foizi", parsed.prepayment_percent || 30, "number")}${textField("prepayment_amount", "Oldindan to'lov summasi", parsed.prepayment_amount, "number")}${textField("remaining_payment_percent", "Qolgan to'lov foizi", parsed.remaining_payment_percent || 70, "number")}<label class="checkbox-row"><input type="checkbox" name="transport_cost_separate" ${parsed.transport_cost_separate ? "checked" : ""} /> Transport xarajati alohida hisoblanadi</label>${textArea("payment_terms_text", "To'lov shartlari", parsed.payment_terms_text)}</div>`)}
+    ${section("Elektron hujjat identifikatorlari", `<div class="grid">${textField("didox_id", "Didox ID", parsed.didox_id)}${textField("rouming_id", "Rouming ID", parsed.rouming_id)}</div>`)}
+    ${section("Bog'lash", `<div class="grid"><label>Mijoz bilan bog'lash<select name="customer_id"><option value="">Snapshot bo'yicha saqlash</option>${clientOptions}</select></label><label>Talabnoma bilan bog'lash<select name="customer_request_id"><option value="">—</option>${requestOptions}</select></label></div>`)}
+    <div class="form-footer"><button type="button" class="btn" data-nav="/contracts">Bekor qilish</button>${parsedState.file_url ? `<a class="btn" target="_blank" href="${esc(parsedState.file_url)}">PDF faylni ko'rish</a>` : ""}<button class="btn primary" type="submit">Shartnomani yaratish</button></div>
+  </form>`;
+}
+
+async function renderContractUpload() {
+  app.innerHTML = `<div class="page"><div class="page-header"><div class="page-title"><h1>PDF orqali shartnoma yaratish</h1><p>Shartnoma PDF faylini yuklang. Faqat PDF fayl qabul qilinadi.</p></div><div class="actions"><button class="btn" data-nav="/contracts">Orqaga</button></div></div>${section("Fayl yuklash", `<form id="contract-pdf-form"><div class="grid"><label>Shartnoma PDF faylini yuklang <span class="required-mark">*</span><input type="file" name="file" accept="application/pdf,.pdf" required /></label></div><div class="form-footer"><button class="btn primary" type="submit">Tahlil qilish</button></div></form>`)}<div id="contract-parse-review"></div></div>`;
+  document.querySelector("#contract-pdf-form").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const formData = new FormData(event.currentTarget);
+    try {
+      const response = await apiForm("/api/contracts/parse-pdf", formData);
+      const parsedState = response.data;
+      document.querySelector("#contract-parse-review").innerHTML = `<div class="page-title"><h1>Shartnoma ma'lumotlarini tekshirish</h1></div>${await contractParsedReview(parsedState)}`;
+      setupFormattedNumberInputs(document.querySelector("#contract-parse-review"));
+      document.querySelector("#contract-parsed-form").addEventListener("submit", async (submitEvent) => {
+        submitEvent.preventDefault();
+        try {
+          const saved = await api("/api/contracts/from-parsed", { method: "POST", body: JSON.stringify(collectParsedContractPayload(submitEvent.currentTarget, parsedState)) });
+          showToast("Shartnoma yaratildi.");
+          navigate(`/contracts/${saved.id}`);
+        } catch (error) {
+          showToast(error.message, true);
+        }
+      });
+    } catch (error) {
+      showToast(error.message, true);
+    }
+  });
 }
 
 async function renderNewContract() {
@@ -714,11 +915,11 @@ function contractHeader(contract) {
   if (numberValue(contract.summary?.remaining_quantity) > 0) warnings.push("Shartnoma bo'yicha yetkazilmagan qoldiq mavjud.");
   if (!hasDocs(contract)) warnings.push("Shartnoma hujjatlari to'liq emas.");
   return `
-    ${workflowHeader({title:contract.contract_number,subtitle:`${fmt(contract.client?.name)} · ${fmt(contract.contract_date)} · ${fmt(contract.valid_until)} gacha · ${fmt(statusLabel(contract.status))}`,backPath:"/contracts",fullEditPath:`/contracts/${contract.id}/edit`,actions:[{label:"Buyurtma yaratish",path:"/orders/new",primary:true},{label:"Hujjat yuklash",path:`/contracts/${contract.id}?tab=documents`}]})}
+    ${workflowHeader({title:contract.contract_number,subtitle:`${fmt(contract.customer_name || contract.client?.name)} · ${fmt(contract.contract_date)} · ${fmt(contract.valid_until)} gacha · ${fmt(statusLabel(contract.status))}`,backPath:"/contracts",fullEditPath:`/contracts/${contract.id}/edit`,actions:[...(contract.client_id ? [{label:"Buyurtma yaratish",path:`/orders/new?contract_id=${contract.id}`,primary:true}] : [{label:"Mijozni bog'lash",modal:"contract-link-client",primary:true}]),{label:"Hujjat yuklash",path:`/contracts/${contract.id}?tab=documents`}]})}
     ${workflowStatusGrid([["Shartnoma holati",statusBadge(contract.status)],["Buyurtmalar holati",statusChip(numberValue(contract.summary?.remaining_quantity)>0?{label:"Jarayonda",tone:"warning"}:{label:"Yopilgan",tone:"success"})],["To'lov holati",statusChip(numberValue(contract.summary?.remaining_amount)>0?{label:"Qoldiq bor",tone:"warning"}:{label:"Yopilgan",tone:"success"})],["Yetkazib berish holati",statusChip(numberValue(contract.summary?.remaining_quantity)>0?{label:"Qoldiq bor",tone:"warning"}:{label:"To'liq",tone:"success"})]])}
     ${summaryCards([["Jami summa",fmtMoney(contract.summary?.total_amount)],["Jami miqdor",fmtQty(contract.summary?.total_quantity)],["Yetkazilgan",fmtQty(contract.summary?.delivered_quantity)],["Qoldiq",fmtQty(contract.summary?.remaining_quantity)],["Avans summasi",fmtMoney(contract.summary?.advance_amount)],["To'langan summa",fmtMoney(contract.summary?.paid_amount)],["Qolgan to'lov",fmtMoney(contract.summary?.remaining_amount)],["Transport xarajatlari",fmtMoney(contract.summary?.transport_expense_total)]])}
     ${workflowWarningsPanel(warnings)}
-    ${workflowNextActionPanel(numberValue(contract.summary?.paid_amount)<=0 && numberValue(contract.summary?.advance_amount)>0 ? {title:"Avans hisob-fakturasini yarating yoki to'lovni kiriting",button:"Hisob yaratish",modal:"contract-invoice-modal"} : numberValue(contract.summary?.remaining_quantity)>0 ? {title:"Shartnoma bo'yicha buyurtma yarating",button:"Buyurtma yaratish",path:"/orders/new"} : {title:"Shartnoma yakunlashga tayyor",button:"Tarix",path:`/contracts/${contract.id}?tab=notes`,done:true})}
+    ${workflowNextActionPanel(!contract.client_id ? {title:"Shartnoma mijozga bog'lanmagan. Buyurtma yaratishdan oldin mijozni bog'lang.",button:"Mijozni bog'lash",modal:"contract-link-client"} : numberValue(contract.summary?.paid_amount)<=0 && numberValue(contract.summary?.advance_amount)>0 ? {title:"Avans hisob-fakturasini yarating yoki to'lovni kiriting",button:"Hisob yaratish",modal:"contract-invoice-modal"} : numberValue(contract.summary?.remaining_quantity)>0 ? {title:"Shartnoma bo'yicha buyurtma yarating",button:"Buyurtma yaratish",path:`/orders/new?contract_id=${contract.id}`} : {title:"Shartnoma yakunlashga tayyor",button:"Tarix",path:`/contracts/${contract.id}?tab=notes`,done:true})}
   `;
 }
 
@@ -737,22 +938,25 @@ function contractTabs(active) {
 }
 
 function contractGeneralTab(contract) {
-  return section("Umumiy ma'lumotlar", `
+  return section("Asosiy ma'lumotlar", `
     <div class="detail-list">
       ${[
         ["Shartnoma raqami", contract.contract_number],
         ["Shartnoma sanasi", contract.contract_date],
         ["Amal qilish muddati", contract.valid_until],
-        ["Mijoz", contract.client?.name],
+        ["Tuzilgan joy", contract.place],
+        ["Mijoz", contract.customer_name || contract.client?.name],
         ["Sarlavha", contract.title],
         ["Status", statusLabel(contract.status)],
         ["Valyuta", contract.currency],
+        ["Didox ID", contract.didox_id],
+        ["Rouming ID", contract.rouming_id],
         ["Izoh", contract.notes],
         ["Yaratilgan", fmtDate(contract.created_at)],
         ["Yangilangan", fmtDate(contract.updated_at)],
       ].map(([label, value]) => `<div class="detail-item"><span>${label}</span><strong>${fmt(value)}</strong></div>`).join("")}
     </div>
-  `);
+  `) + section("Bajaruvchi", detailList([["Bajaruvchi nomi", contract.executor_name], ["Direktor F.I.Sh.", contract.executor_director_full_name], ["STIR", contract.executor_inn], ["OKED", contract.executor_oked], ["Yuridik manzil", contract.executor_legal_address], ["Hisob raqami", contract.executor_bank_account], ["Bank nomi", contract.executor_bank_name], ["MFO", contract.executor_mfo], ["Telefon", contract.executor_phone]])) + section("Buyurtmachi", detailList([["Buyurtmachi nomi", contract.customer_name || contract.client?.name], ["Direktor F.I.Sh.", contract.customer_director_full_name], ["STIR", contract.customer_inn || contract.client?.inn], ["OKED", contract.customer_oked], ["Yuridik manzil", contract.customer_legal_address], ["Hisob raqami", contract.customer_bank_account], ["Bank nomi", contract.customer_bank_name], ["MFO", contract.customer_mfo], ["Telefon", contract.customer_phone]])) + section("Bog'langan obyektlar", `<div class="detail-list">${[["ERP mijoz", contract.client?.name], ["Talabnoma ID", contract.customer_request_id], ["Parser versiyasi", contract.parser_version], ["Aniqlik darajasi", contract.parse_confidence ? `${Math.round(Number(contract.parse_confidence) * 100)}%` : null]].map(([label, value]) => `<div class="detail-item"><span>${label}</span><strong>${fmt(value)}</strong></div>`).join("")}<div class="detail-item"><span>PDF fayl</span><strong>${contract.source_file_path ? `<a class="link-btn" target="_blank" href="/api/contracts/${contract.id}/file">PDF faylni ko'rish</a>` : dash}</strong></div></div>`);
 }
 
 function contractSpecificationTab(contract) {
@@ -863,7 +1067,7 @@ function contractNotesTab(contract) {
 
 function contractOrdersTab(contract, orders = []) {
   return section("Buyurtmalar", `
-    <div class="actions"><button class="btn primary" data-nav="/orders/new">Buyurtma yaratish</button></div>
+    <div class="actions"><button class="btn primary" data-nav="/orders/new?contract_id=${contract.id}">Buyurtma yaratish</button></div>
     ${tableOrEmpty(orders, ["Buyurtma raqami", "Sana", "Mahsulot", "Miqdor", "Yetkazilgan", "Qoldiq", "Ta'minotchi", "Status", "Amallar"], (order) => `
       <tr>
         <td><strong>${fmt(order.order_number)}</strong></td>
@@ -909,14 +1113,30 @@ function renderContractActiveTab(contract, active, related = {}) {
   return contractGeneralTab(contract);
 }
 
-function contractChildForm(kind, item = {}) {
+function contractChildForm(kind, item = {}, products = []) {
   if (kind === "items") {
     return {
-      title: item.id ? "Edit product" : "Add product",
+      title: item.id ? "Mahsulotni tahrirlash" : "Mahsulot qo'shish",
       tab: "specification",
       path: "items",
-      body: `<div class="grid">${textField("product_name", "Product", item.product_name)}${textField("product_code", "Code", item.product_code)}${textField("unit", "Unit", item.unit || "tonna")}${textField("quantity", "Quantity", item.quantity ?? "", "number")}${textField("unit_price", "Unit price", item.unit_price ?? "", "number")}${textField("vat_rate", "VAT %", item.vat_rate ?? 12, "number")}</div>`,
-      payload: (form) => ({ product_name: field(form, "product_name"), product_code: field(form, "product_code"), unit: field(form, "unit"), quantity: field(form, "quantity"), unit_price: field(form, "unit_price"), vat_rate: field(form, "vat_rate") || "12" }),
+      body: `<div class="grid">
+        <label>Mahsulot katalogi<select name="product_id" data-item-product-select="0">${buildProductOptions(products, item.product_id)}</select></label>
+        ${textField("product_name", "Nomi (qo'lda)", item.product_name || "")}
+        ${textField("product_code", "Kodi", item.product_code || "")}
+        ${textField("unit", "Birlik", item.unit || "tonna")}
+        ${textField("quantity", "Miqdor", item.quantity ?? "", "number")}
+        ${textField("unit_price", "Birlik narxi", item.unit_price ?? "", "number")}
+        ${textField("vat_rate", "QQS %", item.vat_rate ?? 12, "number")}
+      </div>`,
+      payload: (form) => ({
+        product_id: form.elements.product_id?.value ? Number(form.elements.product_id.value) : null,
+        product_name: field(form, "product_name"),
+        product_code: field(form, "product_code") || null,
+        unit: field(form, "unit"),
+        quantity: field(form, "quantity"),
+        unit_price: field(form, "unit_price"),
+        vat_rate: field(form, "vat_rate") || "12",
+      }),
     };
   }
   if (kind === "payment") {
@@ -925,8 +1145,8 @@ function contractChildForm(kind, item = {}) {
       tab: "payment",
       path: "payment-terms",
       method: "PUT",
-      body: `<div class="grid">${textField("advance_percent", "Advance percent", item.advance_percent ?? 30, "number")}${textField("remaining_percent", "Remaining percent", item.remaining_percent ?? 70, "number")}${textField("advance_due_days", "Advance due days", item.advance_due_days ?? 10, "number")}${textField("batch_payment_due_days", "Batch payment due days", item.batch_payment_due_days ?? 3, "number")}${textArea("remaining_payment_rule", "Remaining payment rule", item.remaining_payment_rule || "Payment of the remaining amount is made per ready delivery batch based on invoice.")}${textArea("notes", "Notes", item.notes)}</div>`,
-      payload: (form) => ({ advance_percent: field(form, "advance_percent"), remaining_percent: field(form, "remaining_percent"), advance_due_days: Number(field(form, "advance_due_days") || 10), batch_payment_due_days: Number(field(form, "batch_payment_due_days") || 3), remaining_payment_rule: field(form, "remaining_payment_rule"), notes: field(form, "notes") }),
+      body: `<div class="grid">${textField("advance_percent", "Advance percent", item.advance_percent ?? 30, "number")}${textField("advance_due_days", "Advance due days", item.advance_due_days ?? 10, "number")}${textField("batch_payment_due_days", "Batch payment due days", item.batch_payment_due_days ?? 3, "number")}${textArea("remaining_payment_rule", "Remaining payment rule", item.remaining_payment_rule || "Payment of the remaining amount is made per ready delivery batch based on invoice.")}${textArea("notes", "Notes", item.notes)}</div>`,
+      payload: (form) => ({ advance_percent: field(form, "advance_percent"), advance_due_days: Number(field(form, "advance_due_days") || 10), batch_payment_due_days: Number(field(form, "batch_payment_due_days") || 3), remaining_payment_rule: field(form, "remaining_payment_rule"), notes: field(form, "notes") }),
     };
   }
   if (kind === "transport") {
@@ -968,7 +1188,8 @@ function contractChildForm(kind, item = {}) {
 }
 
 async function openContractChildForm(contract, kind, item = {}) {
-  const cfg = contractChildForm(kind, item);
+  const products = kind === "items" ? await api("/api/products") : [];
+  const cfg = contractChildForm(kind, item, products);
   app.innerHTML = `
     <div class="page">
       ${contractHeader(contract)}
@@ -983,6 +1204,7 @@ async function openContractChildForm(contract, kind, item = {}) {
       `)}
     </div>
   `;
+  if (kind === "items") bindProductSelects(document.querySelector("#contract-child-form"));
   document.querySelector("#contract-child-form").addEventListener("submit", async (event) => {
     event.preventDefault();
     const method = cfg.method || (item.id ? "PATCH" : "POST");
@@ -1021,7 +1243,7 @@ function invoiceItemFromModalAmount(contract, type, amount) {
 }
 
 function contractInvoiceDefaultDueDate(contract, invoiceType, invoiceDate) {
-  if (invoiceType === "advance") return addDays(invoiceDate, contract.payment_terms?.advance_due_days || 0);
+  if (invoiceType === "advance") return addBusinessDays(invoiceDate, contract.payment_terms?.advance_due_days || 0);
   if (invoiceType === "batch_payment") return addDays(invoiceDate, contract.payment_terms?.batch_payment_due_days || 0);
   return invoiceDate;
 }
@@ -1231,6 +1453,18 @@ async function renderContractDetail(id) {
   });
   document.querySelectorAll("[data-contract-invoice-modal]").forEach((button) => {
     button.addEventListener("click", () => openContractInvoiceModal(contract).catch((error) => showToast(error.message, true)));
+  });
+  document.querySelectorAll("[data-contract-link-client]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      if (!confirm("Shartnomani mos mijoz bilan bog'laymizmi? STIR bo'yicha mos mijoz yoki reestrdagi tashkilot topilsa shu ishlatiladi, aks holda yangi mijoz yaratiladi.")) return;
+      try {
+        await api(`/api/contracts/${id}/link-new-client`, { method: "POST" });
+        showToast("Mijoz bog'landi.");
+        renderContractDetail(id);
+      } catch (error) {
+        showToast(error.message, true);
+      }
+    });
   });
   document.querySelectorAll("[data-contract-edit]").forEach((button) => {
     button.addEventListener("click", () => {
