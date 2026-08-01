@@ -1,3 +1,122 @@
+// ---- Shared "detail page" design system (icon-badge sections, two-tone panels,
+// timeline, progress bar) — reusable across the app, not logistics-specific. ----
+const DETAIL_ICON_PATHS = {
+  list: '<path d="M9 6h11"/><path d="M9 12h11"/><path d="M9 18h11"/><path d="M4 6h.01"/><path d="M4 12h.01"/><path d="M4 18h.01"/>',
+  truck: '<path d="M14 18V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v11a1 1 0 0 0 1 1h2"/><path d="M15 18H9"/><path d="M19 18h2a1 1 0 0 0 1-1v-3.65a1 1 0 0 0-.22-.624l-3.48-4.35A1 1 0 0 0 17.52 8H14"/><circle cx="17" cy="18" r="2"/><circle cx="7" cy="18" r="2"/>',
+  calendar: '<rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>',
+  mapPin: '<path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/>',
+  flag: '<path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/>',
+  dollar: '<line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>',
+  paperclip: '<path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/>',
+  message: '<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>',
+  phone: '<path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/>',
+  hash: '<line x1="4" y1="9" x2="20" y2="9"/><line x1="4" y1="15" x2="20" y2="15"/><line x1="10" y1="3" x2="8" y2="21"/><line x1="16" y1="3" x2="14" y2="21"/>',
+  checkCircle: '<path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>',
+  circle: '<circle cx="12" cy="12" r="10"/>',
+  copy: '<rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>',
+  edit: '<path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z"/>',
+  arrowLeft: '<line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/>',
+  arrowRight: '<line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/>',
+  chevronDown: '<polyline points="6 9 12 15 18 9"/>',
+  alertTriangle: '<path d="M12 9v4"/><path d="M12 17h.01"/><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"/>',
+  upload: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>',
+  plus: '<line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>',
+  file: '<path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5z"/><polyline points="14 2 14 8 20 8"/>',
+  box: '<path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4a2 2 0 0 0 1-1.73Z"/><path d="M3.29 7 12 12l8.71-5"/><path d="M12 22V12"/>',
+  save: '<path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2Z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/>',
+};
+
+function detailIcon(name, size = 16) {
+  return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg">${DETAIL_ICON_PATHS[name] || ""}</svg>`;
+}
+
+function detailBreadcrumb(items) {
+  return `<nav class="detail-breadcrumb">${items.map((label, i) => i < items.length - 1 ? `<span>${esc(label)}</span><span class="detail-breadcrumb-sep">›</span>` : `<span class="detail-breadcrumb-current">${esc(label)}</span>`).join("")}</nav>`;
+}
+
+function detailStatusPill(label, tone = "muted") {
+  return `<span class="detail-status-pill ${tone}"><span class="detail-status-dot"></span>${esc(label)}</span>`;
+}
+
+function detailSummaryCard({ label, value, caption, icon }) {
+  return `<div class="detail-summary-card">
+    <div class="detail-summary-card-top"><span>${esc(label)}</span>${icon ? `<span class="detail-icon-badge sm ${icon.tone || "teal"}">${detailIcon(icon.name, 14)}</span>` : ""}</div>
+    <strong>${value}</strong>
+    ${caption ? `<small>${caption}</small>` : ""}
+  </div>`;
+}
+
+function detailCard({ icon, tone = "teal", title, badge, headerActions = "", body }) {
+  return `<section class="detail-card">
+    <div class="detail-card-header" data-detail-toggle>
+      <span class="detail-icon-badge ${tone}">${detailIcon(icon, 16)}</span>
+      <h2>${esc(title)}</h2>
+      ${badge != null ? `<span class="detail-card-count">${badge}</span>` : ""}
+      <div class="detail-card-header-actions">${headerActions}</div>
+      <button type="button" class="detail-chevron" aria-label="Yig'ish/yoyish">${detailIcon("chevronDown", 16)}</button>
+    </div>
+    <div class="detail-card-body">${body}</div>
+  </section>`;
+}
+
+function detailFieldGrid(items) {
+  return `<div class="detail-field-grid">${items.map(([label, value]) => `<div class="detail-field"><span>${esc(label)}</span><strong>${fmt(value)}</strong></div>`).join("")}</div>`;
+}
+
+function detailFieldGridIcons(items) {
+  return `<div class="detail-field-grid">${items.map(([label, value, icon]) => `<div class="detail-field ${icon ? "has-icon" : ""}"><span>${esc(label)}</span><strong>${icon ? `<span class="detail-icon-badge sm teal">${detailIcon(icon, 13)}</span>` : ""}${fmt(value)}</strong></div>`).join("")}</div>`;
+}
+
+function detailTonePanel({ label, tone, icon, body }) {
+  return `<div class="detail-tone-panel ${tone}">
+    <div class="detail-tone-panel-header">${icon ? detailIcon(icon, 13) : ""}<span>${esc(label)}</span></div>
+    ${body}
+  </div>`;
+}
+
+function detailMiniField(label, value, icon) {
+  return `<div class="detail-mini-field">
+    ${icon ? `<span class="detail-icon-badge sm">${detailIcon(icon, 13)}</span>` : ""}
+    <div><span>${esc(label)}</span><strong>${fmt(value)}</strong></div>
+  </div>`;
+}
+
+function detailWarningBanner(message) {
+  if (!message) return "";
+  return `<div class="detail-warning-banner">${detailIcon("alertTriangle", 16)}<span>${esc(message)}</span></div>`;
+}
+
+function detailEmptyState({ icon, title, subtitle, action }) {
+  return `<div class="detail-empty-state">
+    <span class="detail-empty-icon">${detailIcon(icon, 22)}</span>
+    <strong>${esc(title)}</strong>
+    ${subtitle ? `<p>${esc(subtitle)}</p>` : ""}
+    ${action || ""}
+  </div>`;
+}
+
+function detailTimeline(steps) {
+  return `<div class="detail-timeline-grid">${steps.map(([label, value, done]) => `<div class="detail-timeline-item ${done ? "done" : ""}">${detailIcon(done ? "checkCircle" : "circle", 16)}<div><span>${esc(label)}</span><strong>${fmt(value)}</strong></div></div>`).join("")}</div>`;
+}
+
+function detailProgressBar(done, total, caption) {
+  const percent = total > 0 ? Math.round((done / total) * 100) : 0;
+  return `<div class="detail-progress">
+    <div class="detail-progress-top"><span>Jarayon holati</span><strong>${done}/${total} bosqich</strong></div>
+    <div class="detail-progress-track"><div class="detail-progress-fill" style="width:${percent}%"></div></div>
+    ${caption ? `<p class="detail-progress-caption">${esc(caption)}</p>` : ""}
+  </div>`;
+}
+
+function bindDetailToggles() {
+  document.querySelectorAll("[data-detail-toggle]").forEach((header) => {
+    header.addEventListener("click", (event) => {
+      if (event.target.closest("button:not(.detail-chevron)") || event.target.closest("a")) return;
+      header.closest(".detail-card")?.classList.toggle("collapsed");
+    });
+  });
+}
+
 async function fetchOrdersForSelect(selectedId = null, filters = {}) {
   const query = new URLSearchParams({ page_size: "100" });
   if (filters.clientId) query.set("client_id", filters.clientId);
@@ -72,6 +191,29 @@ function calculateBatchForm(form, orderItems = [], balances = []) {
 }
 
 function calculateLogisticsForm(form) {
+  const loadedMileage = numberValue(field(form, "loaded_mileage_km"));
+  const emptyMileage = numberValue(field(form, "empty_mileage_km"));
+  const totalMileageTarget = form.querySelector("[data-logistics-total-mileage]");
+  if (totalMileageTarget) totalMileageTarget.textContent = fmtQty(loadedMileage + emptyMileage, "km");
+
+  const tonKmTarget = form.querySelector("[data-logistics-ton-km]");
+  if (tonKmTarget) {
+    const tonnage = numberValue(form.querySelector("[data-batch-accepted]")?.textContent)
+      || numberValue(form.querySelector("[data-batch-loaded]")?.textContent)
+      || numberValue(form.querySelector("[data-batch-planned]")?.textContent);
+    const distance = numberValue(field(form, "distance_km"));
+    tonKmTarget.textContent = tonnage && distance ? fmtQty(tonnage * distance, "t·km") : dash;
+  }
+
+  const fuelCost = numberValue(field(form, "fuel_cost_amount"));
+  const wage = numberValue(field(form, "driver_wage_amount"));
+  const espPercent = numberValue(field(form, "esp_tax_percent"));
+  const otherExpenses = numberValue(field(form, "other_expenses_amount"));
+  const businessTripExpenses = numberValue(field(form, "business_trip_expenses_amount"));
+  if (form.elements.cost_amount && (fuelCost || wage || otherExpenses || businessTripExpenses)) {
+    form.elements.cost_amount.value = String(fuelCost + wage + (wage * espPercent) / 100 + otherExpenses + businessTripExpenses);
+  }
+
   const profitTarget = form.querySelector("[data-logistics-profit]");
   if (profitTarget) profitTarget.textContent = fmtMoney(numberValue(field(form, "customer_price")) - numberValue(field(form, "cost_amount")));
   const statusInput = form.elements.logistics_status;
@@ -87,6 +229,28 @@ function calculateLogisticsForm(form) {
   } else {
     statusInput.value = "not_assigned";
   }
+}
+
+function logisticsTripDetailsList(logistics = {}, batch = {}) {
+  const loadedMileage = numberValue(logistics.loaded_mileage_km);
+  const emptyMileage = numberValue(logistics.empty_mileage_km);
+  const totalMileage = loadedMileage + emptyMileage;
+  const tonnage = numberValue(batch.summary?.total_accepted_quantity) || numberValue(batch.summary?.total_loaded_quantity) || numberValue(batch.summary?.total_planned_quantity);
+  const distance = numberValue(logistics.distance_km);
+  return detailList([
+    ["Yo'nalish (Ob'ekt)", logistics.route_name],
+    ["Masofa", logistics.distance_km != null ? fmtQty(logistics.distance_km, "km") : dash],
+    ["Yuk bilan probeg", logistics.loaded_mileage_km != null ? fmtQty(logistics.loaded_mileage_km, "km") : dash],
+    ["Bo'sh probeg", logistics.empty_mileage_km != null ? fmtQty(logistics.empty_mileage_km, "km") : dash],
+    ["Umumiy probeg", loadedMileage || emptyMileage ? fmtQty(totalMileage, "km") : dash],
+    ["Tonna-km", tonnage && distance ? fmtQty(tonnage * distance, "t·km") : dash],
+    ["GSM sarfi", logistics.fuel_consumption_liters != null ? fmtQty(logistics.fuel_consumption_liters, "litr") : dash],
+    ["GSM qiymati (QQSsiz)", fmtMoney(logistics.fuel_cost_amount)],
+    ["Haydovchi ish haqi", fmtMoney(logistics.driver_wage_amount)],
+    ["ESP foizi", logistics.esp_tax_percent != null ? fmtPercent(logistics.esp_tax_percent) : dash],
+    ["Boshqa xarajatlar", fmtMoney(logistics.other_expenses_amount)],
+    ["Komandirovka xarajatlari", fmtMoney(logistics.business_trip_expenses_amount)],
+  ]);
 }
 
 async function fetchBatchWizardOrders(selectedId = null) {
@@ -429,6 +593,16 @@ function collectBatchPayload(form) {
       cost_amount: field(form, "cost_amount"),
       customer_price: field(form, "customer_price"),
       paid_by: field(form, "paid_by"),
+      route_name: field(form, "route_name"),
+      distance_km: field(form, "distance_km"),
+      loaded_mileage_km: field(form, "loaded_mileage_km"),
+      empty_mileage_km: field(form, "empty_mileage_km"),
+      fuel_consumption_liters: field(form, "fuel_consumption_liters"),
+      fuel_cost_amount: field(form, "fuel_cost_amount"),
+      driver_wage_amount: field(form, "driver_wage_amount"),
+      esp_tax_percent: field(form, "esp_tax_percent"),
+      other_expenses_amount: field(form, "other_expenses_amount"),
+      business_trip_expenses_amount: field(form, "business_trip_expenses_amount"),
       notes: field(form, "logistics_notes"),
     },
   };
@@ -483,11 +657,23 @@ async function batchForm(batch = null) {
     ["Model", fmt(optionLabel(fulfillmentTypes, batch?.fulfillment_type || order?.fulfillment_type))],
     ["Holat", statusBadge(logistics.status || "not_assigned")],
   ]);
+  const backPath = batch ? `/delivery-batches/${batch.id}` : "/delivery-batches";
   return `
     <div class="page">
-      <div class="page-header"><div class="page-title"><h1>${batch ? "Partiyani tahrirlash" : "Yangi partiya"}</h1><p>Mavjud buyurtma bo'yicha qisman yetkazib berish.</p></div><div class="actions"><button class="btn" data-nav="${batch ? `/delivery-batches/${batch.id}` : "/delivery-batches"}">Orqaga</button></div></div>
+      <div class="detail-page">
+        ${detailBreadcrumb(["Yetkazib berish", "Partiyalar", batchNumber, "Tahrirlash"])}
+        <div class="detail-header">
+          <div>
+            <h1 style="margin:0;font-size:24px;font-weight:750">${batch ? "Partiyani tahrirlash" : "Yangi partiya"}</h1>
+            <p class="detail-subtitle">Mavjud buyurtma bo'yicha qisman yetkazib berish.</p>
+          </div>
+          <div class="detail-header-actions">
+            <button type="button" class="btn" data-nav="${backPath}">${detailIcon("arrowLeft", 14)} Orqaga</button>
+            <button type="submit" form="batch-form" class="btn primary">${detailIcon("save", 14)} Saqlash</button>
+          </div>
+        </div>
       <form id="batch-form">
-        ${section("Asosiy ma'lumotlar", `<div class="grid">
+        ${detailCard({ icon: "list", title: "Asosiy ma'lumotlar", body: `<div class="grid">
           <label>Buyurtma<select name="order_id"><option value="">Buyurtmani tanlang</option>${orders}</select></label>
           <label>Mijoz<input name="client_name" value="${esc(batch?.client?.name || order?.client?.name || "")}" disabled /></label>
           <label>Shartnoma<input name="contract_number" value="${esc(batch?.contract?.contract_number || order?.contract?.contract_number || "")}" disabled /></label>
@@ -501,17 +687,17 @@ async function batchForm(batch = null) {
           ${selectField("status", "Status", batchStatuses, batch?.status || "planned")}
           ${textField("created_by", "Yaratgan", batch?.created_by)}
           ${textArea("notes", "Izohlar", batch?.notes)}
-        </div>`)}
-        ${section("Mahsulotlar", `<div id="batch-items">${order ? rows.map((item, index) => batchItemRow(order.items, item, index, balances)).join("") : `<div class="empty">Avval buyurtmani tanlang.</div>`}</div><button type="button" class="btn" id="add-batch-item" ${order ? "" : "disabled"}>Mahsulot qo'shish</button><div class="totals-bar"><div class="total-box"><span>Reja</span><strong data-batch-planned>${dash}</strong></div><div class="total-box"><span>Yuklangan</span><strong data-batch-loaded>${dash}</strong></div><div class="total-box"><span>Qabul qilingan</span><strong data-batch-accepted>${dash}</strong></div><div class="total-box"><span>Farq</span><strong data-batch-diff>${dash}</strong></div></div>`)}
-        ${section("Manba va yetkazib berish modeli", `<div class="grid">
+        </div>` })}
+        ${detailCard({ icon: "box", title: "Mahsulotlar", body: `<div id="batch-items">${order ? rows.map((item, index) => batchItemRow(order.items, item, index, balances)).join("") : `<div class="empty">Avval buyurtmani tanlang.</div>`}</div><button type="button" class="btn" id="add-batch-item" ${order ? "" : "disabled"}>Mahsulot qo'shish</button><div class="totals-bar"><div class="total-box"><span>Reja</span><strong data-batch-planned>${dash}</strong></div><div class="total-box"><span>Yuklangan</span><strong data-batch-loaded>${dash}</strong></div><div class="total-box"><span>Qabul qilingan</span><strong data-batch-accepted>${dash}</strong></div><div class="total-box"><span>Farq</span><strong data-batch-diff>${dash}</strong></div></div>` })}
+        ${detailCard({ icon: "truck", title: "Manba va yetkazib berish modeli", body: `<div class="grid">
           <label>Yetkazib berish modeli<input value="${esc(optionLabel(fulfillmentTypes, batch?.fulfillment_type || order?.fulfillment_type))}" disabled /></label>
           <label>Manba<input value="${esc(optionLabel(sourceTypes, batch?.source_type || order?.source_type))}" disabled /></label>
           <label>Yetkazish usuli<input value="auto" disabled /></label>
           <input type="hidden" name="supplier_id" value="${esc(batch?.supplier_id || order?.supplier_id || "")}" />
           <input type="hidden" name="supplier_name" value="${esc(batch?.supplier_name || order?.supplier_name || "")}" />
           ${readonlyField("supplier_name_display", "Ta'minotchi", batch?.supplier_name || order?.supplier_name || "")}
-        </div>`)}
-        ${section("Logistika ma'lumotlari", `
+        </div>` })}
+        ${detailCard({ icon: "list", title: "Logistika ma'lumotlari", body: `
           <h3>Logistika xulosasi</h3>
           ${logisticsSummary}
           <h3>Transport biriktirish</h3>
@@ -537,6 +723,21 @@ async function batchForm(batch = null) {
           ${textArea("loading_address", "Yuklash manzili", logistics.loading_address)}
           ${textArea("delivery_address", "Yetkazish manzili", logistics.delivery_address)}
           </div>
+          <h3>Reys tafsilotlari</h3>
+          <div class="grid">
+          ${textField("route_name", "Yo'nalish (Ob'ekt)", logistics.route_name || "")}
+          ${textField("distance_km", "Masofa (km)", logistics.distance_km || "", "number")}
+          ${textField("loaded_mileage_km", "Yuk bilan probeg (km)", logistics.loaded_mileage_km || "", "number")}
+          ${textField("empty_mileage_km", "Bo'sh probeg (km)", logistics.empty_mileage_km || "", "number")}
+          <div class="total-box"><span>Umumiy probeg</span><strong data-logistics-total-mileage>${fmtQty(numberValue(logistics.loaded_mileage_km) + numberValue(logistics.empty_mileage_km), "km")}</strong></div>
+          <div class="total-box"><span>Tonna-km</span><strong data-logistics-ton-km>${dash}</strong></div>
+          ${textField("fuel_consumption_liters", "GSM sarfi (litr)", logistics.fuel_consumption_liters || "", "number")}
+          ${textField("fuel_cost_amount", "GSM qiymati (QQSsiz)", logistics.fuel_cost_amount || "", "number")}
+          ${textField("driver_wage_amount", "Haydovchi ish haqi", logistics.driver_wage_amount || "", "number")}
+          ${textField("esp_tax_percent", "ESP foizi (%)", logistics.esp_tax_percent ?? "12", "number")}
+          ${textField("other_expenses_amount", "Boshqa xarajatlar", logistics.other_expenses_amount || "", "number")}
+          ${textField("business_trip_expenses_amount", "Komandirovka xarajatlari", logistics.business_trip_expenses_amount || "", "number")}
+          </div>
           <h3>Xarajatlar</h3>
           <div class="grid">
           ${textField("cost_amount", "Xarajat summasi", logistics.cost_amount || "", "number")}
@@ -544,6 +745,7 @@ async function batchForm(batch = null) {
           ${selectField("paid_by", "Kim to'laydi", paidByTypes, logistics.paid_by || "company")}
           <div class="total-box"><span>Transport foydasi</span><strong data-logistics-profit>${transportProfit(logistics)}</strong></div>
           </div>
+          <p class="helper-text">GSM, ish haqi, ESP foizi, boshqa va komandirovka xarajatlari kiritilsa, xarajat summasi avtomatik hisoblanadi. Aks holda qo'lda kiriting.</p>
           <h3>Izohlar</h3>
           <div class="grid">
           ${textArea("logistics_notes", "Logistika izohlari", logistics.notes)}
@@ -552,10 +754,11 @@ async function batchForm(batch = null) {
           ${logisticsTimeline(logistics, batch || {})}
           ${logisticsWarnings(logistics, batch || {})}
           <div class="empty">Hujjatlarni logistika detail sahifasidan qo'shish mumkin.</div>
-        `)}
-        ${section("Hujjatlar", `<div class="empty">Partiya hujjatlarini saqlagandan keyin Hujjatlar tabidan qo'shish mumkin.</div>`)}
-        <div class="form-footer"><button type="button" class="btn" data-nav="${batch ? `/delivery-batches/${batch.id}` : "/delivery-batches"}">Bekor qilish</button><button type="submit" class="btn primary">Saqlash</button></div>
+        ` })}
+        ${detailCard({ icon: "paperclip", title: "Hujjatlar", body: `<div class="empty">Partiya hujjatlarini saqlagandan keyin Hujjatlar tabidan qo'shish mumkin.</div>` })}
+        <div class="form-footer"><button type="button" class="btn" data-nav="${backPath}">Bekor qilish</button><button type="submit" class="btn primary">${detailIcon("save", 14)} Saqlash</button></div>
       </form>
+      </div>
     </div>
   `;
 }
@@ -652,6 +855,7 @@ async function renderEditBatch(id) {
   const batch = await api(`/api/delivery-batches/${id}`);
   app.innerHTML = await batchForm(batch);
   await bindBatchForm(batch);
+  bindDetailToggles();
 }
 
 function batchHeader(batch) {
@@ -691,7 +895,7 @@ function batchActiveTab(batch, active) {
   }, "Mahsulotlar hali yo'q.")}<div class="form-footer"><button class="btn primary" type="submit">Miqdorlarni saqlash</button></div></form>`);
   if (active === "logistics") {
     const logistics = batch.logistics || {};
-    return `${section("Logistika xulosasi", `<div class="actions"><button class="btn primary" type="button" data-transport-assignment>Transportni biriktirish</button>${logistics.id ? `<button class="btn" data-nav="/logistics/${logistics.id}">Logistika sahifasi</button>` : ""}</div>${summaryCards([["Logistika raqami", fmt(logisticsNumber(logistics, batch))], ["Partiya", fmt(batch.batch_number)], ["Buyurtma", fmt(batch.order?.order_number)], ["Mijoz", fmt(batch.client?.name)], ["Mahsulot", fmt(batchPrimaryProduct(batch))], ["Miqdor", fmtQty(batch.summary?.total_planned_quantity, batch.items?.[0]?.unit)], ["Manba", fmt(optionLabel(sourceTypes, batch.source_type))], ["Model", fmt(optionLabel(fulfillmentTypes, batch.fulfillment_type))], ["Logistika holati", statusBadge(logistics.status || "not_assigned")]])}${logisticsWarnings(logistics, batch)}`)}${section("Transport biriktirish", detailList([["Tashuvchi", logistics.carrier_name], ["Haydovchi", logistics.driver_name], ["Haydovchi telefoni", logistics.driver_phone], ["Transport raqami", logistics.vehicle_number], ["Tirkama raqami", logistics.trailer_number]]))}${section("Sanalar", detailList([["Reja yuklash sanasi", logistics.planned_pickup_date], ["Reja yetkazish sanasi", logistics.planned_delivery_date], ["Haqiqiy yuklash sanasi", logistics.actual_pickup_date], ["Haqiqiy yetkazish sanasi", logistics.actual_delivery_date]]))}${section("Manzillar", detailList([["Yuklash manzili", logistics.loading_address], ["Yetkazish manzili", logistics.delivery_address]]))}${section("Xarajatlar", detailList([["Transport xarajati", fmtMoney(logistics.cost_amount)], ["Mijozga transport narxi", fmtMoney(logistics.customer_price)], ["Kim to'laydi", optionLabel(paidByTypes, logistics.paid_by)], ["Transport foydasi", transportProfit(logistics)]]))}${section("Logistika izohlari", detailList([["Izoh", logistics.notes]]))}`;
+    return `${section("Logistika xulosasi", `<div class="actions"><button class="btn primary" type="button" data-transport-assignment>Transportni biriktirish</button>${logistics.id ? `<button class="btn" data-nav="/logistics/${logistics.id}">Logistika sahifasi</button>` : ""}</div>${summaryCards([["Logistika raqami", fmt(logisticsNumber(logistics, batch))], ["Partiya", fmt(batch.batch_number)], ["Buyurtma", fmt(batch.order?.order_number)], ["Mijoz", fmt(batch.client?.name)], ["Mahsulot", fmt(batchPrimaryProduct(batch))], ["Miqdor", fmtQty(batch.summary?.total_planned_quantity, batch.items?.[0]?.unit)], ["Manba", fmt(optionLabel(sourceTypes, batch.source_type))], ["Model", fmt(optionLabel(fulfillmentTypes, batch.fulfillment_type))], ["Logistika holati", statusBadge(logistics.status || "not_assigned")]])}${logisticsWarnings(logistics, batch)}`)}${section("Transport biriktirish", detailList([["Tashuvchi", logistics.carrier_name], ["Haydovchi", logistics.driver_name], ["Haydovchi telefoni", logistics.driver_phone], ["Transport raqami", logistics.vehicle_number], ["Tirkama raqami", logistics.trailer_number]]))}${section("Sanalar", detailList([["Reja yuklash sanasi", logistics.planned_pickup_date], ["Reja yetkazish sanasi", logistics.planned_delivery_date], ["Haqiqiy yuklash sanasi", logistics.actual_pickup_date], ["Haqiqiy yetkazish sanasi", logistics.actual_delivery_date]]))}${section("Manzillar", detailList([["Yuklash manzili", logistics.loading_address], ["Yetkazish manzili", logistics.delivery_address]]))}${section("Reys tafsilotlari", logisticsTripDetailsList(logistics, batch))}${section("Xarajatlar", detailList([["Transport xarajati", fmtMoney(logistics.cost_amount)], ["Mijozga transport narxi", fmtMoney(logistics.customer_price)], ["Kim to'laydi", optionLabel(paidByTypes, logistics.paid_by)], ["Transport foydasi", transportProfit(logistics)]]))}${section("Logistika izohlari", detailList([["Izoh", logistics.notes]]))}`;
   }
   if (active === "finance") {
     const logistics = batch.logistics || {};
@@ -1181,17 +1385,181 @@ async function renderLogisticsList() {
     counter: `${fmt(data.total)} ta logistika yozuvi`,
     formId: "logistics-search-form",
     filters: `<input name="search" placeholder="Partiya, tashuvchi, haydovchi, mashina, mijoz" value="${esc(params.get("search") || "")}" /><select name="status"><option value="">Status</option>${logisticsStatuses.map(([key, label]) => `<option value="${key}" ${params.get("status") === key ? "selected" : ""}>${label}</option>`).join("")}</select>`,
-    headers: ["Logistika", "Partiya", "Buyurtma", "Mijoz", "Model", "Tashuvchi", "Haydovchi", "Transport", "Status", "Reja yetkazish", "Haqiqiy yetkazish", "Xarajat", "Mijoz narxi", ""],
-    rows: data.items.map((row) => `<tr><td><button class="ops-primary-link" data-nav="/logistics/${row.id}">${fmt(logisticsNumber(row, row.batch))}</button></td><td>${fmt(row.batch?.batch_number)}</td><td>${fmt(row.order?.order_number)}</td><td>${fmt(row.client?.name)}</td><td>${fmt(optionLabel(fulfillmentTypes, row.fulfillment_type))}</td><td>${fmt(row.carrier_name)}</td><td>${fmt(row.driver_name)}</td><td>${fmt(row.vehicle_number)}</td><td>${statusBadge(row.status)}</td><td>${fmt(row.planned_delivery_date)}</td><td>${fmt(row.actual_delivery_date)}</td><td class="ops-money">${fmtMoney(row.cost_amount)}</td><td class="ops-money">${fmtMoney(row.customer_price)}</td><td><button class="link-btn" data-nav="/logistics/${row.id}">Ochish</button></td></tr>`).join(""),
+    headers: ["Logistika", "Partiya", "Buyurtma", "Mijoz", "Model", "Tashuvchi", "Haydovchi", "Transport", "Status", "Reja yetkazish", "Haqiqiy yetkazish", "Km", "Xarajat", "Mijoz narxi", "Foyda", ""],
+    rows: data.items.map((row) => `<tr><td><button class="ops-primary-link" data-nav="/logistics/${row.id}">${fmt(logisticsNumber(row, row.batch))}</button></td><td>${fmt(row.batch?.batch_number)}</td><td>${fmt(row.order?.order_number)}</td><td>${fmt(row.client?.name)}</td><td>${fmt(optionLabel(fulfillmentTypes, row.fulfillment_type))}</td><td>${fmt(row.carrier_name)}</td><td>${fmt(row.driver_name)}</td><td>${fmt(row.vehicle_number)}</td><td>${statusBadge(row.status)}</td><td>${fmt(row.planned_delivery_date)}</td><td>${fmt(row.actual_delivery_date)}</td><td>${row.distance_km != null ? fmtQty(row.distance_km, "km") : dash}</td><td class="ops-money">${fmtMoney(row.cost_amount)}</td><td class="ops-money">${fmtMoney(row.customer_price)}</td><td class="ops-money">${transportProfit(row)}</td><td><button class="link-btn" data-nav="/logistics/${row.id}">Ochish</button></td></tr>`).join(""),
     emptyText: "Logistika yozuvlari topilmadi.",
-    colspan: 14,
+    colspan: 16,
     footer: opsFooter(data, "logistics"),
   });
   bindOpsSearch("logistics-search-form", "/logistics", ["search", "status"]);
   bindOpsPagination("logistics", "/logistics");
 }
 
+function logisticsStatusTone(status) {
+  if (["completed", "delivered", "accepted"].includes(status)) return "success";
+  if (["cancelled", "issue"].includes(status)) return "danger";
+  if (status === "not_assigned") return "muted";
+  return "warning";
+}
+
 async function renderLogisticsDetail(id) {
+  app.innerHTML = `<div class="page"><div class="empty">Yuklanmoqda...</div></div>`;
   const row = await api(`/api/logistics/${id}`);
-  app.innerHTML = `<div class="page"><div class="page-header"><div class="page-title"><h1>${fmt(logisticsNumber(row, row.batch))}</h1><p>${fmt(row.client?.name)} · ${fmt(row.order?.order_number)} · ${fmt(optionLabel(logisticsStatuses, row.status))}</p></div><div class="actions"><button class="btn" data-nav="/logistics">Orqaga</button><button class="btn" data-nav="/delivery-batches/${row.batch?.id}?tab=logistics">Partiyani ochish</button><button class="btn" data-nav="/delivery-batches/${row.batch?.id}/edit">Tahrirlash</button></div></div>${summaryCards([["Partiya", fmt(row.batch?.batch_number)], ["Buyurtma", fmt(row.order?.order_number)], ["Mijoz", fmt(row.client?.name)], ["Status", statusBadge(row.status)], ["Tashuvchi", fmt(row.carrier_name)], ["Transport", fmt(row.vehicle_number)], ["Transport xarajati", fmtMoney(row.cost_amount)], ["Mijoz transport narxi", fmtMoney(row.customer_price)], ["Transport foydasi", transportProfit(row)]])}${logisticsWarnings(row, row.batch || {})}${section("Logistika xulosasi", detailList([["Logistika raqami", logisticsNumber(row, row.batch)], ["Partiya raqami", row.batch?.batch_number], ["Buyurtma raqami", row.order?.order_number], ["Mijoz", row.client?.name], ["Yetkazib berish modeli", optionLabel(fulfillmentTypes, row.batch?.fulfillment_type)], ["Yetkazish usuli", row.delivery_method], ["Holat", optionLabel(logisticsStatuses, row.status)]]))}${section("Transport biriktirish", detailList([["Tashuvchi", row.carrier_name], ["Haydovchi", row.driver_name], ["Haydovchi telefoni", row.driver_phone], ["Transport raqami", row.vehicle_number], ["Tirkama raqami", row.trailer_number]]))}${section("Sanalar", detailList([["Reja yuklash sanasi", row.planned_pickup_date], ["Reja yetkazish sanasi", row.planned_delivery_date], ["Haqiqiy yuklash sanasi", row.actual_pickup_date], ["Haqiqiy yetkazish sanasi", row.actual_delivery_date]]))}${section("Manzillar", detailList([["Yuklash manzili", row.loading_address], ["Yetkazish manzili", row.delivery_address]]))}${section("Xarajatlar", detailList([["Transport xarajati", fmtMoney(row.cost_amount)], ["Mijozga transport narxi", fmtMoney(row.customer_price)], ["Transport foydasi", transportProfit(row)], ["Kim to'laydi", optionLabel(paidByTypes, row.paid_by)]]))}${section("Hujjatlar", `${tableOrEmpty(row.documents, ["Nomi", "Turi", "Yuklangan sana", "Yuklagan"], (item) => `<tr><td>${fmt(item.title)}</td><td>${fmt(item.document_type)}</td><td>${fmtDate(item.uploaded_at)}</td><td>${fmt(item.uploaded_by)}</td></tr>`, "Logistika hujjatlari hali yo'q.")}`)}${section("Izohlar / Tarix", `${tableOrEmpty(row.notes_history, ["Sana", "Foydalanuvchi", "Izoh"], (item) => `<tr><td>${fmtDate(item.created_at)}</td><td>${fmt(item.created_by)}</td><td>${fmt(item.note)}</td></tr>`, "Logistika izohlari hali yo'q.")}`)}${section("Jarayon tarixi", logisticsTimeline(row, row.batch || {}))}</div>`;
+  const batch = row.batch || {};
+  const number = logisticsNumber(row, batch);
+  const tone = logisticsStatusTone(row.status);
+  const statusLabel = optionLabel(logisticsStatuses, row.status);
+
+  const costCaption = numberValue(row.cost_amount) ? "Haqiqiy transport xarajati" : "— Hisob-kitob qilinmagan";
+  const priceCaption = numberValue(row.customer_price) ? "Mijozga taqdim etilgan narx" : "— Belgilanmagan";
+  const profitCaption = numberValue(row.cost_amount) || numberValue(row.customer_price) ? "Narx va xarajat farqi" : "— Hisob-kitob qilinmagan";
+
+  const tripFilled = [row.route_name, row.distance_km, row.loaded_mileage_km, row.fuel_consumption_liters, row.fuel_cost_amount, row.driver_wage_amount].some((v) => v != null && v !== "");
+
+  const timelineSteps = [
+    ["Yaratildi", row.created_at ? fmtDate(row.created_at) : dash],
+    ["Reja yuklash", row.planned_pickup_date],
+    ["Haqiqiy yuklash", row.actual_pickup_date],
+    ["Reja yetkazish", row.planned_delivery_date],
+    ["Haqiqiy yetkazish", row.actual_delivery_date],
+    ["Qabul", batch.accepted_date],
+    ["Holat", statusLabel],
+  ].map(([label, value]) => [label, value, Boolean(value) && value !== dash]);
+  const doneSteps = timelineSteps.filter(([, , done]) => done).length;
+
+  app.innerHTML = `<div class="page">
+    <div class="detail-page">
+      ${detailBreadcrumb(["Yetkazib berish", "Logistika buyurtmalari", number])}
+
+      <div class="detail-header">
+        <div>
+          <div class="detail-title-row">
+            <h1>${fmt(number)}</h1>
+            <button type="button" class="detail-chip" data-copy-logistics-number="${esc(number)}">${detailIcon("copy", 13)} Nusxalash</button>
+            ${detailStatusPill(statusLabel, tone)}
+          </div>
+          <p class="detail-subtitle">${fmt(row.client?.name)} <span class="detail-subtitle-badge">${fmt(row.order?.order_number)}</span> ${fmt(statusLabel)}</p>
+        </div>
+        <div class="detail-header-actions">
+          <button class="btn" data-nav="/logistics">${detailIcon("arrowLeft", 14)} Orqaga</button>
+          <button class="btn primary" data-nav="/delivery-batches/${batch.id}?tab=logistics">Partiyani ochish</button>
+          <button class="btn" data-nav="/delivery-batches/${batch.id}/edit">${detailIcon("edit", 14)} Tahrirlash</button>
+        </div>
+      </div>
+
+      ${logisticsWarnings(row, batch)}
+
+      <div class="detail-summary-cards">
+        ${detailSummaryCard({ label: "Transport xarajati", value: fmtMoney(row.cost_amount), caption: costCaption })}
+        ${detailSummaryCard({ label: "Mijoz transport narxi", value: fmtMoney(row.customer_price), caption: priceCaption })}
+        ${detailSummaryCard({ label: "Transport foydasi", value: transportProfit(row), caption: profitCaption })}
+      </div>
+
+      ${detailCard({
+        icon: "list", title: "Logistika xulosasi",
+        body: detailFieldGrid([
+          ["Logistika raqami", number],
+          ["Partiya raqami", batch.batch_number],
+          ["Buyurtma raqami", row.order?.order_number],
+          ["Mijoz", row.client?.name],
+          ["Yetkazib berish modeli", optionLabel(fulfillmentTypes, batch.fulfillment_type)],
+          ["Yetkazish usuli", row.delivery_method === "auto" ? "Auto" : row.delivery_method],
+        ]),
+      })}
+
+      ${detailCard({
+        icon: "truck", title: "Transport biriktirish",
+        body: `<div class="detail-field-grid">
+          <div class="detail-field"><span>Tashuvchi</span><strong>${detailIcon("truck", 14)} ${fmt(row.carrier_name)}</strong></div>
+          <div class="detail-field"><span>Haydovchi</span><strong><span class="detail-icon-badge sm">${esc((row.driver_name || "?").trim().charAt(0).toUpperCase())}</span> ${fmt(row.driver_name)}</strong></div>
+          <div class="detail-field"><span>Haydovchi telefoni</span><strong>${row.driver_phone ? detailIcon("phone", 14) : ""} ${fmt(row.driver_phone)}</strong></div>
+          <div class="detail-field"><span>Transport raqami</span><strong>${row.vehicle_number ? `<span class="detail-chip" style="cursor:default">${detailIcon("hash", 12)} ${esc(row.vehicle_number)}</span>` : dash}</strong></div>
+          <div class="detail-field"><span>Tirkama raqami</span><strong>${fmt(row.trailer_number)}</strong></div>
+        </div>`,
+      })}
+
+      ${detailCard({
+        icon: "calendar", title: "Sanalar",
+        body: `<div class="detail-two-col">
+          ${detailTonePanel({ label: "Rejalashtirilgan", tone: "muted", icon: "circle", body: `
+            ${detailMiniField("Reja yuklash sanasi", row.planned_pickup_date, "calendar")}
+            ${detailMiniField("Reja yetkazish sanasi", row.planned_delivery_date, "calendar")}
+          `})}
+          ${detailTonePanel({ label: "Haqiqiy", tone: "success", icon: "checkCircle", body: `
+            ${detailMiniField("Haqiqiy yuklash sanasi", row.actual_pickup_date, "checkCircle")}
+            ${detailMiniField("Haqiqiy yetkazish sanasi", row.actual_delivery_date, "checkCircle")}
+          `})}
+        </div>`,
+      })}
+
+      ${detailCard({
+        icon: "mapPin", title: "Manzillar",
+        body: `<div class="detail-two-col with-arrow">
+          ${detailTonePanel({ label: "Yuklash manzili", tone: "success", icon: "mapPin", body: `<p style="margin:0;font-size:13px;font-weight:600">${fmt(row.loading_address)}</p>` })}
+          <div class="detail-address-arrow">${detailIcon("arrowRight", 18)}</div>
+          ${detailTonePanel({ label: "Yetkazish manzili", tone: "success", icon: "mapPin", body: `<p style="margin:0;font-size:13px;font-weight:600">${fmt(row.delivery_address)}</p>` })}
+        </div>`,
+      })}
+
+      ${detailCard({
+        icon: "flag", title: "Reys tafsilotlari",
+        body: detailFieldGrid([
+          ["Yo'nalish (Ob'ekt)", row.route_name],
+          ["Masofa", row.distance_km != null ? fmtQty(row.distance_km, "km") : dash],
+          ["Yuk bilan probeg", row.loaded_mileage_km != null ? fmtQty(row.loaded_mileage_km, "km") : dash],
+          ["Bo'sh probeg", row.empty_mileage_km != null ? fmtQty(row.empty_mileage_km, "km") : dash],
+          ["Umumiy probeg", row.loaded_mileage_km != null || row.empty_mileage_km != null ? fmtQty(numberValue(row.loaded_mileage_km) + numberValue(row.empty_mileage_km), "km") : dash],
+          ["Tonna-km", dash],
+          ["GSM sarfi", row.fuel_consumption_liters != null ? fmtQty(row.fuel_consumption_liters, "litr") : dash],
+          ["GSM qiymati (QQSsiz)", fmtMoney(row.fuel_cost_amount)],
+          ["Haydovchi ish haqi", fmtMoney(row.driver_wage_amount)],
+          ["ESP foizi", row.esp_tax_percent != null ? fmtPercent(row.esp_tax_percent) : dash],
+          ["Boshqa xarajatlar", fmtMoney(row.other_expenses_amount)],
+          ["Komandirovka xarajatlari", fmtMoney(row.business_trip_expenses_amount)],
+        ]) + (tripFilled ? "" : detailWarningBanner("Reys tafsilotlari to'liq kiritilmagan. Ma'lumotlarni to'ldirish uchun tahrirlash tugmasini bosing.")),
+      })}
+
+      ${detailCard({
+        icon: "dollar", title: "Xarajatlar",
+        body: `<div class="detail-summary-cards">
+          ${detailSummaryCard({ label: "Transport xarajati", value: fmtMoney(row.cost_amount), caption: "Haqiqiy xarajat" })}
+          ${detailSummaryCard({ label: "Mijozga transport narxi", value: fmtMoney(row.customer_price), caption: "Mijozga taqdim etilgan" })}
+          ${detailSummaryCard({ label: "Transport foydasi", value: transportProfit(row), caption: "Narx – xarajat" })}
+          ${detailSummaryCard({ label: "Kim to'laydi", value: fmt(optionLabel(paidByTypes, row.paid_by)), caption: "To'lov mas'uli" })}
+        </div>`,
+      })}
+
+      ${detailCard({
+        icon: "paperclip", title: "Hujjatlar", badge: row.documents?.length || 0,
+        headerActions: `<button type="button" class="btn sm">${detailIcon("upload", 13)} Fayl yuklash</button>`,
+        body: (row.documents || []).length
+          ? tableOrEmpty(row.documents, ["Nomi", "Turi", "Yuklangan sana", "Yuklagan"], (item) => `<tr><td>${fmt(item.title)}</td><td>${fmt(item.document_type)}</td><td>${fmtDate(item.uploaded_at)}</td><td>${fmt(item.uploaded_by)}</td></tr>`, "")
+          : detailEmptyState({ icon: "file", title: "Hujjatlar hali yo'q", subtitle: "Bu bo'limda logistika buyurtmasiga tegishli barcha hujjatlar saqlanadi.", action: `<button type="button" class="btn primary sm">${detailIcon("upload", 13)} Hujjat yuklash</button>` }),
+      })}
+
+      ${detailCard({
+        icon: "message", title: "Izohlar / Tarix", badge: row.notes_history?.length || 0,
+        headerActions: `<button type="button" class="btn sm">${detailIcon("plus", 13)} Izoh qo'shish</button>`,
+        body: (row.notes_history || []).length
+          ? tableOrEmpty(row.notes_history, ["Sana", "Foydalanuvchi", "Izoh"], (item) => `<tr><td>${fmtDate(item.created_at)}</td><td>${fmt(item.created_by)}</td><td>${fmt(item.note)}</td></tr>`, "")
+          : detailEmptyState({ icon: "message", title: "Izohlar hali yo'q", subtitle: "Bu buyurtmaga doir birinchi izohni qo'shing." }),
+      })}
+
+      ${detailCard({
+        icon: "list", title: "Jarayon tarixi",
+        body: detailTimeline(timelineSteps) + detailProgressBar(doneSteps, timelineSteps.length, doneSteps === timelineSteps.length ? "Barcha asosiy bosqichlar muvaffaqiyatli yakunlandi." : `${number} · ${statusLabel}`),
+      })}
+    </div>
+  </div>`;
+
+  bindDetailToggles();
+  document.querySelector("[data-copy-logistics-number]")?.addEventListener("click", async (event) => {
+    const value = event.currentTarget.dataset.copyLogisticsNumber;
+    try {
+      await navigator.clipboard.writeText(value);
+      showToast("Nusxalandi.");
+    } catch (error) {
+      showToast("Nusxalab bo'lmadi.", true);
+    }
+  });
 }

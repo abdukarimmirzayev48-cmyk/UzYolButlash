@@ -15,6 +15,7 @@ class TransportBase(BaseModel):
     capacity: str | None = None
     status: TransportStatus = TransportStatus.active
     is_own: bool = False
+    current_location: str | None = None
     notes: str | None = None
 
 
@@ -32,6 +33,7 @@ class TransportUpdate(BaseModel):
     capacity: str | None = None
     status: TransportStatus | None = None
     is_own: bool | None = None
+    current_location: str | None = None
     notes: str | None = None
 
 

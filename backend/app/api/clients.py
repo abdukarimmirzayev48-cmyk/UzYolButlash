@@ -155,8 +155,23 @@ def list_clients(
     return Page(items=[serialize_list_item(client) for client in clients], total=total, page=page, page_size=page_size)
 
 
+def ensure_inn_available(db: Session, inn: str | None, exclude_client_id: int | None = None) -> None:
+    if not inn:
+        return
+    stmt = select(Client).where(Client.inn == inn)
+    if exclude_client_id:
+        stmt = stmt.where(Client.id != exclude_client_id)
+    existing = db.scalars(stmt).first()
+    if existing:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Bu STIR bilan mijoz allaqachon mavjud: {existing.name} (ID {existing.id}).",
+        )
+
+
 @router.post("", response_model=ClientDetail, status_code=status.HTTP_201_CREATED)
 def create_client(payload: ClientCreate, db: Session = Depends(get_db)):
+    ensure_inn_available(db, payload.inn)
     data = payload.model_dump(exclude={"first_contact", "address", "bank_account"})
     client = Client(**data)
     db.add(client)
@@ -201,7 +216,10 @@ def get_client_detail(client_id: int, db: Session = Depends(get_db)):
 @router.patch("/{client_id}", response_model=ClientRead)
 def update_client(client_id: int, payload: ClientUpdate, db: Session = Depends(get_db)):
     client = get_client_or_404(db, client_id)
-    update_model(client, payload.model_dump(exclude_unset=True))
+    data = payload.model_dump(exclude_unset=True)
+    if "inn" in data:
+        ensure_inn_available(db, data["inn"], exclude_client_id=client_id)
+    update_model(client, data)
     db.commit()
     db.refresh(client)
     return client

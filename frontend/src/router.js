@@ -6,9 +6,26 @@ async function render() {
       await renderPublicTalabnoma();
       return;
     }
+    if (location.pathname === "/login") {
+      await renderLoginPage();
+      return;
+    }
+    if (!currentUser) await loadCurrentUser();
+    if (!currentUser) {
+      navigate("/login");
+      return;
+    }
+    document.body.classList.remove("public-layout");
+    renderCurrentUserBadge();
     updateSidebarActiveLink();
-    if (location.pathname === "/attendance") {
+    if (location.pathname === "/users") {
+      await renderUsersList();
+    } else if (location.pathname === "/attendance") {
       await renderAttendanceList();
+    } else if (location.pathname === "/employees") {
+      await renderEmployeesList();
+    } else if (location.pathname === "/departments") {
+      await renderDepartmentsList();
     } else if (location.pathname === "/dashboard") {
       await renderDashboardOverview();
     } else if (location.pathname === "/profit") {
@@ -93,10 +110,18 @@ async function render() {
       await renderLogisticsList();
     } else if (location.pathname === "/transports/new") {
       await renderNewTransport();
+    } else if (location.pathname === "/transports/monitoring") {
+      await renderTransportMonitoring();
     } else if (/^\/transports\/\d+\/edit$/.test(location.pathname)) {
       await renderEditTransport(getTransportIdFromPath());
     } else if (location.pathname === "/transports") {
       await renderTransportsList();
+    } else if (location.pathname === "/tasks/new") {
+      await renderNewTask();
+    } else if (/^\/tasks\/\d+\/edit$/.test(location.pathname)) {
+      await renderEditTask(getTaskIdFromPath());
+    } else if (location.pathname === "/tasks") {
+      await renderTasksList();
     } else if (location.pathname === "/orders/new") {
       await renderNewOrder();
     } else if (/^\/orders\/\d+\/edit$/.test(location.pathname)) {

@@ -18,6 +18,17 @@ class AttendanceStatus(str, Enum):
     no_data = "no_data"
 
 
+class Department(Base, TimestampMixin):
+    __tablename__ = "departments"
+
+    id: Mapped[int] = mapped_column(primary_key=True, index=True)
+    name: Mapped[str] = mapped_column(String(255), nullable=False, unique=True, index=True)
+    description: Mapped[str | None] = mapped_column(Text)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+
+    employees: Mapped[list["Employee"]] = relationship(back_populates="department_ref")
+
+
 class Employee(Base, TimestampMixin):
     __tablename__ = "attendance_employees"
 
@@ -25,10 +36,12 @@ class Employee(Base, TimestampMixin):
     full_name: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
     position: Mapped[str | None] = mapped_column(String(255))
     department: Mapped[str | None] = mapped_column(String(255), index=True)
+    department_id: Mapped[int | None] = mapped_column(ForeignKey("departments.id"), index=True)
     badge_number: Mapped[str | None] = mapped_column(String(64), index=True, unique=True)
     scheduled_check_in: Mapped[time] = mapped_column(Time, default=time(9, 0), nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
 
+    department_ref: Mapped[Department | None] = relationship(back_populates="employees")
     records: Mapped[list["AttendanceRecord"]] = relationship(
         back_populates="employee", cascade="all, delete-orphan", order_by="AttendanceRecord.work_date"
     )
@@ -42,6 +55,7 @@ class AttendanceRecord(Base, TimestampMixin):
     employee_id: Mapped[int] = mapped_column(ForeignKey("attendance_employees.id", ondelete="CASCADE"), index=True)
     work_date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
     check_in_time: Mapped[time | None] = mapped_column(Time)
+    check_out_time: Mapped[time | None] = mapped_column(Time)
     status: Mapped[AttendanceStatus] = mapped_column(
         SAEnum(AttendanceStatus), default=AttendanceStatus.no_data, nullable=False
     )

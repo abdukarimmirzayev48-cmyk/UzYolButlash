@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>UzYolButlash ERP</title>
-    <link rel="stylesheet" href="/static/styles.css?v=20260706-attendance-module" />
+    <link rel="stylesheet" href="/static/styles.css?v=20260707-clients-redesign" />
   </head>
   <body>
     <header class="app-topbar">
@@ -24,7 +24,10 @@
         <div class="top-nav-group">
           <button type="button">Xodimlar</button>
           <div class="top-nav-menu">
+            <a href="/employees">Xodimlar</a>
+            <a href="/departments">Bo'limlar</a>
             <a href="/attendance">Davomat</a>
+            <a href="/tasks">Ijro</a>
           </div>
         </div>
         <div class="top-nav-group">
@@ -67,11 +70,23 @@
         </div>
       </nav>
       <div class="top-actions">
-        <button class="top-icon-btn" type="button" aria-label="Qidirish" title="Qidirish">⌕</button>
-        <button class="top-icon-btn" type="button" aria-label="Bildirishnomalar" title="Bildirishnomalar">!</button>
-        <div class="top-user">
-          <span>UzYolButlash</span>
-          <strong>Operatsiyalar</strong>
+        <button class="top-icon-btn" type="button" aria-label="Bildirishnomalar" title="Bildirishnomalar">
+          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>
+        </button>
+        <button class="top-icon-btn" type="button" aria-label="Yordam" title="Yordam">
+          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 2-3 4"/><path d="M12 17h.01"/></svg>
+        </button>
+        <div class="top-user" id="top-user">
+          <span class="top-user-avatar" id="top-user-avatar">B</span>
+          <span class="top-user-copy">
+            <strong id="top-user-name">UzYolButlash</strong>
+            <small id="top-user-role">Operatsiyalar</small>
+          </span>
+          <svg class="top-user-chevron" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+          <div class="top-user-menu" id="top-user-menu" hidden>
+            <a href="/users" data-nav="/users" id="top-user-menu-users" hidden>Foydalanuvchilar</a>
+            <button type="button" id="top-user-logout">Chiqish</button>
+          </div>
         </div>
       </div>
     </header>
@@ -134,7 +149,10 @@
         </section>
         <section class="nav-section">
           <h2>Xodimlar</h2>
+          <a href="/employees" data-short="XO" title="Xodimlar"><span>Xodimlar</span></a>
+          <a href="/departments" data-short="BO" title="Bo'limlar"><span>Bo'limlar</span></a>
           <a href="/attendance" data-short="DV" title="Davomat"><span>Davomat</span></a>
+          <a href="/tasks" data-short="IJ" title="Ijro"><span>Ijro</span></a>
         </section>
       </nav>
     </aside>
@@ -156,19 +174,21 @@
     <script src="/static/src/components/Panels.js?v=20260629-frontend-refactor" defer></script>
     <script src="/static/src/index.js?v=20260629-frontend-refactor" defer></script>
     <script src="/static/src/config/constants.js?v=20260629-frontend-modules" defer></script>
-    <script src="/static/src/core/runtime.js?v=20260629-global-number-format" defer></script>
-    <script src="/static/src/pages/clients.js?v=20260629-frontend-modules" defer></script>
+    <script src="/static/src/core/runtime.js?v=20260801-auth" defer></script>
+    <script src="/static/src/pages/clients.js?v=20260707-clients-redesign" defer></script>
     <script src="/static/src/pages/customerRequests.js?v=20260705-customer-requests" defer></script>
     <script src="/static/src/pages/publicTalabnoma.js?v=20260705-public-request" defer></script>
     <script src="/static/src/pages/contracts.js?v=20260629-global-number-format" defer></script>
     <script src="/static/src/pages/orders.js?v=20260629-stock-order-safe" defer></script>
-    <script src="/static/src/pages/delivery.js?v=20260629-transports-module" defer></script>
-    <script src="/static/src/pages/transports.js?v=20260629-transports-module" defer></script>
+    <script src="/static/src/pages/delivery.js?v=20260731-batchform-redesign" defer></script>
+    <script src="/static/src/pages/transports.js?v=20260727-fleet-monitoring2" defer></script>
     <script src="/static/src/pages/customerFinance.js?v=20260629-global-number-format" defer></script>
     <script src="/static/src/pages/supply.js?v=20260629-stock-order-safe" defer></script>
     <script src="/static/src/pages/dashboard.js?v=20260629-frontend-modules" defer></script>
     <script src="/static/src/pages/products.js?v=20260701-products-module" defer></script>
-    <script src="/static/src/pages/attendance.js?v=20260706-attendance-module" defer></script>
-    <script src="/static/src/router.js?v=20260706-attendance-module" defer></script>
+    <script src="/static/src/pages/attendance.js?v=20260801-auth" defer></script>
+    <script src="/static/src/pages/tasks.js?v=20260801-auth" defer></script>
+    <script src="/static/src/pages/auth.js?v=20260801-auth" defer></script>
+    <script src="/static/src/router.js?v=20260801-auth" defer></script>
   </body>
 </html>

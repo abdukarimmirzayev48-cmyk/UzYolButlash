@@ -1,13 +1,19 @@
+from datetime import date
+from decimal import Decimal
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy import func, or_, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from backend.app.db.session import get_db
-from backend.app.models.transport import Transport
+from backend.app.models.delivery import DeliveryBatch, Logistics, LogisticsStatus
+from backend.app.models.transport import Transport, TransportStatus
 from backend.app.schemas.client import Page
 from backend.app.schemas.transport import TransportCreate, TransportRead, TransportUpdate
+
+TERMINAL_LOGISTICS_STATUSES = {LogisticsStatus.delivered, LogisticsStatus.completed, LogisticsStatus.cancelled, LogisticsStatus.issue}
+CARGO_LOGISTICS_STATUSES = {LogisticsStatus.loaded, LogisticsStatus.in_transit, LogisticsStatus.arrived, LogisticsStatus.unloading}
 
 
 router = APIRouter(prefix="/api/transports", tags=["transports"])
@@ -54,6 +60,113 @@ def list_transports(
     total = db.scalar(select(func.count()).select_from(stmt.subquery())) or 0
     rows = db.scalars(stmt.order_by(Transport.created_at.desc()).offset((page - 1) * page_size).limit(page_size)).all()
     return Page(items=rows, total=total, page=page, page_size=page_size)
+
+
+def _batch_tonnage(batch: DeliveryBatch | None) -> Decimal:
+    if not batch:
+        return Decimal("0")
+    total = Decimal("0")
+    for item in batch.items:
+        total += item.accepted_quantity or item.loaded_quantity or item.planned_quantity or Decimal("0")
+    return total
+
+
+@router.get("/monitoring")
+def transport_monitoring(db: Session = Depends(get_db)):
+    transports = db.scalars(select(Transport).order_by(Transport.vehicle_number)).all()
+    all_logistics = db.scalars(
+        select(Logistics)
+        .options(
+            selectinload(Logistics.batch).selectinload(DeliveryBatch.items),
+            selectinload(Logistics.batch).selectinload(DeliveryBatch.order),
+        )
+        .order_by(Logistics.created_at.desc())
+    ).all()
+
+    logistics_by_vehicle: dict[str, list[Logistics]] = {}
+    for row in all_logistics:
+        if row.vehicle_number:
+            logistics_by_vehicle.setdefault(row.vehicle_number, []).append(row)
+
+    month_start = date.today().replace(day=1)
+    summary = {
+        "total": 0, "working": 0, "idle": 0, "maintenance": 0,
+        "moving_with_cargo": 0, "moving_without_cargo": 0, "waiting": 0, "total_trips": 0,
+    }
+    working_rows: list[dict[str, Any]] = []
+    idle_rows: list[dict[str, Any]] = []
+    route_stats: dict[str, dict[str, Any]] = {}
+
+    for transport in transports:
+        summary["total"] += 1
+        vehicle_logs = logistics_by_vehicle.get(transport.vehicle_number, [])
+        summary["total_trips"] += sum(1 for row in vehicle_logs if row.created_at.date() >= month_start)
+
+        for row in vehicle_logs:
+            if not row.route_name:
+                continue
+            stat = route_stats.setdefault(row.route_name, {"route_name": row.route_name, "vehicles": set(), "trip_count": 0})
+            stat["vehicles"].add(transport.vehicle_number)
+            stat["trip_count"] += 1
+
+        last_log = vehicle_logs[0] if vehicle_logs else None
+        last_order_number = last_log.batch.order.order_number if last_log and last_log.batch and last_log.batch.order else None
+
+        if transport.status == TransportStatus.maintenance:
+            summary["maintenance"] += 1
+            idle_rows.append({
+                "vehicle_number": transport.vehicle_number,
+                "driver_name": transport.driver_name,
+                "status": transport.status,
+                "notes": transport.notes,
+                "last_order_number": last_order_number,
+                "last_logistics_status": last_log.status if last_log else None,
+            })
+            continue
+
+        active_log = next((row for row in vehicle_logs if row.status not in TERMINAL_LOGISTICS_STATUSES), None)
+        if not active_log:
+            summary["idle"] += 1
+            idle_rows.append({
+                "vehicle_number": transport.vehicle_number,
+                "driver_name": transport.driver_name,
+                "status": transport.status,
+                "notes": transport.notes,
+                "last_order_number": last_order_number,
+                "last_logistics_status": last_log.status if last_log else None,
+            })
+            continue
+
+        summary["working"] += 1
+        if active_log.status in CARGO_LOGISTICS_STATUSES:
+            summary["moving_with_cargo"] += 1
+            work_status = "moving_with_cargo"
+        elif active_log.status == LogisticsStatus.vehicle_assigned:
+            summary["moving_without_cargo"] += 1
+            work_status = "moving_without_cargo"
+        else:
+            summary["waiting"] += 1
+            work_status = "waiting"
+
+        distinct_clients = {row.batch.client_id for row in vehicle_logs if row.batch}
+        working_rows.append({
+            "vehicle_number": transport.vehicle_number,
+            "driver_name": transport.driver_name,
+            "work_status": work_status,
+            "cargo_tonnage": _batch_tonnage(active_log.batch),
+            "departure_point": active_log.loading_address,
+            "current_location": transport.current_location,
+            "destination": active_log.delivery_address,
+            "distance_km": active_log.distance_km,
+            "fuel_liters": active_log.fuel_consumption_liters,
+            "assigned_orgs_count": len(distinct_clients),
+        })
+
+    routes = [
+        {"route_name": stat["route_name"], "vehicle_count": len(stat["vehicles"]), "trip_count": stat["trip_count"]}
+        for stat in route_stats.values()
+    ]
+    return {"summary": summary, "working": working_rows, "idle": idle_rows, "routes": routes}
 
 
 @router.post("", response_model=TransportRead, status_code=status.HTTP_201_CREATED)

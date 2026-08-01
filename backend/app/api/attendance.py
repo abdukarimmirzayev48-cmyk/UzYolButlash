@@ -5,11 +5,12 @@ from datetime import date as date_cls, datetime, time as time_cls
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Response, UploadFile, status
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from backend.app.db.session import get_db
-from backend.app.models.attendance import AttendanceRecord, AttendanceStatus, Employee
+from backend.app.models.attendance import AttendanceRecord, AttendanceStatus, Department, Employee
+from backend.app.models.task import Task
 from backend.app.schemas.attendance import (
     AttendanceAnalysisEntry,
     AttendanceDayCell,
@@ -21,13 +22,29 @@ from backend.app.schemas.attendance import (
     AttendanceMonthlySummary,
     AttendanceRecordRead,
     AttendanceRecordUpsert,
+    DepartmentCreate,
+    DepartmentRead,
+    DepartmentUpdate,
     EmployeeCreate,
     EmployeeRead,
     EmployeeUpdate,
+    HikvisionDeviceStatus,
+    HikvisionEmployeeSyncResult,
+    HikvisionEventSyncResult,
+    HikvisionStatus,
 )
 from backend.app.services.attendance_scoring import compute_late_minutes, lateness_band, score_employee_month
+from backend.app.services.auth import require_edit
+from backend.app.services.hikvision_client import (
+    HikvisionClient,
+    HikvisionError,
+    configured_hosts,
+    is_configured,
+    parse_device_time,
+)
 
 employees_router = APIRouter(prefix="/api/attendance/employees", tags=["attendance"])
+departments_router = APIRouter(prefix="/api/departments", tags=["departments"])
 attendance_router = APIRouter(prefix="/api/attendance", tags=["attendance"])
 
 WEEKDAY_LABELS = ["Душ", "Сеш", "Чор", "Пай", "Жум", "Шан", "Якш"]
@@ -38,6 +55,82 @@ def get_employee_or_404(db: Session, employee_id: int) -> Employee:
     if not employee:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Xodim topilmadi.")
     return employee
+
+
+def get_department_or_404(db: Session, department_id: int) -> Department:
+    department = db.get(Department, department_id)
+    if not department:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Bo'lim topilmadi.")
+    return department
+
+
+def sync_employee_department_name(employee: Employee, db: Session) -> None:
+    """Keep the legacy free-text `department` column in sync with the linked Department,
+    so existing code that reads `employee.department` as a display string keeps working."""
+    if employee.department_id is None:
+        employee.department = None
+        return
+    department = db.get(Department, employee.department_id)
+    if department:
+        employee.department = department.name
+
+
+def department_read_with_count(db: Session, department: Department) -> DepartmentRead:
+    count = db.scalar(select(func.count()).select_from(Employee).where(Employee.department_id == department.id)) or 0
+    data = DepartmentRead.model_validate(department).model_dump()
+    data["employee_count"] = count
+    return DepartmentRead(**data)
+
+
+@departments_router.get("", response_model=list[DepartmentRead])
+def list_departments(db: Session = Depends(get_db), is_active: bool | None = None):
+    stmt = select(Department)
+    if is_active is not None:
+        stmt = stmt.where(Department.is_active == is_active)
+    departments = db.scalars(stmt.order_by(Department.name)).all()
+    return [department_read_with_count(db, d) for d in departments]
+
+
+@departments_router.post("", response_model=DepartmentRead, status_code=status.HTTP_201_CREATED)
+def create_department(payload: DepartmentCreate, db: Session = Depends(get_db)):
+    if db.scalar(select(Department).where(Department.name == payload.name)):
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Bu nomdagi bo'lim allaqachon mavjud.")
+    department = Department(**payload.model_dump())
+    db.add(department)
+    db.commit()
+    db.refresh(department)
+    return department_read_with_count(db, department)
+
+
+@departments_router.patch("/{department_id}", response_model=DepartmentRead)
+def update_department(department_id: int, payload: DepartmentUpdate, db: Session = Depends(get_db)):
+    department = get_department_or_404(db, department_id)
+    data = payload.model_dump(exclude_unset=True)
+    if "name" in data and data["name"] != department.name:
+        if db.scalar(select(Department).where(Department.name == data["name"])):
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Bu nomdagi bo'lim allaqachon mavjud.")
+        # Keep employees' denormalized display string in sync with the rename.
+        for employee in db.scalars(select(Employee).where(Employee.department_id == department_id)).all():
+            employee.department = data["name"]
+    for key, value in data.items():
+        setattr(department, key, value)
+    db.commit()
+    db.refresh(department)
+    return department_read_with_count(db, department)
+
+
+@departments_router.delete("/{department_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_department(department_id: int, db: Session = Depends(get_db)):
+    department = get_department_or_404(db, department_id)
+    employee_count = db.scalar(select(func.count()).select_from(Employee).where(Employee.department_id == department_id)) or 0
+    if employee_count:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Bu bo'limga {employee_count} ta xodim biriktirilgan. Avval ularni boshqa bo'limga o'tkazing.",
+        )
+    db.delete(department)
+    db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @employees_router.get("", response_model=list[EmployeeRead])
@@ -53,6 +146,7 @@ def list_employees(db: Session = Depends(get_db), department: str | None = None,
 @employees_router.post("", response_model=EmployeeRead, status_code=status.HTTP_201_CREATED)
 def create_employee(payload: EmployeeCreate, db: Session = Depends(get_db)):
     employee = Employee(**payload.model_dump())
+    sync_employee_department_name(employee, db)
     db.add(employee)
     db.commit()
     db.refresh(employee)
@@ -64,6 +158,7 @@ def update_employee(employee_id: int, payload: EmployeeUpdate, db: Session = Dep
     employee = get_employee_or_404(db, employee_id)
     for key, value in payload.model_dump(exclude_unset=True).items():
         setattr(employee, key, value)
+    sync_employee_department_name(employee, db)
     db.commit()
     db.refresh(employee)
     return employee
@@ -72,6 +167,12 @@ def update_employee(employee_id: int, payload: EmployeeUpdate, db: Session = Dep
 @employees_router.delete("/{employee_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_employee(employee_id: int, db: Session = Depends(get_db)):
     employee = get_employee_or_404(db, employee_id)
+    task_count = db.scalar(select(func.count()).select_from(Task).where(Task.assigned_employee_id == employee_id)) or 0
+    if task_count:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Bu xodimga {task_count} ta topshiriq biriktirilgan. Avval topshiriqlarni boshqa xodimga o'tkazing yoki o'chiring.",
+        )
     db.delete(employee)
     db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
@@ -86,8 +187,10 @@ def _apply_record_fields(
     disciplinary_violation: bool = False,
     absence_hours: Decimal = Decimal("0"),
     note: str | None = None,
+    check_out_time: time_cls | None = None,
 ) -> None:
     record.check_in_time = check_in_time
+    record.check_out_time = check_out_time
     record.early_leave = early_leave
     record.disciplinary_violation = disciplinary_violation
     record.absence_hours = absence_hours
@@ -108,7 +211,7 @@ def _apply_record_fields(
         record.status = AttendanceStatus.absent
 
 
-@attendance_router.put("/records", response_model=AttendanceRecordRead)
+@attendance_router.put("/records", response_model=AttendanceRecordRead, dependencies=[Depends(require_edit("davomat"))])
 def upsert_record(payload: AttendanceRecordUpsert, db: Session = Depends(get_db)):
     employee = get_employee_or_404(db, payload.employee_id)
     record = db.scalars(
@@ -129,6 +232,7 @@ def upsert_record(payload: AttendanceRecordUpsert, db: Session = Depends(get_db)
         payload.disciplinary_violation,
         payload.absence_hours,
         payload.note,
+        payload.check_out_time,
     )
     db.commit()
     db.refresh(record)
@@ -182,6 +286,7 @@ def get_attendance_grid(
             if record:
                 day_cells[str(day)] = AttendanceDayCell(
                     check_in_time=record.check_in_time,
+                    check_out_time=record.check_out_time,
                     status=record.status,
                     late_minutes=record.late_minutes,
                     early_leave=record.early_leave,
@@ -272,7 +377,7 @@ def _parse_csv_time(value: str) -> time_cls | None:
     return None
 
 
-@attendance_router.post("/import", response_model=AttendanceImportResult)
+@attendance_router.post("/import", response_model=AttendanceImportResult, dependencies=[Depends(require_edit("davomat"))])
 def import_attendance(file: UploadFile = File(...), db: Session = Depends(get_db)):
     raw = file.file.read()
     try:
@@ -301,7 +406,7 @@ def import_attendance(file: UploadFile = File(...), db: Session = Depends(get_db
     rows_processed = 0
     rows_matched = 0
     rows_skipped = 0
-    earliest_by_key: dict[tuple[int, date_cls], time_cls] = {}
+    times_by_key: dict[tuple[int, date_cls], list[time_cls]] = {}
     employee_by_key: dict[tuple[int, date_cls], Employee] = {}
 
     for row_number, row in enumerate(reader, start=2):
@@ -325,11 +430,10 @@ def import_attendance(file: UploadFile = File(...), db: Session = Depends(get_db
 
         key = (employee.id, work_date)
         employee_by_key[key] = employee
-        if key not in earliest_by_key or check_in_time < earliest_by_key[key]:
-            earliest_by_key[key] = check_in_time
+        times_by_key.setdefault(key, []).append(check_in_time)
         rows_matched += 1
 
-    for (employee_id, work_date), check_in_time in earliest_by_key.items():
+    for (employee_id, work_date), times in times_by_key.items():
         employee = employee_by_key[(employee_id, work_date)]
         record = db.scalars(
             select(AttendanceRecord).where(
@@ -340,12 +444,146 @@ def import_attendance(file: UploadFile = File(...), db: Session = Depends(get_db
         if not record:
             record = AttendanceRecord(employee_id=employee_id, work_date=work_date)
             db.add(record)
-        _apply_record_fields(record, employee, check_in_time)
+        _apply_record_fields(record, employee, min(times), check_out_time=max(times) if len(times) > 1 else None)
 
     db.commit()
     return AttendanceImportResult(
         rows_processed=rows_processed,
         rows_matched=rows_matched,
         rows_skipped=rows_skipped,
+        warnings=warnings[:50],
+    )
+
+
+@attendance_router.get("/hikvision/status", response_model=HikvisionStatus)
+def hikvision_status():
+    hosts = configured_hosts()
+    if not is_configured():
+        return HikvisionStatus(configured=False, devices=[])
+
+    devices: list[HikvisionDeviceStatus] = []
+    for host in hosts:
+        try:
+            client = HikvisionClient(host=host)
+            result = client.ping()
+            devices.append(HikvisionDeviceStatus(host=host, reachable=True, device_user_count=result["totalUsers"]))
+        except HikvisionError as exc:
+            devices.append(HikvisionDeviceStatus(host=host, reachable=False, error=str(exc)))
+    return HikvisionStatus(configured=True, devices=devices)
+
+
+@attendance_router.post("/hikvision/sync-employees", response_model=HikvisionEmployeeSyncResult, dependencies=[Depends(require_edit("davomat"))])
+def hikvision_sync_employees(db: Session = Depends(get_db)):
+    hosts = configured_hosts()
+    if not hosts:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Hikvision qurilmasi sozlanmagan (.env faylida HIKVISION_HOSTS ni kiriting).")
+
+    # Multiple doors/readers commonly share the same enrolled employee roster,
+    # so merge users from every device by badge number (employeeNo) — a
+    # person present on more than one device just gets matched once.
+    device_users_by_badge: dict[str, dict] = {}
+    errors: list[str] = []
+    for host in hosts:
+        try:
+            client = HikvisionClient(host=host)
+            for user in client.list_users():
+                badge_number = str(user.get("employeeNo") or "").strip()
+                if badge_number:
+                    device_users_by_badge.setdefault(badge_number, user)
+        except HikvisionError as exc:
+            errors.append(str(exc))
+
+    if errors and not device_users_by_badge:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="; ".join(errors))
+
+    existing_badges = {e.badge_number for e in db.scalars(select(Employee)).all() if e.badge_number}
+    created_names: list[str] = []
+    for badge_number, user in device_users_by_badge.items():
+        name = str(user.get("name") or "").strip()
+        if not name or badge_number in existing_badges:
+            continue
+        db.add(Employee(full_name=name, badge_number=badge_number, department="Boshqa"))
+        existing_badges.add(badge_number)
+        created_names.append(name)
+    db.commit()
+
+    return HikvisionEmployeeSyncResult(
+        device_users=len(device_users_by_badge),
+        created=len(created_names),
+        already_existing=len(device_users_by_badge) - len(created_names),
+        created_names=created_names,
+        warnings=errors,
+    )
+
+
+@attendance_router.post("/hikvision/sync-events", response_model=HikvisionEventSyncResult, dependencies=[Depends(require_edit("davomat"))])
+def hikvision_sync_events(
+    date_from: date_cls = Query(...),
+    date_to: date_cls = Query(...),
+    db: Session = Depends(get_db),
+):
+    if date_to < date_from:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Tugash sanasi boshlanish sanasidan oldin bo'lishi mumkin emas.")
+
+    hosts = configured_hosts()
+    if not hosts:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Hikvision qurilmasi sozlanmagan (.env faylida HIKVISION_HOSTS ni kiriting).")
+
+    # Merge events from every door/reader before computing earliest arrival —
+    # the same employee can badge through whichever device is closer that day.
+    events: list[dict] = []
+    errors: list[str] = []
+    for host in hosts:
+        try:
+            client = HikvisionClient(host=host)
+            events.extend(client.search_events(f"{date_from}T00:00:00+05:00", f"{date_to}T23:59:59+05:00"))
+        except HikvisionError as exc:
+            errors.append(str(exc))
+
+    if errors and not events:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="; ".join(errors))
+
+    employees = db.scalars(select(Employee)).all()
+    by_badge = {e.badge_number: e for e in employees if e.badge_number}
+
+    warnings: list[str] = list(errors)
+    unmatched_badges: set[str] = set()
+    times_by_key: dict[tuple[int, date_cls], list[time_cls]] = {}
+    employee_by_key: dict[tuple[int, date_cls], Employee] = {}
+
+    for event in events:
+        badge_number = str(event.get("employeeNoString") or "").strip()
+        employee = by_badge.get(badge_number)
+        if not employee:
+            unmatched_badges.add(badge_number)
+            continue
+        moment = parse_device_time(event["time"])
+        key = (employee.id, moment.date())
+        employee_by_key[key] = employee
+        times_by_key.setdefault(key, []).append(moment.time())
+
+    for badge_number in sorted(unmatched_badges):
+        warnings.append(f"Tabel raqami {badge_number} bo'yicha xodim topilmadi. Avval xodimlarni sinxronlang.")
+
+    matched_employee_ids: set[int] = set()
+    for (employee_id, work_date), times in times_by_key.items():
+        employee = employee_by_key[(employee_id, work_date)]
+        matched_employee_ids.add(employee_id)
+        record = db.scalars(
+            select(AttendanceRecord).where(
+                AttendanceRecord.employee_id == employee_id,
+                AttendanceRecord.work_date == work_date,
+            )
+        ).first()
+        if not record:
+            record = AttendanceRecord(employee_id=employee_id, work_date=work_date)
+            db.add(record)
+        _apply_record_fields(record, employee, min(times), check_out_time=max(times) if len(times) > 1 else None)
+
+    db.commit()
+    return HikvisionEventSyncResult(
+        events_fetched=len(events),
+        days_updated=len(times_by_key),
+        matched_employees=len(matched_employee_ids),
         warnings=warnings[:50],
     )

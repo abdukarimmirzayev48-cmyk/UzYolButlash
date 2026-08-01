@@ -78,7 +78,8 @@ function attendanceToolbar(state, employees) {
         </select>
       </label>
       <div class="attendance-toolbar-spacer"></div>
-      <button class="btn" type="button" data-attendance-import>Turniketdan import qilish</button>
+      ${canEdit("davomat") ? `<button class="btn" type="button" data-attendance-csv-import>CSV import</button>` : ""}
+      ${canEdit("davomat") ? `<button class="btn primary" type="button" data-attendance-hikvision>Turniketdan sinxronlash</button>` : ""}
       <button class="btn primary" type="button" data-attendance-add-employee>Xodim qo'shish</button>
     </div>
   `;
@@ -251,8 +252,11 @@ async function renderAttendanceList() {
   document.querySelector("[data-attendance-add-employee]").addEventListener("click", () => {
     attendanceEmployeeModal(null, () => renderAttendanceList());
   });
-  document.querySelector("[data-attendance-import]").addEventListener("click", () => {
+  document.querySelector("[data-attendance-csv-import]")?.addEventListener("click", () => {
     attendanceImportModal(state, () => renderAttendanceList());
+  });
+  document.querySelector("[data-attendance-hikvision]")?.addEventListener("click", () => {
+    attendanceHikvisionModal(state, () => renderAttendanceList());
   });
   document.querySelectorAll("[data-attendance-edit-employee]").forEach((btn) => {
     btn.addEventListener("click", () => {
@@ -272,13 +276,23 @@ async function renderAttendanceList() {
       }
     });
   });
+  const cellsByEmployeeDay = {};
+  grid.departments.forEach((dept) => {
+    dept.employees.forEach((employee) => {
+      cellsByEmployeeDay[employee.id] = employee.days;
+    });
+  });
   document.querySelectorAll("[data-attendance-cell]").forEach((cell) => {
+    if (!canEdit("davomat")) return;
     cell.addEventListener("click", () => {
+      const employeeId = Number(cell.dataset.employeeId);
+      const day = Number(cell.dataset.day);
       attendanceCellModal(
         {
-          employeeId: Number(cell.dataset.employeeId),
+          employeeId,
           employeeName: cell.dataset.employeeName,
-          day: Number(cell.dataset.day),
+          day,
+          existing: cellsByEmployeeDay[employeeId]?.[String(day)] || null,
         },
         state,
         () => renderAttendanceList()
@@ -287,8 +301,10 @@ async function renderAttendanceList() {
   });
 }
 
-function attendanceEmployeeModal(employee, onSaved) {
+async function attendanceEmployeeModal(employee, onSaved) {
   document.querySelector("#attendance-modal-backdrop")?.remove();
+  const departments = await api("/api/departments").catch(() => []);
+  const departmentOptions = [["", "Bo'lim tanlanmagan"], ...departments.map((d) => [String(d.id), d.name])];
   const backdrop = document.createElement("div");
   backdrop.id = "attendance-modal-backdrop";
   backdrop.className = "modal-backdrop";
@@ -302,7 +318,7 @@ function attendanceEmployeeModal(employee, onSaved) {
         <div class="modal-body">
           ${textField("full_name", "F.I.Sh.", employee?.full_name ?? "", "text", { required: true })}
           ${textField("position", "Lavozimi", employee?.position ?? "")}
-          ${textField("department", "Bo'lim", employee?.department ?? "")}
+          ${selectField("department_id", "Bo'lim", departmentOptions, employee?.department_id ? String(employee.department_id) : "")}
           ${textField("badge_number", "Tabel raqami", employee?.badge_number ?? "")}
           ${textField("scheduled_check_in", "Ishga kelish vaqti", attendanceTimeShort(employee?.scheduled_check_in) || "09:00", "time", { required: true })}
           ${checkField("is_active", "Faol", employee?.is_active ?? true)}
@@ -323,10 +339,11 @@ function attendanceEmployeeModal(employee, onSaved) {
   backdrop.querySelector("#attendance-employee-form").addEventListener("submit", async (e) => {
     e.preventDefault();
     const form = e.currentTarget;
+    const departmentId = field(form, "department_id");
     const payload = {
       full_name: field(form, "full_name"),
       position: field(form, "position"),
-      department: field(form, "department"),
+      department_id: departmentId ? Number(departmentId) : null,
       badge_number: field(form, "badge_number"),
       scheduled_check_in: field(form, "scheduled_check_in") ? `${field(form, "scheduled_check_in")}:00` : "09:00:00",
       is_active: form.elements.is_active.checked,
@@ -348,9 +365,10 @@ function attendanceEmployeeModal(employee, onSaved) {
   });
 }
 
-function attendanceCellModal({ employeeId, employeeName, day }, state, onSaved) {
+function attendanceCellModal({ employeeId, employeeName, day, existing }, state, onSaved) {
   document.querySelector("#attendance-modal-backdrop")?.remove();
   const workDate = `${state.year}-${attendancePad2(state.month)}-${attendancePad2(day)}`;
+  const current = existing || {};
   const backdrop = document.createElement("div");
   backdrop.id = "attendance-modal-backdrop";
   backdrop.className = "modal-backdrop";
@@ -362,12 +380,12 @@ function attendanceCellModal({ employeeId, employeeName, day }, state, onSaved) 
       </div>
       <form id="attendance-cell-form">
         <div class="modal-body">
-          ${textField("check_in_time", "Kelish vaqti", "", "time")}
-          ${selectField("status", "Holat (avtomatik hisoblash uchun bo'sh qoldiring)", [["", "Avtomatik"], ...attendanceStatusOptions], "")}
-          ${checkField("early_leave", "Ishni erta tark etdi", false)}
-          ${checkField("disciplinary_violation", "Intizomiy buzilish", false)}
-          ${textField("absence_hours", "Sababsiz kelmagan soat", "0", "number")}
-          ${textArea("note", "Izoh", "")}
+          ${textField("check_in_time", "Kelish vaqti", attendanceTimeShort(current.check_in_time) || "", "time")}
+          ${selectField("status", "Holat (avtomatik hisoblash uchun bo'sh qoldiring)", [["", "Avtomatik"], ...attendanceStatusOptions], current.status && current.status !== "no_data" ? current.status : "")}
+          ${checkField("early_leave", "Ishni erta tark etdi", current.early_leave || false)}
+          ${checkField("disciplinary_violation", "Intizomiy buzilish", current.disciplinary_violation || false)}
+          ${textField("absence_hours", "Sababsiz kelmagan soat", current.absence_hours ?? "0", "number")}
+          ${textArea("note", "Izoh", current.note || "")}
         </div>
         <div class="modal-footer">
           <button type="button" class="btn modal-cancel">Bekor qilish</button>
@@ -390,6 +408,7 @@ function attendanceCellModal({ employeeId, employeeName, day }, state, onSaved) 
       employee_id: employeeId,
       work_date: workDate,
       check_in_time: checkInTime ? `${checkInTime}:00` : null,
+      check_out_time: current.check_out_time || null,
       status: field(form, "status") || null,
       early_leave: form.elements.early_leave.checked,
       disciplinary_violation: form.elements.disciplinary_violation.checked,
@@ -403,6 +422,99 @@ function attendanceCellModal({ employeeId, employeeName, day }, state, onSaved) 
       await onSaved();
     } catch (error) {
       showToast(error.message, true);
+    }
+  });
+}
+
+async function attendanceHikvisionModal(state, onSynced) {
+  document.querySelector("#attendance-modal-backdrop")?.remove();
+  const backdrop = document.createElement("div");
+  backdrop.id = "attendance-modal-backdrop";
+  backdrop.className = "modal-backdrop";
+
+  const daysInMonth = new Date(state.year, state.month, 0).getDate();
+  const monthStart = `${state.year}-${attendancePad2(state.month)}-01`;
+  const monthEnd = `${state.year}-${attendancePad2(state.month)}-${attendancePad2(daysInMonth)}`;
+
+  let statusInfo = { configured: false, devices: [] };
+  try {
+    statusInfo = await api("/api/attendance/hikvision/status");
+  } catch (error) {
+    statusInfo = { configured: false, devices: [], error: error.message };
+  }
+
+  const anyReachable = statusInfo.devices?.some((d) => d.reachable);
+  const statusLine = !statusInfo.configured
+    ? `<div class="empty compact error">Qurilma sozlanmagan. Loyiha ildizida .env faylida HIKVISION_HOSTS, HIKVISION_USERNAME, HIKVISION_PASSWORD ni kiriting.</div>`
+    : (statusInfo.devices || [])
+        .map((d) =>
+          d.reachable
+            ? `<div class="empty compact">Qurilma: <strong>${esc(d.host)}</strong> — ulanish bor, ${fmt(d.device_user_count)} ta xodim ro'yxatda.</div>`
+            : `<div class="empty compact error">Qurilma <strong>${esc(d.host)}</strong>ga ulanib bo'lmadi: ${esc(d.error || "")}</div>`
+        )
+        .join("");
+
+  backdrop.innerHTML = `
+    <div class="modal-panel" style="max-width:560px">
+      <div class="modal-header">
+        <h2>Turniketdan sinxronlash (Hikvision)</h2>
+        <button class="modal-close" type="button" aria-label="Yopish">&#x2715;</button>
+      </div>
+      <form id="attendance-hikvision-form">
+        <div class="modal-body">
+          ${statusLine}
+          <div class="actions" style="margin:10px 0">
+            <button type="button" class="btn" data-hikvision-sync-employees ${anyReachable ? "" : "disabled"}>Xodimlarni qurilmadan sinxronlash</button>
+          </div>
+          <label>Sana oralig'i (dan)<input type="date" name="date_from" value="${monthStart}" required /></label>
+          <label>Sana oralig'i (gacha)<input type="date" name="date_to" value="${monthEnd}" required /></label>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn modal-cancel">Yopish</button>
+          <button type="submit" class="btn primary" ${anyReachable ? "" : "disabled"}>Davomatni yuklab olish</button>
+        </div>
+      </form>
+    </div>
+  `;
+  document.body.appendChild(backdrop);
+  const close = () => backdrop.remove();
+  backdrop.querySelector(".modal-close").addEventListener("click", close);
+  backdrop.querySelector(".modal-cancel").addEventListener("click", close);
+  backdrop.addEventListener("click", (e) => { if (e.target === backdrop) close(); });
+
+  backdrop.querySelector("[data-hikvision-sync-employees]").addEventListener("click", async (event) => {
+    const button = event.currentTarget;
+    button.disabled = true;
+    try {
+      const result = await api("/api/attendance/hikvision/sync-employees", { method: "POST" });
+      const warningSuffix = result.warnings?.length ? ` (${result.warnings.length} qurilmaga ulanib bo'lmadi)` : "";
+      showToast(`Xodimlar sinxronlandi: ${result.created} ta yangi, ${result.already_existing} ta mavjud edi.${warningSuffix}`, result.warnings?.length > 0);
+      await onSynced();
+    } catch (error) {
+      showToast(error.message, true);
+    } finally {
+      button.disabled = false;
+    }
+  });
+
+  backdrop.querySelector("#attendance-hikvision-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const form = e.currentTarget;
+    const dateFrom = field(form, "date_from");
+    const dateTo = field(form, "date_to");
+    if (!dateFrom || !dateTo) { showToast("Sana oralig'ini kiriting.", true); return; }
+    const submitButton = form.querySelector('button[type="submit"]');
+    submitButton.disabled = true;
+    submitButton.textContent = "Yuklanmoqda...";
+    try {
+      const result = await api(`/api/attendance/hikvision/sync-events?date_from=${dateFrom}&date_to=${dateTo}`, { method: "POST" });
+      showToast(`Davomat sinxronlandi: ${result.events_fetched} ta hodisa, ${result.days_updated} ta kun, ${result.matched_employees} ta xodim uchun.${result.warnings.length ? ` (${result.warnings.length} ogohlantirish)` : ""}`, result.warnings.length > 0);
+      close();
+      await onSynced();
+    } catch (error) {
+      showToast(error.message, true);
+      submitButton.disabled = false;
+      submitButton.textContent = "Davomatni yuklab olish";
     }
   });
 }
@@ -455,4 +567,182 @@ function attendanceImportModal(state, onImported) {
       showToast(error.message, true);
     }
   });
+}
+
+// ---- Xodimlar (Staff roster) — shared master data used by Davomat, Ijro, and any future module. ----
+
+async function renderEmployeesList() {
+  app.innerHTML = `<div class="page ops-page"><div class="empty">Yuklanmoqda...</div></div>`;
+  const params = new URLSearchParams(location.search);
+  const employees = await api("/api/attendance/employees");
+
+  const departments = [...new Set(employees.map((e) => e.department).filter(Boolean))].sort();
+  const search = (params.get("search") || "").trim().toLowerCase();
+  const departmentFilter = params.get("department") || "";
+  const statusFilter = params.get("status") || "";
+
+  const filtered = employees.filter((e) => {
+    if (search && !`${e.full_name} ${e.position || ""} ${e.badge_number || ""}`.toLowerCase().includes(search)) return false;
+    if (departmentFilter && e.department !== departmentFilter) return false;
+    if (statusFilter === "active" && !e.is_active) return false;
+    if (statusFilter === "inactive" && e.is_active) return false;
+    return true;
+  });
+  const activeCount = employees.filter((e) => e.is_active).length;
+
+  app.innerHTML = opsListPage({
+    className: "employees-ops-page",
+    title: "Xodimlar",
+    tabs: [{ label: "Xodimlar", active: true }, { label: "Bo'limlar", path: "/departments" }, { label: "Davomat", path: "/attendance" }, { label: "Ijro", path: "/tasks" }],
+    clearPath: "/employees",
+    counter: `${fmt(employees.length)} ta xodim · ${fmt(activeCount)} ta faol`,
+    formId: "employees-search-form",
+    filters: `<input name="search" placeholder="F.I.Sh, lavozim, tabel raqami" value="${esc(params.get("search") || "")}" />
+      <select name="department"><option value="">Barcha bo'limlar</option>${departments.map((d) => `<option value="${esc(d)}" ${departmentFilter === d ? "selected" : ""}>${esc(d)}</option>`).join("")}</select>
+      <select name="status"><option value="">Holat</option><option value="active" ${statusFilter === "active" ? "selected" : ""}>Faol</option><option value="inactive" ${statusFilter === "inactive" ? "selected" : ""}>Faol emas</option></select>`,
+    headers: ["F.I.Sh.", "Lavozimi", "Bo'lim", "Tabel raqami", "Ishga kelish vaqti", "Holat", ""],
+    rows: filtered.map((e) => `<tr>
+      <td><button class="ops-primary-link" data-edit-employee="${e.id}">${fmt(e.full_name)}</button></td>
+      <td>${fmt(e.position)}</td>
+      <td>${fmt(e.department)}</td>
+      <td>${fmt(e.badge_number)}</td>
+      <td>${attendanceTimeShort(e.scheduled_check_in) || dash}</td>
+      <td><span class="status-badge ${e.is_active ? "success" : "muted"}">${e.is_active ? "Faol" : "Faol emas"}</span></td>
+      <td><div class="ops-row-actions">
+        <button class="link-btn" data-edit-employee="${e.id}">Tahrirlash</button>
+        <button class="link-btn" style="color:var(--danger)" data-delete-employee="${e.id}">O'chirish</button>
+      </div></td>
+    </tr>`).join(""),
+    emptyText: "Xodimlar topilmadi.",
+    colspan: 7,
+  });
+
+  const addButton = document.createElement("button");
+  addButton.className = "btn primary";
+  addButton.type = "button";
+  addButton.textContent = "Xodim qo'shish";
+  addButton.addEventListener("click", () => attendanceEmployeeModal(null, () => renderEmployeesList()));
+  document.querySelector(".ops-command-left")?.prepend(addButton);
+
+  bindOpsSearch("employees-search-form", "/employees", ["search", "department", "status"]);
+  document.querySelectorAll("[data-edit-employee]").forEach((btn) => btn.addEventListener("click", () => {
+    const employee = employees.find((e) => e.id === Number(btn.dataset.editEmployee));
+    attendanceEmployeeModal(employee, () => renderEmployeesList());
+  }));
+  document.querySelectorAll("[data-delete-employee]").forEach((btn) => btn.addEventListener("click", async () => {
+    const employee = employees.find((e) => e.id === Number(btn.dataset.deleteEmployee));
+    if (!confirm(`"${employee?.full_name || ""}" xodimini va uning barcha davomat yozuvlarini o'chirishni tasdiqlaysizmi?`)) return;
+    try {
+      await api(`/api/attendance/employees/${btn.dataset.deleteEmployee}`, { method: "DELETE" });
+      showToast("Xodim o'chirildi.");
+      renderEmployeesList();
+    } catch (error) {
+      showToast(error.message, true);
+    }
+  }));
+}
+
+// ---- Bo'limlar (Departments) — master list employees are connected to. ----
+
+function departmentModal(department, onSaved) {
+  document.querySelector("#attendance-modal-backdrop")?.remove();
+  const backdrop = document.createElement("div");
+  backdrop.id = "attendance-modal-backdrop";
+  backdrop.className = "modal-backdrop";
+  backdrop.innerHTML = `
+    <div class="modal-panel" style="max-width:480px">
+      <div class="modal-header">
+        <h2>${department ? "Bo'limni tahrirlash" : "Yangi bo'lim"}</h2>
+        <button class="modal-close" type="button" aria-label="Yopish">&#x2715;</button>
+      </div>
+      <form id="department-form">
+        <div class="modal-body">
+          ${textField("name", "Bo'lim nomi", department?.name ?? "", "text", { required: true })}
+          ${textArea("description", "Tavsif", department?.description ?? "")}
+          ${checkField("is_active", "Faol", department?.is_active ?? true)}
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn modal-cancel">Bekor qilish</button>
+          <button type="submit" class="btn primary">Saqlash</button>
+        </div>
+      </form>
+    </div>
+  `;
+  document.body.appendChild(backdrop);
+  const close = () => backdrop.remove();
+  backdrop.querySelector(".modal-close").addEventListener("click", close);
+  backdrop.querySelector(".modal-cancel").addEventListener("click", close);
+  backdrop.addEventListener("click", (e) => { if (e.target === backdrop) close(); });
+
+  backdrop.querySelector("#department-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const form = e.currentTarget;
+    const payload = {
+      name: field(form, "name"),
+      description: field(form, "description"),
+      is_active: form.elements.is_active.checked,
+    };
+    if (!payload.name) { showToast("Bo'lim nomi kiritilishi shart.", true); return; }
+    try {
+      if (department) {
+        await api(`/api/departments/${department.id}`, { method: "PATCH", body: JSON.stringify(payload) });
+        showToast("Bo'lim yangilandi.");
+      } else {
+        await api("/api/departments", { method: "POST", body: JSON.stringify(payload) });
+        showToast("Bo'lim qo'shildi.");
+      }
+      close();
+      await onSaved();
+    } catch (error) {
+      showToast(error.message, true);
+    }
+  });
+}
+
+async function renderDepartmentsList() {
+  app.innerHTML = `<div class="page ops-page"><div class="empty">Yuklanmoqda...</div></div>`;
+  const departments = await api("/api/departments");
+
+  app.innerHTML = opsListPage({
+    className: "departments-ops-page",
+    title: "Bo'limlar",
+    tabs: [{ label: "Xodimlar", path: "/employees" }, { label: "Bo'limlar", active: true }, { label: "Davomat", path: "/attendance" }, { label: "Ijro", path: "/tasks" }],
+    counter: `${fmt(departments.length)} ta bo'lim`,
+    headers: ["Nomi", "Tavsif", "Xodimlar soni", "Holat", ""],
+    rows: departments.map((d) => `<tr>
+      <td><button class="ops-primary-link" data-edit-department="${d.id}">${fmt(d.name)}</button></td>
+      <td>${fmt(d.description)}</td>
+      <td>${fmt(d.employee_count)}</td>
+      <td><span class="status-badge ${d.is_active ? "success" : "muted"}">${d.is_active ? "Faol" : "Faol emas"}</span></td>
+      <td><div class="ops-row-actions">
+        <button class="link-btn" data-edit-department="${d.id}">Tahrirlash</button>
+        <button class="link-btn" style="color:var(--danger)" data-delete-department="${d.id}">O'chirish</button>
+      </div></td>
+    </tr>`).join(""),
+    emptyText: "Bo'limlar topilmadi.",
+    colspan: 5,
+  });
+
+  const addButton = document.createElement("button");
+  addButton.className = "btn primary";
+  addButton.type = "button";
+  addButton.textContent = "Bo'lim qo'shish";
+  addButton.addEventListener("click", () => departmentModal(null, () => renderDepartmentsList()));
+  document.querySelector(".ops-command-left")?.prepend(addButton);
+
+  document.querySelectorAll("[data-edit-department]").forEach((btn) => btn.addEventListener("click", () => {
+    const department = departments.find((d) => d.id === Number(btn.dataset.editDepartment));
+    departmentModal(department, () => renderDepartmentsList());
+  }));
+  document.querySelectorAll("[data-delete-department]").forEach((btn) => btn.addEventListener("click", async () => {
+    const department = departments.find((d) => d.id === Number(btn.dataset.deleteDepartment));
+    if (!confirm(`"${department?.name || ""}" bo'limini o'chirishni tasdiqlaysizmi?`)) return;
+    try {
+      await api(`/api/departments/${btn.dataset.deleteDepartment}`, { method: "DELETE" });
+      showToast("Bo'lim o'chirildi.");
+      renderDepartmentsList();
+    } catch (error) {
+      showToast(error.message, true);
+    }
+  }));
 }

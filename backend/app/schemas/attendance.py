@@ -6,10 +6,36 @@ from pydantic import BaseModel, ConfigDict, Field
 from backend.app.models.attendance import AttendanceStatus
 
 
+class DepartmentBase(BaseModel):
+    name: str = Field(min_length=1, max_length=255)
+    description: str | None = None
+    is_active: bool = True
+
+
+class DepartmentCreate(DepartmentBase):
+    pass
+
+
+class DepartmentUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=255)
+    description: str | None = None
+    is_active: bool | None = None
+
+
+class DepartmentRead(DepartmentBase):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    employee_count: int = 0
+    created_at: datetime
+    updated_at: datetime
+
+
 class EmployeeBase(BaseModel):
     full_name: str = Field(min_length=1, max_length=255)
     position: str | None = None
     department: str | None = None
+    department_id: int | None = None
     badge_number: str | None = None
     scheduled_check_in: time = time(9, 0)
     is_active: bool = True
@@ -23,6 +49,7 @@ class EmployeeUpdate(BaseModel):
     full_name: str | None = Field(default=None, min_length=1, max_length=255)
     position: str | None = None
     department: str | None = None
+    department_id: int | None = None
     badge_number: str | None = None
     scheduled_check_in: time | None = None
     is_active: bool | None = None
@@ -40,6 +67,7 @@ class AttendanceRecordUpsert(BaseModel):
     employee_id: int
     work_date: date
     check_in_time: time | None = None
+    check_out_time: time | None = None
     status: AttendanceStatus | None = None
     early_leave: bool = False
     disciplinary_violation: bool = False
@@ -54,6 +82,7 @@ class AttendanceRecordRead(BaseModel):
     employee_id: int
     work_date: date
     check_in_time: time | None = None
+    check_out_time: time | None = None
     status: AttendanceStatus
     late_minutes: int
     early_leave: bool
@@ -64,6 +93,7 @@ class AttendanceRecordRead(BaseModel):
 
 class AttendanceDayCell(BaseModel):
     check_in_time: time | None = None
+    check_out_time: time | None = None
     status: AttendanceStatus
     late_minutes: int = 0
     early_leave: bool = False
@@ -126,4 +156,31 @@ class AttendanceImportResult(BaseModel):
     rows_processed: int
     rows_matched: int
     rows_skipped: int
+    warnings: list[str]
+
+
+class HikvisionDeviceStatus(BaseModel):
+    host: str
+    reachable: bool
+    device_user_count: int | None = None
+    error: str | None = None
+
+
+class HikvisionStatus(BaseModel):
+    configured: bool
+    devices: list[HikvisionDeviceStatus] = []
+
+
+class HikvisionEmployeeSyncResult(BaseModel):
+    device_users: int
+    created: int
+    already_existing: int
+    created_names: list[str]
+    warnings: list[str] = []
+
+
+class HikvisionEventSyncResult(BaseModel):
+    events_fetched: int
+    days_updated: int
+    matched_employees: int
     warnings: list[str]

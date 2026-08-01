@@ -26,4 +26,5 @@ class Transport(Base, TimestampMixin):
     capacity: Mapped[str | None] = mapped_column(String(64))
     status: Mapped[TransportStatus] = mapped_column(SAEnum(TransportStatus), default=TransportStatus.active, nullable=False, index=True)
     is_own: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    current_location: Mapped[str | None] = mapped_column(String(255))
     notes: Mapped[str | None] = mapped_column(Text)

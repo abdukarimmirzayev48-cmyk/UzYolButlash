@@ -1,24 +1,250 @@
-async function renderClientsList() {
-  app.innerHTML = `<div class="page ops-page"><div class="empty">Mijozlar yuklanmoqda...</div></div>`;
-  const params = new URLSearchParams(location.search);
-  const data = await api(`/api/clients?${params.toString()}`);
-  app.innerHTML = opsListPage({
-    className: "clients-ops-page",
-    title: "Mijozlar",
-    tabs: [{ label: "Mijozlar", active: true }, { label: "Shartnomalar", path: "/contracts" }, { label: "Buyurtmalar", path: "/orders" }],
-    createPath: "/clients/new",
-    clearPath: "/clients",
-    counter: `${fmt(data.total)} ta mijoz`,
-    formId: "search-form",
-    filters: `<input name="name" placeholder="Mijoz nomi" value="${esc(params.get("name") || "")}" /><input name="inn" placeholder="STIR" value="${esc(params.get("inn") || "")}" /><input name="phone" placeholder="Telefon" value="${esc(params.get("phone") || "")}" /><input name="contact_person" placeholder="Mas'ul shaxs" value="${esc(params.get("contact_person") || "")}" /><input name="region" placeholder="Hudud" value="${esc(params.get("region") || "")}" />`,
-    headers: ["Mijoz nomi", "STIR", "Telefon", "Mas'ul shaxs", "Hudud", "Yuridik manzil", "Faol shartnomalar", "Faol buyurtmalar", "Oxirgi faollik", ""],
-    rows: data.items.map((client) => `<tr><td><button class="ops-primary-link" data-nav="/clients/${client.id}">${fmt(client.name)}</button></td><td>${fmt(client.inn)}</td><td>${fmt(client.phone)}</td><td>${fmt(client.primary_contact?.full_name)}</td><td>${fmt(client.primary_region)}</td><td>${fmt(client.legal_address)}</td><td>${fmt(client.active_contracts)}</td><td>${fmt(client.active_orders)}</td><td>${fmtDate(client.last_activity)}</td><td><div class="ops-row-actions"><button class="link-btn" data-nav="/clients/${client.id}">Ochish</button><button class="link-btn" data-nav="/clients/${client.id}/edit">Tahrirlash</button><button class="link-btn" data-nav="/clients/${client.id}?tab=documents">Hujjatlar</button></div></td></tr>`).join(""),
-    emptyText: "Mijozlar topilmadi.",
-    colspan: 10,
-    footer: opsFooter(data, "client"),
+// ---- Mijozlar (Clients) list — redesigned ----
+
+const CLIENTS_ICON_PATHS = {
+  search: '<circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>',
+  chevronDown: '<path d="m6 9 6 6 6-6"/>',
+  chevronLeft: '<path d="m15 18-6-6 6-6"/>',
+  chevronRight: '<path d="m9 18 6-6-6-6"/>',
+  plus: '<path d="M12 5v14M5 12h14"/>',
+  filter: '<path d="M22 3H2l8 9.46V19l4 2v-8.54L22 3Z"/>',
+  refresh: '<path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/><path d="M8 16H3v5"/>',
+  building: '<rect x="4" y="2" width="16" height="20" rx="2"/><path d="M9 22v-4h6v4"/><path d="M8 6h.01"/><path d="M16 6h.01"/><path d="M8 10h.01"/><path d="M16 10h.01"/><path d="M8 14h.01"/><path d="M16 14h.01"/>',
+  pencil: '<path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/>',
+  moreVertical: '<circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/>',
+  users: '<path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>',
+  fileText: '<path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2Z"/><path d="M14 2v6h6"/><path d="M9 13h6"/><path d="M9 17h6"/>',
+  cart: '<circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/>',
+};
+
+function clientsIcon(name, size = 16) {
+  return `<svg class="icon" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg">${CLIENTS_ICON_PATHS[name] || ""}</svg>`;
+}
+
+async function clientsAggregateStats() {
+  const pageSize = 100;
+  let page = 1;
+  let items = [];
+  let total = 0;
+  for (let i = 0; i < 5; i += 1) {
+    const data = await api(`/api/clients?page=${page}&page_size=${pageSize}`);
+    total = data.total;
+    items = items.concat(data.items);
+    if (items.length >= total || !data.items.length) break;
+    page += 1;
+  }
+  return {
+    total,
+    activeContracts: items.reduce((sum, c) => sum + (Number(c.active_contracts) || 0), 0),
+    activeOrders: items.reduce((sum, c) => sum + (Number(c.active_orders) || 0), 0),
+    regions: [...new Set(items.map((c) => c.primary_region).filter(Boolean))].sort(),
+    contacts: [...new Set(items.map((c) => c.primary_contact?.full_name).filter(Boolean))].sort(),
+  };
+}
+
+function clientsPaginationPages(current, total) {
+  const pages = [...new Set([1, total, current - 1, current, current + 1])].filter((p) => p >= 1 && p <= total).sort((a, b) => a - b);
+  const result = [];
+  let prev = 0;
+  pages.forEach((p) => {
+    if (p - prev > 1) result.push("...");
+    result.push(p);
+    prev = p;
   });
-  bindOpsSearch("search-form", "/clients", ["name", "inn", "phone", "contact_person", "region"]);
-  bindOpsPagination("client", "/clients");
+  return result;
+}
+
+function clientsPagination(page, pageSize, total) {
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const start = total ? (page - 1) * pageSize + 1 : 0;
+  const end = Math.min(page * pageSize, total);
+  const pages = clientsPaginationPages(page, totalPages);
+  return `
+    <div class="clients-pagination">
+      <div class="clients-pagination-info">Ko'rsatilmoqda: ${fmt(start)}-${fmt(end)} / ${fmt(total)}</div>
+      <div class="clients-pagination-controls">
+        <select id="clients-page-size">
+          ${[10, 20, 50, 100].map((size) => `<option value="${size}" ${size === pageSize ? "selected" : ""}>${size} / sahifa</option>`).join("")}
+        </select>
+        <button type="button" class="clients-page-btn" data-page="${page - 1}" ${page <= 1 ? "disabled" : ""} aria-label="Oldingi">${clientsIcon("chevronLeft", 14)}</button>
+        ${pages.map((p) => (p === "..." ? `<span class="clients-page-btn ellipsis">…</span>` : `<button type="button" class="clients-page-btn ${p === page ? "active" : ""}" data-page="${p}">${p}</button>`)).join("")}
+        <button type="button" class="clients-page-btn" data-page="${page + 1}" ${page >= totalPages ? "disabled" : ""} aria-label="Keyingi">${clientsIcon("chevronRight", 14)}</button>
+      </div>
+    </div>
+  `;
+}
+
+function clientRow(client) {
+  const hasInn = Boolean(client.inn);
+  const hasPhone = Boolean(client.phone);
+  const hasRegion = Boolean(client.primary_region);
+  const hasAddress = Boolean(client.legal_address);
+  return `
+    <tr>
+      <td>
+        <div class="clients-name-cell" data-nav="/clients/${client.id}">
+          <span class="clients-name-icon">${clientsIcon("building", 18)}</span>
+          <span class="clients-name-text">${esc(client.name)}</span>
+        </div>
+      </td>
+      <td class="clients-cell ${hasInn ? "" : "muted"}">${fmt(client.inn)}</td>
+      <td class="clients-cell ${hasPhone ? "" : "muted"}">${fmt(client.phone)}</td>
+      <td class="clients-cell ${hasRegion ? "" : "muted"}">${fmt(client.primary_region)}</td>
+      <td class="clients-address-cell ${hasAddress ? "" : "muted"}">${fmt(client.legal_address)}</td>
+      <td><span class="clients-badge contract">${fmt(client.active_contracts)}</span></td>
+      <td><span class="clients-badge order">${fmt(client.active_orders)}</span></td>
+      <td class="clients-cell muted">${fmtDate(client.last_activity)}</td>
+      <td>
+        <div class="clients-actions-cell">
+          <button class="action-view" type="button" data-nav="/clients/${client.id}">Ko'rish</button>
+          <button type="button" data-nav="/clients/${client.id}/edit" title="Tahrirlash" aria-label="Tahrirlash">${clientsIcon("pencil", 16)}</button>
+          <details class="clients-actions-menu">
+            <summary aria-label="Ko'proq amallar">${clientsIcon("moreVertical", 16)}</summary>
+            <div class="menu-panel">
+              <button type="button" data-nav="/clients/${client.id}/edit">Tahrirlash</button>
+              <button type="button" data-nav="/clients/${client.id}?tab=documents">Hujjatlar</button>
+            </div>
+          </details>
+        </div>
+      </td>
+    </tr>
+  `;
+}
+
+function bindClientsListEvents(params) {
+  const form = document.querySelector("#clients-filter-form");
+  form.addEventListener("submit", (event) => {
+    event.preventDefault();
+    const next = new URLSearchParams();
+    ["name", "inn", "region", "contact_person"].forEach((key) => {
+      const value = field(form, key);
+      if (value) next.set(key, value);
+    });
+    next.set("page_size", params.get("page_size") || "10");
+    navigate(`/clients?${next.toString()}`);
+  });
+
+  document.querySelector("#clients-refresh").addEventListener("click", () => navigate("/clients"));
+
+  document.querySelector("#clients-page-size")?.addEventListener("change", (event) => {
+    const next = new URLSearchParams(location.search);
+    next.set("page_size", event.target.value);
+    next.set("page", "1");
+    navigate(`/clients?${next.toString()}`);
+  });
+
+  document.querySelectorAll("[data-page]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const next = new URLSearchParams(location.search);
+      next.set("page", button.dataset.page);
+      navigate(`/clients?${next.toString()}`);
+    });
+  });
+}
+
+async function renderClientsList() {
+  app.innerHTML = `<div class="clients-page"><div class="clients-empty">Mijozlar yuklanmoqda...</div></div>`;
+  const params = new URLSearchParams(location.search);
+  if (!params.get("page_size")) params.set("page_size", "10");
+
+  const [data, stats] = await Promise.all([
+    api(`/api/clients?${params.toString()}`),
+    clientsAggregateStats().catch(() => null),
+  ]);
+
+  const page = Number(params.get("page")) || 1;
+  const pageSize = Number(params.get("page_size")) || 10;
+  const regionOptions = stats ? [...stats.regions] : [];
+  const contactOptions = stats ? [...stats.contacts] : [];
+  const currentRegion = params.get("region") || "";
+  const currentContact = params.get("contact_person") || "";
+  if (currentRegion && !regionOptions.includes(currentRegion)) regionOptions.unshift(currentRegion);
+  if (currentContact && !contactOptions.includes(currentContact)) contactOptions.unshift(currentContact);
+
+  app.innerHTML = `
+    <div class="clients-page">
+      <div class="clients-title-row">
+        <h1>Mijozlar</h1>
+        <div class="clients-summary-cards">
+          <div class="clients-summary-card">
+            <span class="clients-summary-icon teal">${clientsIcon("users", 20)}</span>
+            <span class="clients-summary-copy"><span>Jami mijozlar</span><strong>${fmt(data.total)}</strong></span>
+          </div>
+          <div class="clients-summary-card">
+            <span class="clients-summary-icon blue">${clientsIcon("fileText", 20)}</span>
+            <span class="clients-summary-copy"><span>Faol shartnomalar</span><strong>${stats ? fmt(stats.activeContracts) : dash}</strong></span>
+          </div>
+          <div class="clients-summary-card">
+            <span class="clients-summary-icon purple">${clientsIcon("cart", 20)}</span>
+            <span class="clients-summary-copy"><span>Faol buyurtmalar</span><strong>${stats ? fmt(stats.activeOrders) : dash}</strong></span>
+          </div>
+        </div>
+      </div>
+
+      <div class="clients-tabs">
+        <button class="active" type="button">Mijozlar</button>
+        <button type="button" data-nav="/contracts">Shartnomalar</button>
+        <button type="button" data-nav="/orders">Buyurtmalar</button>
+      </div>
+
+      <form id="clients-filter-form">
+        <div class="clients-toolbar">
+          <button type="button" class="clients-btn-primary" data-nav="/clients/new">${clientsIcon("plus", 16)}Yangi mijoz</button>
+          <div class="clients-filters">
+            <label class="clients-field has-icon-left clients-field-search">
+              <span class="field-icon-left">${clientsIcon("search", 16)}</span>
+              <input name="name" placeholder="Mijoz nomi bo'yicha qidirish" value="${esc(params.get("name") || "")}" />
+            </label>
+            <label class="clients-field clients-field-inn">
+              <input name="inn" placeholder="STIR kiriting" value="${esc(params.get("inn") || "")}" />
+            </label>
+            <label class="clients-field has-icon-right clients-field-region">
+              <select name="region">
+                <option value="">Barchasi</option>
+                ${regionOptions.map((region) => `<option value="${esc(region)}" ${currentRegion === region ? "selected" : ""}>${esc(region)}</option>`).join("")}
+              </select>
+              <span class="field-icon-right">${clientsIcon("chevronDown", 16)}</span>
+            </label>
+            <label class="clients-field has-icon-right clients-field-contact">
+              <select name="contact_person">
+                <option value="">Barchasi</option>
+                ${contactOptions.map((person) => `<option value="${esc(person)}" ${currentContact === person ? "selected" : ""}>${esc(person)}</option>`).join("")}
+              </select>
+              <span class="field-icon-right">${clientsIcon("chevronDown", 16)}</span>
+            </label>
+          </div>
+          <div class="clients-toolbar-spacer"></div>
+          <button type="submit" class="clients-icon-btn">${clientsIcon("filter", 16)}Saralash</button>
+          <button type="button" class="clients-icon-btn square" id="clients-refresh" title="Yangilash" aria-label="Yangilash">${clientsIcon("refresh", 16)}</button>
+        </div>
+      </form>
+
+      <div class="clients-table-card">
+        <div class="clients-table-scroll">
+          <table class="clients-table">
+            <thead>
+              <tr>
+                <th>Mijoz nomi</th>
+                <th>STIR</th>
+                <th>Telefon</th>
+                <th>Hudud</th>
+                <th>Yuridik manzil</th>
+                <th>Faol shartnomalar</th>
+                <th>Faol buyurtmalar</th>
+                <th>Oxirgi faollik</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              ${data.items.length ? data.items.map((client) => clientRow(client)).join("") : `<tr><td colspan="9"><div class="clients-empty">Mijozlar topilmadi.</div></td></tr>`}
+            </tbody>
+          </table>
+        </div>
+        ${clientsPagination(page, pageSize, data.total)}
+      </div>
+    </div>
+  `;
+
+  bindClientsListEvents(params);
 }
 
 async function renderNewClient() {
@@ -87,7 +313,7 @@ function detailHeader(client) {
       <div class="actions">
         <button class="btn" data-nav="/clients">Back</button>
         <button class="btn" data-nav="/clients/${client.id}/edit">Edit</button>
-        <button class="btn" data-nav="/contracts/new">Create contract</button>
+        <button class="btn" data-nav="/contracts/new?client_id=${client.id}">Create contract</button>
         <button class="btn" data-nav="/orders/new">Create order</button>
       </div>
     </div>
@@ -452,7 +678,7 @@ function notesTab(client) {
 
 function clientContractsTab(client, contracts = []) {
   return section("Contracts", `
-    <div class="actions"><button class="btn primary" data-nav="/contracts/new">Create contract</button></div>
+    <div class="actions"><button class="btn primary" data-nav="/contracts/new?client_id=${client.id}">Create contract</button></div>
     ${tableOrEmpty(contracts, ["Contract number", "Date", "Product", "Total quantity", "Total amount", "Delivered", "Remaining", "Status", "Actions"], (contract) => `
       <tr>
         <td><strong>${fmt(contract.contract_number)}</strong></td>

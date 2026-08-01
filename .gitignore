@@ -2,3 +2,8 @@ __pycache__/
 *.py[cod]
 .venv/
 bitum.db
+.env
+hikvison.py
+scan_hikvision.py
+users.json
+*.pptx

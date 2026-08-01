@@ -83,6 +83,16 @@ class LogisticsBase(BaseModel):
     cost_amount: Decimal | None = Field(default=None, ge=0)
     customer_price: Decimal | None = Field(default=None, ge=0)
     paid_by: PaidBy | None = None
+    route_name: str | None = None
+    distance_km: Decimal | None = Field(default=None, ge=0)
+    loaded_mileage_km: Decimal | None = Field(default=None, ge=0)
+    empty_mileage_km: Decimal | None = Field(default=None, ge=0)
+    fuel_consumption_liters: Decimal | None = Field(default=None, ge=0)
+    fuel_cost_amount: Decimal | None = Field(default=None, ge=0)
+    driver_wage_amount: Decimal | None = Field(default=None, ge=0)
+    esp_tax_percent: Decimal | None = Field(default=Decimal("12"), ge=0)
+    other_expenses_amount: Decimal | None = Field(default=None, ge=0)
+    business_trip_expenses_amount: Decimal | None = Field(default=None, ge=0)
     notes: str | None = None
     created_by: str | None = None
 

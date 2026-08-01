@@ -55,6 +55,18 @@ function showToast(message, isError = false) {
   }, 3600);
 }
 
+const AUTH_EXEMPT_PATHS = ["/api/auth/login", "/api/auth/me", "/api/auth/logout"];
+
+function handleAuthResponse(path, response) {
+  if (response.status === 401 && !AUTH_EXEMPT_PATHS.includes(path) && location.pathname !== "/login") {
+    currentUser = null;
+    navigate("/login");
+  }
+  if (response.status === 403) {
+    showToast("Sizda bu amalni bajarish huquqi yo'q.", true);
+  }
+}
+
 async function api(path, options = {}) {
   const response = await fetch(path, {
     headers: { "Content-Type": "application/json", ...(options.headers || {}) },
@@ -63,6 +75,7 @@ async function api(path, options = {}) {
   if (response.status === 204) return null;
   const body = await response.json().catch(() => ({}));
   if (!response.ok) {
+    handleAuthResponse(path, response);
     const detail = Array.isArray(body.detail) ? body.detail.map((item) => item.msg).join(", ") : body.detail;
     throw new Error(detail || "Request failed");
   }
@@ -73,6 +86,7 @@ async function apiForm(path, formData, options = {}) {
   const response = await fetch(path, { method: options.method || "POST", body: formData });
   const body = await response.json().catch(() => ({}));
   if (!response.ok) {
+    handleAuthResponse(path, response);
     const detail = Array.isArray(body.detail) ? body.detail.map((item) => item.msg).join(", ") : body.detail;
     throw new Error(detail || "Request failed");
   }
@@ -168,6 +182,11 @@ function getLogisticsIdFromPath() {
 
 function getTransportIdFromPath() {
   const match = location.pathname.match(/^\/transports\/(\d+)/);
+  return match ? Number(match[1]) : null;
+}
+
+function getTaskIdFromPath() {
+  const match = location.pathname.match(/^\/tasks\/(\d+)/);
   return match ? Number(match[1]) : null;
 }
 
@@ -399,6 +418,7 @@ function statusLabel(status) {
     supplierPaymentStatuses,
     procurementStatuses,
     supplierOfferStatuses,
+    taskStatuses,
   ];
   for (const group of groups) {
     const label = group.find(([key]) => key === status)?.[1];
