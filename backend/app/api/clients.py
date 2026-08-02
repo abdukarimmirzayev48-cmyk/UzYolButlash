@@ -41,6 +41,7 @@ from backend.app.schemas.client import (
     ClientUpdate,
     Page,
 )
+from backend.app.services.auth import require_edit
 
 
 router = APIRouter(prefix="/api/clients", tags=["clients"])
@@ -169,7 +170,7 @@ def ensure_inn_available(db: Session, inn: str | None, exclude_client_id: int | 
         )
 
 
-@router.post("", response_model=ClientDetail, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=ClientDetail, status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_edit("sotuv"))])
 def create_client(payload: ClientCreate, db: Session = Depends(get_db)):
     ensure_inn_available(db, payload.inn)
     data = payload.model_dump(exclude={"first_contact", "address", "bank_account"})
@@ -213,7 +214,7 @@ def get_client_detail(client_id: int, db: Session = Depends(get_db)):
     return client
 
 
-@router.patch("/{client_id}", response_model=ClientRead)
+@router.patch("/{client_id}", response_model=ClientRead, dependencies=[Depends(require_edit("sotuv"))])
 def update_client(client_id: int, payload: ClientUpdate, db: Session = Depends(get_db)):
     client = get_client_or_404(db, client_id)
     data = payload.model_dump(exclude_unset=True)
@@ -241,7 +242,7 @@ def ensure_client_has_no_activity(db: Session, client_id: int) -> None:
             )
 
 
-@router.delete("/{client_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/{client_id}", status_code=status.HTTP_204_NO_CONTENT, dependencies=[Depends(require_edit("sotuv"))])
 def delete_client(client_id: int, db: Session = Depends(get_db)):
     client = get_client_or_404(db, client_id)
     ensure_client_has_no_activity(db, client_id)
@@ -250,7 +251,7 @@ def delete_client(client_id: int, db: Session = Depends(get_db)):
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
-@router.post("/{client_id}/contacts", response_model=ClientContactRead, status_code=status.HTTP_201_CREATED)
+@router.post("/{client_id}/contacts", response_model=ClientContactRead, status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_edit("sotuv"))])
 def create_contact(client_id: int, payload: ClientContactCreate, db: Session = Depends(get_db)):
     get_client_or_404(db, client_id)
     contact = ClientContact(client_id=client_id, **payload.model_dump())
@@ -263,7 +264,7 @@ def create_contact(client_id: int, payload: ClientContactCreate, db: Session = D
     return contact
 
 
-@router.patch("/{client_id}/contacts/{contact_id}", response_model=ClientContactRead)
+@router.patch("/{client_id}/contacts/{contact_id}", response_model=ClientContactRead, dependencies=[Depends(require_edit("sotuv"))])
 def update_contact(client_id: int, contact_id: int, payload: ClientContactUpdate, db: Session = Depends(get_db)):
     contact = get_child_or_404(db, ClientContact, client_id, contact_id)
     update_model(contact, payload.model_dump(exclude_unset=True))
@@ -275,7 +276,7 @@ def update_contact(client_id: int, contact_id: int, payload: ClientContactUpdate
     return contact
 
 
-@router.delete("/{client_id}/contacts/{contact_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/{client_id}/contacts/{contact_id}", status_code=status.HTTP_204_NO_CONTENT, dependencies=[Depends(require_edit("sotuv"))])
 def delete_contact(client_id: int, contact_id: int, db: Session = Depends(get_db)):
     contact = get_child_or_404(db, ClientContact, client_id, contact_id)
     db.delete(contact)
@@ -283,7 +284,7 @@ def delete_contact(client_id: int, contact_id: int, db: Session = Depends(get_db
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
-@router.post("/{client_id}/contacts/{contact_id}/primary", response_model=ClientContactRead)
+@router.post("/{client_id}/contacts/{contact_id}/primary", response_model=ClientContactRead, dependencies=[Depends(require_edit("sotuv"))])
 def set_primary_contact(client_id: int, contact_id: int, db: Session = Depends(get_db)):
     contact = get_child_or_404(db, ClientContact, client_id, contact_id)
     contact.is_primary = True
@@ -293,7 +294,7 @@ def set_primary_contact(client_id: int, contact_id: int, db: Session = Depends(g
     return contact
 
 
-@router.post("/{client_id}/addresses", response_model=ClientAddressRead, status_code=status.HTTP_201_CREATED)
+@router.post("/{client_id}/addresses", response_model=ClientAddressRead, status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_edit("sotuv"))])
 def create_address(client_id: int, payload: ClientAddressCreate, db: Session = Depends(get_db)):
     get_client_or_404(db, client_id)
     address = ClientAddress(client_id=client_id, **payload.model_dump())
@@ -303,7 +304,7 @@ def create_address(client_id: int, payload: ClientAddressCreate, db: Session = D
     return address
 
 
-@router.patch("/{client_id}/addresses/{address_id}", response_model=ClientAddressRead)
+@router.patch("/{client_id}/addresses/{address_id}", response_model=ClientAddressRead, dependencies=[Depends(require_edit("sotuv"))])
 def update_address(client_id: int, address_id: int, payload: ClientAddressUpdate, db: Session = Depends(get_db)):
     address = get_child_or_404(db, ClientAddress, client_id, address_id)
     update_model(address, payload.model_dump(exclude_unset=True))
@@ -312,7 +313,7 @@ def update_address(client_id: int, address_id: int, payload: ClientAddressUpdate
     return address
 
 
-@router.delete("/{client_id}/addresses/{address_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/{client_id}/addresses/{address_id}", status_code=status.HTTP_204_NO_CONTENT, dependencies=[Depends(require_edit("sotuv"))])
 def delete_address(client_id: int, address_id: int, db: Session = Depends(get_db)):
     address = get_child_or_404(db, ClientAddress, client_id, address_id)
     db.delete(address)
@@ -320,7 +321,7 @@ def delete_address(client_id: int, address_id: int, db: Session = Depends(get_db
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
-@router.post("/{client_id}/bank-accounts", response_model=ClientBankAccountRead, status_code=status.HTTP_201_CREATED)
+@router.post("/{client_id}/bank-accounts", response_model=ClientBankAccountRead, status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_edit("sotuv"))])
 def create_bank_account(client_id: int, payload: ClientBankAccountCreate, db: Session = Depends(get_db)):
     get_client_or_404(db, client_id)
     account = ClientBankAccount(client_id=client_id, **payload.model_dump())
@@ -333,7 +334,7 @@ def create_bank_account(client_id: int, payload: ClientBankAccountCreate, db: Se
     return account
 
 
-@router.patch("/{client_id}/bank-accounts/{account_id}", response_model=ClientBankAccountRead)
+@router.patch("/{client_id}/bank-accounts/{account_id}", response_model=ClientBankAccountRead, dependencies=[Depends(require_edit("sotuv"))])
 def update_bank_account(client_id: int, account_id: int, payload: ClientBankAccountUpdate, db: Session = Depends(get_db)):
     account = get_child_or_404(db, ClientBankAccount, client_id, account_id)
     update_model(account, payload.model_dump(exclude_unset=True))
@@ -345,7 +346,7 @@ def update_bank_account(client_id: int, account_id: int, payload: ClientBankAcco
     return account
 
 
-@router.delete("/{client_id}/bank-accounts/{account_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/{client_id}/bank-accounts/{account_id}", status_code=status.HTTP_204_NO_CONTENT, dependencies=[Depends(require_edit("sotuv"))])
 def delete_bank_account(client_id: int, account_id: int, db: Session = Depends(get_db)):
     account = get_child_or_404(db, ClientBankAccount, client_id, account_id)
     db.delete(account)
@@ -353,7 +354,7 @@ def delete_bank_account(client_id: int, account_id: int, db: Session = Depends(g
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
-@router.post("/{client_id}/bank-accounts/{account_id}/primary", response_model=ClientBankAccountRead)
+@router.post("/{client_id}/bank-accounts/{account_id}/primary", response_model=ClientBankAccountRead, dependencies=[Depends(require_edit("sotuv"))])
 def set_primary_bank_account(client_id: int, account_id: int, db: Session = Depends(get_db)):
     account = get_child_or_404(db, ClientBankAccount, client_id, account_id)
     account.is_primary = True
@@ -363,7 +364,7 @@ def set_primary_bank_account(client_id: int, account_id: int, db: Session = Depe
     return account
 
 
-@router.post("/{client_id}/documents", response_model=ClientDocumentRead, status_code=status.HTTP_201_CREATED)
+@router.post("/{client_id}/documents", response_model=ClientDocumentRead, status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_edit("sotuv"))])
 def create_document(client_id: int, payload: ClientDocumentCreate, db: Session = Depends(get_db)):
     get_client_or_404(db, client_id)
     document = ClientDocument(client_id=client_id, **payload.model_dump())
@@ -373,7 +374,7 @@ def create_document(client_id: int, payload: ClientDocumentCreate, db: Session =
     return document
 
 
-@router.patch("/{client_id}/documents/{document_id}", response_model=ClientDocumentRead)
+@router.patch("/{client_id}/documents/{document_id}", response_model=ClientDocumentRead, dependencies=[Depends(require_edit("sotuv"))])
 def update_document(client_id: int, document_id: int, payload: ClientDocumentUpdate, db: Session = Depends(get_db)):
     document = get_child_or_404(db, ClientDocument, client_id, document_id)
     update_model(document, payload.model_dump(exclude_unset=True))
@@ -382,7 +383,7 @@ def update_document(client_id: int, document_id: int, payload: ClientDocumentUpd
     return document
 
 
-@router.delete("/{client_id}/documents/{document_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/{client_id}/documents/{document_id}", status_code=status.HTTP_204_NO_CONTENT, dependencies=[Depends(require_edit("sotuv"))])
 def delete_document(client_id: int, document_id: int, db: Session = Depends(get_db)):
     document = get_child_or_404(db, ClientDocument, client_id, document_id)
     db.delete(document)
@@ -390,7 +391,7 @@ def delete_document(client_id: int, document_id: int, db: Session = Depends(get_
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
-@router.post("/{client_id}/notes", response_model=ClientNoteRead, status_code=status.HTTP_201_CREATED)
+@router.post("/{client_id}/notes", response_model=ClientNoteRead, status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_edit("sotuv"))])
 def create_note(client_id: int, payload: ClientNoteCreate, db: Session = Depends(get_db)):
     get_client_or_404(db, client_id)
     note = ClientNote(client_id=client_id, **payload.model_dump())
@@ -400,7 +401,7 @@ def create_note(client_id: int, payload: ClientNoteCreate, db: Session = Depends
     return note
 
 
-@router.patch("/{client_id}/notes/{note_id}", response_model=ClientNoteRead)
+@router.patch("/{client_id}/notes/{note_id}", response_model=ClientNoteRead, dependencies=[Depends(require_edit("sotuv"))])
 def update_note(client_id: int, note_id: int, payload: ClientNoteUpdate, db: Session = Depends(get_db)):
     note = get_child_or_404(db, ClientNote, client_id, note_id)
     update_model(note, payload.model_dump(exclude_unset=True))
@@ -409,7 +410,7 @@ def update_note(client_id: int, note_id: int, payload: ClientNoteUpdate, db: Ses
     return note
 
 
-@router.delete("/{client_id}/notes/{note_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/{client_id}/notes/{note_id}", status_code=status.HTTP_204_NO_CONTENT, dependencies=[Depends(require_edit("sotuv"))])
 def delete_note(client_id: int, note_id: int, db: Session = Depends(get_db)):
     note = get_child_or_404(db, ClientNote, client_id, note_id)
     db.delete(note)

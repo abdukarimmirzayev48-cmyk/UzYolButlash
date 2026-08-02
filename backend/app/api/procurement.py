@@ -26,6 +26,7 @@ from backend.app.models.procurement import (
     ProcurementDocument,
     ProcurementNote,
 )
+from backend.app.services.auth import require_edit
 from backend.app.services.order_status import sync_order_status
 from backend.app.schemas.client import Page
 from backend.app.schemas.procurement import (
@@ -386,7 +387,7 @@ def list_suppliers(
     return Page(items=[serialize_supplier_list_item(supplier) for supplier in suppliers], total=total, page=page, page_size=page_size)
 
 
-@supplier_router.post("", response_model=SupplierDetail, status_code=status.HTTP_201_CREATED)
+@supplier_router.post("", response_model=SupplierDetail, status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_edit("taminot"))])
 def create_supplier(payload: SupplierCreate, db: Session = Depends(get_db)):
     supplier = Supplier(**payload.model_dump(exclude={"first_contact", "address", "bank_account"}))
     db.add(supplier)
@@ -406,7 +407,7 @@ def get_supplier(supplier_id: int, db: Session = Depends(get_db)):
     return load_supplier_detail(db, supplier_id)
 
 
-@supplier_router.patch("/{supplier_id}", response_model=SupplierDetail)
+@supplier_router.patch("/{supplier_id}", response_model=SupplierDetail, dependencies=[Depends(require_edit("taminot"))])
 def update_supplier(supplier_id: int, payload: SupplierUpdate, db: Session = Depends(get_db)):
     supplier = get_supplier_or_404(db, supplier_id)
     update_model(supplier, payload.model_dump(exclude_unset=True))
@@ -414,7 +415,7 @@ def update_supplier(supplier_id: int, payload: SupplierUpdate, db: Session = Dep
     return load_supplier_detail(db, supplier_id)
 
 
-@supplier_router.delete("/{supplier_id}", status_code=status.HTTP_204_NO_CONTENT)
+@supplier_router.delete("/{supplier_id}", status_code=status.HTTP_204_NO_CONTENT, dependencies=[Depends(require_edit("taminot"))])
 def delete_supplier(supplier_id: int, db: Session = Depends(get_db)):
     supplier = get_supplier_or_404(db, supplier_id)
     db.delete(supplier)
@@ -422,7 +423,7 @@ def delete_supplier(supplier_id: int, db: Session = Depends(get_db)):
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
-@supplier_router.post("/{supplier_id}/contacts", response_model=SupplierContactRead, status_code=status.HTTP_201_CREATED)
+@supplier_router.post("/{supplier_id}/contacts", response_model=SupplierContactRead, status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_edit("taminot"))])
 def create_supplier_contact(supplier_id: int, payload: SupplierContactBase, db: Session = Depends(get_db)):
     get_supplier_or_404(db, supplier_id)
     if payload.is_primary:
@@ -434,7 +435,7 @@ def create_supplier_contact(supplier_id: int, payload: SupplierContactBase, db: 
     return item
 
 
-@supplier_router.patch("/{supplier_id}/contacts/{item_id}", response_model=SupplierContactRead)
+@supplier_router.patch("/{supplier_id}/contacts/{item_id}", response_model=SupplierContactRead, dependencies=[Depends(require_edit("taminot"))])
 def update_supplier_contact(supplier_id: int, item_id: int, payload: SupplierContactUpdate, db: Session = Depends(get_db)):
     item = get_supplier_child_or_404(db, SupplierContact, supplier_id, item_id)
     data = payload.model_dump(exclude_unset=True)
@@ -446,7 +447,7 @@ def update_supplier_contact(supplier_id: int, item_id: int, payload: SupplierCon
     return item
 
 
-@supplier_router.delete("/{supplier_id}/contacts/{item_id}", status_code=status.HTTP_204_NO_CONTENT)
+@supplier_router.delete("/{supplier_id}/contacts/{item_id}", status_code=status.HTTP_204_NO_CONTENT, dependencies=[Depends(require_edit("taminot"))])
 def delete_supplier_contact(supplier_id: int, item_id: int, db: Session = Depends(get_db)):
     item = get_supplier_child_or_404(db, SupplierContact, supplier_id, item_id)
     db.delete(item)
@@ -454,7 +455,7 @@ def delete_supplier_contact(supplier_id: int, item_id: int, db: Session = Depend
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
-@supplier_router.post("/{supplier_id}/addresses", response_model=SupplierAddressRead, status_code=status.HTTP_201_CREATED)
+@supplier_router.post("/{supplier_id}/addresses", response_model=SupplierAddressRead, status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_edit("taminot"))])
 def create_supplier_address(supplier_id: int, payload: SupplierAddressBase, db: Session = Depends(get_db)):
     get_supplier_or_404(db, supplier_id)
     item = SupplierAddress(supplier_id=supplier_id, **payload.model_dump())
@@ -464,7 +465,7 @@ def create_supplier_address(supplier_id: int, payload: SupplierAddressBase, db: 
     return item
 
 
-@supplier_router.patch("/{supplier_id}/addresses/{item_id}", response_model=SupplierAddressRead)
+@supplier_router.patch("/{supplier_id}/addresses/{item_id}", response_model=SupplierAddressRead, dependencies=[Depends(require_edit("taminot"))])
 def update_supplier_address(supplier_id: int, item_id: int, payload: SupplierAddressUpdate, db: Session = Depends(get_db)):
     item = get_supplier_child_or_404(db, SupplierAddress, supplier_id, item_id)
     update_model(item, payload.model_dump(exclude_unset=True))
@@ -473,7 +474,7 @@ def update_supplier_address(supplier_id: int, item_id: int, payload: SupplierAdd
     return item
 
 
-@supplier_router.delete("/{supplier_id}/addresses/{item_id}", status_code=status.HTTP_204_NO_CONTENT)
+@supplier_router.delete("/{supplier_id}/addresses/{item_id}", status_code=status.HTTP_204_NO_CONTENT, dependencies=[Depends(require_edit("taminot"))])
 def delete_supplier_address(supplier_id: int, item_id: int, db: Session = Depends(get_db)):
     item = get_supplier_child_or_404(db, SupplierAddress, supplier_id, item_id)
     db.delete(item)
@@ -481,7 +482,7 @@ def delete_supplier_address(supplier_id: int, item_id: int, db: Session = Depend
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
-@supplier_router.post("/{supplier_id}/bank-accounts", response_model=SupplierBankAccountRead, status_code=status.HTTP_201_CREATED)
+@supplier_router.post("/{supplier_id}/bank-accounts", response_model=SupplierBankAccountRead, status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_edit("taminot"))])
 def create_supplier_bank_account(supplier_id: int, payload: SupplierBankAccountBase, db: Session = Depends(get_db)):
     get_supplier_or_404(db, supplier_id)
     if payload.is_primary:
@@ -493,7 +494,7 @@ def create_supplier_bank_account(supplier_id: int, payload: SupplierBankAccountB
     return item
 
 
-@supplier_router.patch("/{supplier_id}/bank-accounts/{item_id}", response_model=SupplierBankAccountRead)
+@supplier_router.patch("/{supplier_id}/bank-accounts/{item_id}", response_model=SupplierBankAccountRead, dependencies=[Depends(require_edit("taminot"))])
 def update_supplier_bank_account(supplier_id: int, item_id: int, payload: SupplierBankAccountUpdate, db: Session = Depends(get_db)):
     item = get_supplier_child_or_404(db, SupplierBankAccount, supplier_id, item_id)
     data = payload.model_dump(exclude_unset=True)
@@ -505,7 +506,7 @@ def update_supplier_bank_account(supplier_id: int, item_id: int, payload: Suppli
     return item
 
 
-@supplier_router.delete("/{supplier_id}/bank-accounts/{item_id}", status_code=status.HTTP_204_NO_CONTENT)
+@supplier_router.delete("/{supplier_id}/bank-accounts/{item_id}", status_code=status.HTTP_204_NO_CONTENT, dependencies=[Depends(require_edit("taminot"))])
 def delete_supplier_bank_account(supplier_id: int, item_id: int, db: Session = Depends(get_db)):
     item = get_supplier_child_or_404(db, SupplierBankAccount, supplier_id, item_id)
     db.delete(item)
@@ -513,7 +514,7 @@ def delete_supplier_bank_account(supplier_id: int, item_id: int, db: Session = D
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
-@supplier_router.post("/{supplier_id}/documents", response_model=SupplierDocumentRead, status_code=status.HTTP_201_CREATED)
+@supplier_router.post("/{supplier_id}/documents", response_model=SupplierDocumentRead, status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_edit("taminot"))])
 def create_supplier_document(supplier_id: int, payload: SupplierDocumentCreate, db: Session = Depends(get_db)):
     get_supplier_or_404(db, supplier_id)
     item = SupplierDocument(supplier_id=supplier_id, **payload.model_dump())
@@ -523,7 +524,7 @@ def create_supplier_document(supplier_id: int, payload: SupplierDocumentCreate, 
     return item
 
 
-@supplier_router.patch("/{supplier_id}/documents/{item_id}", response_model=SupplierDocumentRead)
+@supplier_router.patch("/{supplier_id}/documents/{item_id}", response_model=SupplierDocumentRead, dependencies=[Depends(require_edit("taminot"))])
 def update_supplier_document(supplier_id: int, item_id: int, payload: SupplierDocumentUpdate, db: Session = Depends(get_db)):
     item = get_supplier_child_or_404(db, SupplierDocument, supplier_id, item_id)
     update_model(item, payload.model_dump(exclude_unset=True))
@@ -532,7 +533,7 @@ def update_supplier_document(supplier_id: int, item_id: int, payload: SupplierDo
     return item
 
 
-@supplier_router.delete("/{supplier_id}/documents/{item_id}", status_code=status.HTTP_204_NO_CONTENT)
+@supplier_router.delete("/{supplier_id}/documents/{item_id}", status_code=status.HTTP_204_NO_CONTENT, dependencies=[Depends(require_edit("taminot"))])
 def delete_supplier_document(supplier_id: int, item_id: int, db: Session = Depends(get_db)):
     item = get_supplier_child_or_404(db, SupplierDocument, supplier_id, item_id)
     db.delete(item)
@@ -540,7 +541,7 @@ def delete_supplier_document(supplier_id: int, item_id: int, db: Session = Depen
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
-@supplier_router.post("/{supplier_id}/notes", response_model=SupplierNoteRead, status_code=status.HTTP_201_CREATED)
+@supplier_router.post("/{supplier_id}/notes", response_model=SupplierNoteRead, status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_edit("taminot"))])
 def create_supplier_note(supplier_id: int, payload: SupplierNoteCreate, db: Session = Depends(get_db)):
     get_supplier_or_404(db, supplier_id)
     item = SupplierNote(supplier_id=supplier_id, **payload.model_dump())
@@ -550,7 +551,7 @@ def create_supplier_note(supplier_id: int, payload: SupplierNoteCreate, db: Sess
     return item
 
 
-@supplier_router.patch("/{supplier_id}/notes/{item_id}", response_model=SupplierNoteRead)
+@supplier_router.patch("/{supplier_id}/notes/{item_id}", response_model=SupplierNoteRead, dependencies=[Depends(require_edit("taminot"))])
 def update_supplier_note(supplier_id: int, item_id: int, payload: SupplierNoteUpdate, db: Session = Depends(get_db)):
     item = get_supplier_child_or_404(db, SupplierNote, supplier_id, item_id)
     update_model(item, payload.model_dump(exclude_unset=True))
@@ -559,7 +560,7 @@ def update_supplier_note(supplier_id: int, item_id: int, payload: SupplierNoteUp
     return item
 
 
-@supplier_router.delete("/{supplier_id}/notes/{item_id}", status_code=status.HTTP_204_NO_CONTENT)
+@supplier_router.delete("/{supplier_id}/notes/{item_id}", status_code=status.HTTP_204_NO_CONTENT, dependencies=[Depends(require_edit("taminot"))])
 def delete_supplier_note(supplier_id: int, item_id: int, db: Session = Depends(get_db)):
     item = get_supplier_child_or_404(db, SupplierNote, supplier_id, item_id)
     db.delete(item)
@@ -620,7 +621,7 @@ def list_procurements(
     return Page(items=[serialize_procurement_list_item(row) for row in rows], total=total, page=page, page_size=page_size)
 
 
-@procurement_router.post("", response_model=ProcurementDetail, status_code=status.HTTP_201_CREATED)
+@procurement_router.post("", response_model=ProcurementDetail, status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_edit("taminot"))])
 def create_procurement(payload: ProcurementCreate, db: Session = Depends(get_db)):
     order = db.scalars(select(Order).where(Order.id == payload.order_id).options(selectinload(Order.items), selectinload(Order.procurement))).first()
     if not order:
@@ -645,7 +646,7 @@ def get_procurement(procurement_id: int, db: Session = Depends(get_db)):
     return result.model_copy(update={"summary": procurement_summary(procurement)})
 
 
-@procurement_router.post("/{procurement_id}/documents", response_model=ProcurementDocumentRead, status_code=status.HTTP_201_CREATED)
+@procurement_router.post("/{procurement_id}/documents", response_model=ProcurementDocumentRead, status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_edit("taminot"))])
 def create_procurement_document(procurement_id: int, payload: ProcurementDocumentCreate, db: Session = Depends(get_db)):
     procurement = load_procurement_detail(db, procurement_id)
     if payload.supplier_offer_id and not any(offer.id == payload.supplier_offer_id for offer in procurement.offers):
@@ -657,7 +658,7 @@ def create_procurement_document(procurement_id: int, payload: ProcurementDocumen
     return item
 
 
-@procurement_router.patch("/{procurement_id}/documents/{item_id}", response_model=ProcurementDocumentRead)
+@procurement_router.patch("/{procurement_id}/documents/{item_id}", response_model=ProcurementDocumentRead, dependencies=[Depends(require_edit("taminot"))])
 def update_procurement_document(procurement_id: int, item_id: int, payload: ProcurementDocumentUpdate, db: Session = Depends(get_db)):
     procurement = load_procurement_detail(db, procurement_id)
     item = get_procurement_child_or_404(db, ProcurementDocument, procurement_id, item_id)
@@ -670,7 +671,7 @@ def update_procurement_document(procurement_id: int, item_id: int, payload: Proc
     return item
 
 
-@procurement_router.delete("/{procurement_id}/documents/{item_id}", status_code=status.HTTP_204_NO_CONTENT)
+@procurement_router.delete("/{procurement_id}/documents/{item_id}", status_code=status.HTTP_204_NO_CONTENT, dependencies=[Depends(require_edit("taminot"))])
 def delete_procurement_document(procurement_id: int, item_id: int, db: Session = Depends(get_db)):
     item = get_procurement_child_or_404(db, ProcurementDocument, procurement_id, item_id)
     db.delete(item)
@@ -678,7 +679,7 @@ def delete_procurement_document(procurement_id: int, item_id: int, db: Session =
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
-@procurement_router.post("/{procurement_id}/notes", response_model=ProcurementNoteRead, status_code=status.HTTP_201_CREATED)
+@procurement_router.post("/{procurement_id}/notes", response_model=ProcurementNoteRead, status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_edit("taminot"))])
 def create_procurement_note(procurement_id: int, payload: ProcurementNoteCreate, db: Session = Depends(get_db)):
     load_procurement_detail(db, procurement_id)
     item = ProcurementNote(procurement_id=procurement_id, **payload.model_dump())
@@ -688,7 +689,7 @@ def create_procurement_note(procurement_id: int, payload: ProcurementNoteCreate,
     return item
 
 
-@procurement_router.patch("/{procurement_id}/notes/{item_id}", response_model=ProcurementNoteRead)
+@procurement_router.patch("/{procurement_id}/notes/{item_id}", response_model=ProcurementNoteRead, dependencies=[Depends(require_edit("taminot"))])
 def update_procurement_note(procurement_id: int, item_id: int, payload: ProcurementNoteUpdate, db: Session = Depends(get_db)):
     item = get_procurement_child_or_404(db, ProcurementNote, procurement_id, item_id)
     update_model(item, payload.model_dump(exclude_unset=True))
@@ -697,7 +698,7 @@ def update_procurement_note(procurement_id: int, item_id: int, payload: Procurem
     return item
 
 
-@procurement_router.delete("/{procurement_id}/notes/{item_id}", status_code=status.HTTP_204_NO_CONTENT)
+@procurement_router.delete("/{procurement_id}/notes/{item_id}", status_code=status.HTTP_204_NO_CONTENT, dependencies=[Depends(require_edit("taminot"))])
 def delete_procurement_note(procurement_id: int, item_id: int, db: Session = Depends(get_db)):
     item = get_procurement_child_or_404(db, ProcurementNote, procurement_id, item_id)
     db.delete(item)
@@ -705,7 +706,7 @@ def delete_procurement_note(procurement_id: int, item_id: int, db: Session = Dep
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
-@procurement_router.post("/{procurement_id}/offers", response_model=SupplierOfferRead, status_code=status.HTTP_201_CREATED)
+@procurement_router.post("/{procurement_id}/offers", response_model=SupplierOfferRead, status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_edit("taminot"))])
 def create_supplier_offer(procurement_id: int, payload: SupplierOfferCreate, db: Session = Depends(get_db)):
     procurement = load_procurement_detail(db, procurement_id)
     supplier = db.get(Supplier, payload.supplier_id) if payload.supplier_id else None
@@ -739,7 +740,7 @@ def create_supplier_offer(procurement_id: int, payload: SupplierOfferCreate, db:
     return offer
 
 
-@procurement_router.patch("/offer-items/{offer_item_id}", response_model=SupplierOfferItemRead)
+@procurement_router.patch("/offer-items/{offer_item_id}", response_model=SupplierOfferItemRead, dependencies=[Depends(require_edit("taminot"))])
 def update_offer_item_selection(offer_item_id: int, selected_quantity: Decimal = Query(..., ge=0), db: Session = Depends(get_db)):
     item = db.get(SupplierOfferItem, offer_item_id)
     if not item:
@@ -753,7 +754,7 @@ def update_offer_item_selection(offer_item_id: int, selected_quantity: Decimal =
     return item
 
 
-@procurement_router.post("/{procurement_id}/offers/{offer_id}/confirm", response_model=SupplierOfferRead)
+@procurement_router.post("/{procurement_id}/offers/{offer_id}/confirm", response_model=SupplierOfferRead, dependencies=[Depends(require_edit("taminot"))])
 def confirm_supplier_offer(procurement_id: int, offer_id: int, db: Session = Depends(get_db)):
     procurement = load_procurement_detail(db, procurement_id)
     offer = next((row for row in procurement.offers if row.id == offer_id), None)
@@ -771,7 +772,7 @@ def confirm_supplier_offer(procurement_id: int, offer_id: int, db: Session = Dep
     return offer
 
 
-@procurement_router.delete("/{procurement_id}/offers/{offer_id}", status_code=status.HTTP_204_NO_CONTENT)
+@procurement_router.delete("/{procurement_id}/offers/{offer_id}", status_code=status.HTTP_204_NO_CONTENT, dependencies=[Depends(require_edit("taminot"))])
 def delete_supplier_offer(procurement_id: int, offer_id: int, db: Session = Depends(get_db)):
     procurement = load_procurement_detail(db, procurement_id)
     offer = next((row for row in procurement.offers if row.id == offer_id), None)

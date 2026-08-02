@@ -29,6 +29,7 @@ from backend.app.models.finance import CustomerInvoice
 from backend.app.models.inventory import StockAllocation
 from backend.app.models.order import Order, OrderItem
 from backend.app.models.procurement import SupplierAddress, SupplierAddressType
+from backend.app.services.auth import require_edit
 from backend.app.services.order_status import sync_order_status
 from backend.app.schemas.client import Page
 from backend.app.schemas.delivery import (
@@ -444,7 +445,7 @@ def list_batches(
     return Page(items=[serialize_batch(batch) for batch in batches], total=total, page=page, page_size=page_size)
 
 
-@router.post("", response_model=DeliveryBatchDetail, status_code=201)
+@router.post("", response_model=DeliveryBatchDetail, status_code=201, dependencies=[Depends(require_edit("yetkazib_berish"))])
 def create_batch(payload: DeliveryBatchCreate, db: Session = Depends(get_db)):
     order = get_order_or_400(db, payload.order_id)
     order_items = validate_items(db, order, payload.items)
@@ -491,7 +492,7 @@ def get_batch_detail(batch_id: int, db: Session = Depends(get_db)):
     return result.model_copy(update={"items": items, "summary": batch_summary(batch), "order_item_balances": balances_for_batch(db, batch)})
 
 
-@router.post("/{batch_id}/confirm-loading", response_model=DeliveryBatchDetail)
+@router.post("/{batch_id}/confirm-loading", response_model=DeliveryBatchDetail, dependencies=[Depends(require_edit("yetkazib_berish"))])
 def confirm_batch_loading(batch_id: int, payload: DeliveryBatchLoadingConfirm, db: Session = Depends(get_db)):
     batch = load_batch_detail(db, batch_id)
     logistics = batch.logistics
@@ -538,7 +539,7 @@ def confirm_batch_loading(batch_id: int, payload: DeliveryBatchLoadingConfirm, d
     return get_batch_detail(batch.id, db)
 
 
-@router.post("/{batch_id}/confirm-delivery", response_model=DeliveryBatchDetail)
+@router.post("/{batch_id}/confirm-delivery", response_model=DeliveryBatchDetail, dependencies=[Depends(require_edit("yetkazib_berish"))])
 def confirm_batch_delivery(batch_id: int, payload: DeliveryBatchDeliveryConfirm, db: Session = Depends(get_db)):
     batch = load_batch_detail(db, batch_id)
     logistics = batch.logistics
@@ -573,7 +574,7 @@ def confirm_batch_delivery(batch_id: int, payload: DeliveryBatchDeliveryConfirm,
     return get_batch_detail(batch.id, db)
 
 
-@router.post("/{batch_id}/complete", response_model=DeliveryBatchDetail)
+@router.post("/{batch_id}/complete", response_model=DeliveryBatchDetail, dependencies=[Depends(require_edit("yetkazib_berish"))])
 def complete_batch(batch_id: int, payload: DeliveryBatchCompletionConfirm, db: Session = Depends(get_db)):
     batch = load_batch_detail(db, batch_id)
     logistics = batch.logistics
@@ -604,7 +605,7 @@ def complete_batch(batch_id: int, payload: DeliveryBatchCompletionConfirm, db: S
     return get_batch_detail(batch.id, db)
 
 
-@router.patch("/{batch_id}", response_model=DeliveryBatchDetail)
+@router.patch("/{batch_id}", response_model=DeliveryBatchDetail, dependencies=[Depends(require_edit("yetkazib_berish"))])
 def update_batch(batch_id: int, payload: DeliveryBatchUpdate, db: Session = Depends(get_db)):
     batch = load_batch_detail(db, batch_id)
     order = get_order_or_400(db, payload.order_id or batch.order_id)
@@ -635,7 +636,7 @@ def update_batch(batch_id: int, payload: DeliveryBatchUpdate, db: Session = Depe
     return get_batch_detail(batch.id, db)
 
 
-@router.delete("/{batch_id}", status_code=204)
+@router.delete("/{batch_id}", status_code=204, dependencies=[Depends(require_edit("yetkazib_berish"))])
 def delete_batch(batch_id: int, db: Session = Depends(get_db)):
     batch = get_batch_or_404(db, batch_id)
     if db.scalar(select(func.count()).where(CustomerInvoice.delivery_batch_id == batch_id)):
@@ -655,7 +656,7 @@ def delete_batch(batch_id: int, db: Session = Depends(get_db)):
     return Response(status_code=204)
 
 
-@router.post("/{batch_id}/items", response_model=DeliveryBatchItemRead, status_code=201)
+@router.post("/{batch_id}/items", response_model=DeliveryBatchItemRead, status_code=201, dependencies=[Depends(require_edit("yetkazib_berish"))])
 def create_batch_item(batch_id: int, payload: DeliveryBatchItemCreate, db: Session = Depends(get_db)):
     batch = load_batch_detail(db, batch_id)
     order_items = validate_items(db, batch.order, [payload], batch.id)
@@ -669,7 +670,7 @@ def create_batch_item(batch_id: int, payload: DeliveryBatchItemCreate, db: Sessi
     return item
 
 
-@router.patch("/{batch_id}/items/{item_id}", response_model=DeliveryBatchItemRead)
+@router.patch("/{batch_id}/items/{item_id}", response_model=DeliveryBatchItemRead, dependencies=[Depends(require_edit("yetkazib_berish"))])
 def update_batch_item(batch_id: int, item_id: int, payload: DeliveryBatchItemUpdate, db: Session = Depends(get_db)):
     batch = load_batch_detail(db, batch_id)
     item = get_child_or_404(db, DeliveryBatchItem, "delivery_batch_id", batch_id, item_id)
@@ -697,7 +698,7 @@ def update_batch_item(batch_id: int, item_id: int, payload: DeliveryBatchItemUpd
     return item
 
 
-@router.delete("/{batch_id}/items/{item_id}", status_code=204)
+@router.delete("/{batch_id}/items/{item_id}", status_code=204, dependencies=[Depends(require_edit("yetkazib_berish"))])
 def delete_batch_item(batch_id: int, item_id: int, db: Session = Depends(get_db)):
     batch = load_batch_detail(db, batch_id)
     if len(batch.items) <= 1:
@@ -711,7 +712,7 @@ def delete_batch_item(batch_id: int, item_id: int, db: Session = Depends(get_db)
     return Response(status_code=204)
 
 
-@router.post("/{batch_id}/documents", response_model=DeliveryBatchDocumentRead, status_code=201)
+@router.post("/{batch_id}/documents", response_model=DeliveryBatchDocumentRead, status_code=201, dependencies=[Depends(require_edit("yetkazib_berish"))])
 def create_batch_document(batch_id: int, payload: DeliveryBatchDocumentCreate, db: Session = Depends(get_db)):
     get_batch_or_404(db, batch_id)
     document = DeliveryBatchDocument(delivery_batch_id=batch_id, **payload.model_dump())
@@ -721,7 +722,7 @@ def create_batch_document(batch_id: int, payload: DeliveryBatchDocumentCreate, d
     return document
 
 
-@router.post("/{batch_id}/documents/upload", response_model=DeliveryBatchDocumentRead, status_code=201)
+@router.post("/{batch_id}/documents/upload", response_model=DeliveryBatchDocumentRead, status_code=201, dependencies=[Depends(require_edit("yetkazib_berish"))])
 def upload_batch_document(
     batch_id: int,
     document_type: BatchDocumentType = Form(...),
@@ -752,7 +753,7 @@ def upload_batch_document(
     return document
 
 
-@router.patch("/{batch_id}/documents/{document_id}", response_model=DeliveryBatchDocumentRead)
+@router.patch("/{batch_id}/documents/{document_id}", response_model=DeliveryBatchDocumentRead, dependencies=[Depends(require_edit("yetkazib_berish"))])
 def update_batch_document(batch_id: int, document_id: int, payload: DeliveryBatchDocumentUpdate, db: Session = Depends(get_db)):
     document = get_child_or_404(db, DeliveryBatchDocument, "delivery_batch_id", batch_id, document_id)
     update_model(document, payload.model_dump(exclude_unset=True))
@@ -761,7 +762,7 @@ def update_batch_document(batch_id: int, document_id: int, payload: DeliveryBatc
     return document
 
 
-@router.delete("/{batch_id}/documents/{document_id}", status_code=204)
+@router.delete("/{batch_id}/documents/{document_id}", status_code=204, dependencies=[Depends(require_edit("yetkazib_berish"))])
 def delete_batch_document(batch_id: int, document_id: int, db: Session = Depends(get_db)):
     document = get_child_or_404(db, DeliveryBatchDocument, "delivery_batch_id", batch_id, document_id)
     db.delete(document)
@@ -769,7 +770,7 @@ def delete_batch_document(batch_id: int, document_id: int, db: Session = Depends
     return Response(status_code=204)
 
 
-@router.post("/{batch_id}/notes", response_model=DeliveryBatchNoteRead, status_code=201)
+@router.post("/{batch_id}/notes", response_model=DeliveryBatchNoteRead, status_code=201, dependencies=[Depends(require_edit("yetkazib_berish"))])
 def create_batch_note(batch_id: int, payload: DeliveryBatchNoteCreate, db: Session = Depends(get_db)):
     get_batch_or_404(db, batch_id)
     note = DeliveryBatchNote(delivery_batch_id=batch_id, **payload.model_dump())
@@ -779,7 +780,7 @@ def create_batch_note(batch_id: int, payload: DeliveryBatchNoteCreate, db: Sessi
     return note
 
 
-@router.delete("/{batch_id}/notes/{note_id}", status_code=204)
+@router.delete("/{batch_id}/notes/{note_id}", status_code=204, dependencies=[Depends(require_edit("yetkazib_berish"))])
 def delete_batch_note(batch_id: int, note_id: int, db: Session = Depends(get_db)):
     note = get_child_or_404(db, DeliveryBatchNote, "delivery_batch_id", batch_id, note_id)
     db.delete(note)
@@ -843,7 +844,7 @@ def get_logistics_detail(logistics_id: int, db: Session = Depends(get_db)):
     )
 
 
-@logistics_router.patch("/{logistics_id}", response_model=LogisticsRead)
+@logistics_router.patch("/{logistics_id}", response_model=LogisticsRead, dependencies=[Depends(require_edit("yetkazib_berish"))])
 def update_logistics(logistics_id: int, payload: LogisticsUpdate, db: Session = Depends(get_db)):
     logistics = db.scalars(select(Logistics).where(Logistics.id == logistics_id).options(selectinload(Logistics.batch).selectinload(DeliveryBatch.items), selectinload(Logistics.batch).selectinload(DeliveryBatch.order))).first()
     if not logistics:
@@ -860,7 +861,7 @@ def update_logistics(logistics_id: int, payload: LogisticsUpdate, db: Session = 
     return logistics
 
 
-@logistics_router.post("/{logistics_id}/documents", response_model=LogisticsDocumentRead, status_code=201)
+@logistics_router.post("/{logistics_id}/documents", response_model=LogisticsDocumentRead, status_code=201, dependencies=[Depends(require_edit("yetkazib_berish"))])
 def create_logistics_document(logistics_id: int, payload: LogisticsDocumentCreate, db: Session = Depends(get_db)):
     if not db.get(Logistics, logistics_id):
         raise HTTPException(status_code=404, detail="Logistics not found")
@@ -871,7 +872,7 @@ def create_logistics_document(logistics_id: int, payload: LogisticsDocumentCreat
     return document
 
 
-@logistics_router.post("/{logistics_id}/notes", response_model=LogisticsNoteRead, status_code=201)
+@logistics_router.post("/{logistics_id}/notes", response_model=LogisticsNoteRead, status_code=201, dependencies=[Depends(require_edit("yetkazib_berish"))])
 def create_logistics_note(logistics_id: int, payload: LogisticsNoteCreate, db: Session = Depends(get_db)):
     if not db.get(Logistics, logistics_id):
         raise HTTPException(status_code=404, detail="Logistics not found")

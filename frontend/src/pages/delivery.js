@@ -827,17 +827,18 @@ async function renderDeliveryBatchesList() {
   app.innerHTML = `<div class="page ops-page"><div class="empty">Partiyalar yuklanmoqda...</div></div>`;
   const params = new URLSearchParams(location.search);
   const data = await api(`/api/delivery-batches?${params.toString()}`);
+  const editable = canEdit("yetkazib_berish");
   app.innerHTML = opsListPage({
     className: "batches-ops-page",
     title: "Partiyalar",
     tabs: [{ label: "Buyurtmalar", path: "/orders" }, { label: "Partiyalar", active: true }, { label: "Logistika", path: "/logistics" }, { label: "Transportlar", path: "/transports" }],
-    createPath: "/delivery-batches/new",
+    createPath: editable ? "/delivery-batches/new" : undefined,
     clearPath: "/delivery-batches",
     counter: `${fmt(data.total)} ta partiya`,
     formId: "batch-search-form",
     filters: `<input name="search" placeholder="Partiya, buyurtma, mijoz, mahsulot" value="${esc(params.get("search") || "")}" /><select name="status"><option value="">Status</option>${batchStatuses.map(([key, label]) => `<option value="${key}" ${params.get("status") === key ? "selected" : ""}>${label}</option>`).join("")}</select>`,
     headers: ["Partiya raqami", "Sana", "Buyurtma", "Shartnoma", "Mijoz", "Mahsulot", "Reja", "Yuklangan", "Qabul qilingan", "Farq", "Ta'minotchi", "Status", "Logistika", ""],
-    rows: data.items.map((batch) => `<tr><td><button class="ops-primary-link" data-nav="/delivery-batches/${batch.id}">${fmt(batch.batch_number)}</button></td><td>${fmt(batch.batch_date)}</td><td>${fmt(batch.order?.order_number)}</td><td>${fmt(batch.contract?.contract_number)}</td><td>${fmt(batch.client?.name)}</td><td>${fmt(batch.product)}</td><td>${fmtQty(batch.total_planned_quantity)}</td><td>${fmtQty(batch.total_loaded_quantity)}</td><td>${fmtQty(batch.total_accepted_quantity)}</td><td class="${numberValue(batch.total_difference_quantity) !== 0 ? "ops-warning" : ""}">${fmtQty(batch.total_difference_quantity)}</td><td>${fmt(batch.supplier_name)}</td><td>${statusBadge(batch.status)}</td><td>${fmt(optionLabel(logisticsStatuses, batch.logistics_status))}</td><td><div class="ops-row-actions"><button class="link-btn" data-nav="/delivery-batches/${batch.id}">Ochish</button><button class="link-btn" data-nav="/delivery-batches/${batch.id}/edit">Tahrirlash</button><button class="link-btn" data-nav="/delivery-batches/${batch.id}?tab=logistics">Logistika</button><button class="link-btn" data-nav="/delivery-batches/${batch.id}?tab=documents">Hujjatlar</button></div></td></tr>`).join(""),
+    rows: data.items.map((batch) => `<tr><td><button class="ops-primary-link" data-nav="/delivery-batches/${batch.id}">${fmt(batch.batch_number)}</button></td><td>${fmt(batch.batch_date)}</td><td>${fmt(batch.order?.order_number)}</td><td>${fmt(batch.contract?.contract_number)}</td><td>${fmt(batch.client?.name)}</td><td>${fmt(batch.product)}</td><td>${fmtQty(batch.total_planned_quantity)}</td><td>${fmtQty(batch.total_loaded_quantity)}</td><td>${fmtQty(batch.total_accepted_quantity)}</td><td class="${numberValue(batch.total_difference_quantity) !== 0 ? "ops-warning" : ""}">${fmtQty(batch.total_difference_quantity)}</td><td>${fmt(batch.supplier_name)}</td><td>${statusBadge(batch.status)}</td><td>${fmt(optionLabel(logisticsStatuses, batch.logistics_status))}</td><td><div class="ops-row-actions"><button class="link-btn" data-nav="/delivery-batches/${batch.id}">Ochish</button>${editable ? `<button class="link-btn" data-nav="/delivery-batches/${batch.id}/edit">Tahrirlash</button>` : ""}<button class="link-btn" data-nav="/delivery-batches/${batch.id}?tab=logistics">Logistika</button><button class="link-btn" data-nav="/delivery-batches/${batch.id}?tab=documents">Hujjatlar</button></div></td></tr>`).join(""),
     emptyText: "Partiyalar topilmadi.",
     colspan: 14,
     footer: opsFooter(data, "batch"),
@@ -861,6 +862,7 @@ async function renderEditBatch(id) {
 function batchHeader(batch) {
   const logistics = batch.logistics || {};
   const quantity = batch.summary?.total_planned_quantity || batch.items?.[0]?.planned_quantity;
+  const editable = canEdit("yetkazib_berish");
   return `<div class="workflow-header">
     <div class="page-title">
       <h1>Partiya: ${fmt(batch.batch_number)}</h1>
@@ -872,14 +874,14 @@ function batchHeader(batch) {
         <summary>Amallar</summary>
         <div>
           <button type="button" data-nav="/delivery-batches/${batch.id}?tab=quantity">Qabul miqdorini kiritish</button>
-          <button type="button" data-transport-assignment>Transport biriktirish</button>
+          ${editable ? `<button type="button" data-transport-assignment>Transport biriktirish</button>` : ""}
           <button type="button" data-nav="/delivery-batches/${batch.id}?tab=logistics">Logistika</button>
-          <button type="button" data-nav="/delivery-batches/${batch.id}/edit">To'liq tahrirlash</button>
-          <button type="button" data-nav="/customer-invoices/new?client_id=${batch.client_id}&contract_id=${batch.contract_id}&order_id=${batch.order_id}&delivery_batch_id=${batch.id}">Mijoz hisobi yaratish</button>
-          <button type="button" data-nav="/supplier-invoices/new?delivery_batch_id=${batch.id}">Ta'minotchi hisobi yaratish</button>
+          ${editable ? `<button type="button" data-nav="/delivery-batches/${batch.id}/edit">To'liq tahrirlash</button>` : ""}
+          ${canEdit("moliya") ? `<button type="button" data-nav="/customer-invoices/new?client_id=${batch.client_id}&contract_id=${batch.contract_id}&order_id=${batch.order_id}&delivery_batch_id=${batch.id}">Mijoz hisobi yaratish</button>
+          <button type="button" data-nav="/supplier-invoices/new?delivery_batch_id=${batch.id}">Ta'minotchi hisobi yaratish</button>` : ""}
         </div>
       </details>
-      <button class="btn" data-nav="/delivery-batches/${batch.id}?tab=documents">Hujjat yuklash</button>
+      ${editable ? `<button class="btn" data-nav="/delivery-batches/${batch.id}?tab=documents">Hujjat yuklash</button>` : ""}
     </div>
   </div>${batchStatusCards(batch)}${batchWarningsPanel(batch)}${batchNextActionPanel(batch)}${batchWorkflowStepper(batch)}`;
 }
@@ -889,21 +891,22 @@ function batchTabs(active) {
 }
 
 function batchActiveTab(batch, active) {
-  if (active === "quantity") return section("Miqdor", `<div class="actions"><button class="btn primary" data-focus-acceptance>Qabul miqdorini kiritish</button></div><p class="helper-text">Farq faqat qabul miqdori kiritilgandan keyin hisoblanadi.</p><form id="batch-quantity-form">${tableOrEmpty(batch.items, ["Mahsulot", "Birlik", "Reja", "Yuklangan", "Qabul qilingan", "Farq", "Miqdor holati", "Izoh"], (item) => {
+  const editable = canEdit("yetkazib_berish");
+  if (active === "quantity") return section("Miqdor", `${editable ? `<div class="actions"><button class="btn primary" data-focus-acceptance>Qabul miqdorini kiritish</button></div>` : ""}<p class="helper-text">Farq faqat qabul miqdori kiritilgandan keyin hisoblanadi.</p><form id="batch-quantity-form">${tableOrEmpty(batch.items, ["Mahsulot", "Birlik", "Reja", "Yuklangan", "Qabul qilingan", "Farq", "Miqdor holati", "Izoh"], (item) => {
     const status = item.accepted_quantity === null || item.accepted_quantity === undefined ? { label: "Qabul kutilmoqda", tone: "warning" } : numberValue(item.difference_quantity) === 0 ? { label: "Mos", tone: "success" } : { label: "Miqdor farqi bor", tone: "warning" };
-    return `<tr data-batch-item-row="${item.id}"><td>${fmt(item.product_name)}</td><td>${fmt(item.unit)}</td><td>${fmtQty(item.planned_quantity, item.unit)}</td><td><input name="loaded_quantity_${item.id}" type="number" step="any" value="${esc(item.loaded_quantity ?? "")}" /></td><td><input name="accepted_quantity_${item.id}" type="number" step="any" value="${esc(item.accepted_quantity ?? "")}" placeholder="Qabul kutilmoqda" /></td><td>${quantityDisplay(item.difference_quantity, item.unit)}</td><td>${statusChip(status)}</td><td><input name="comment_${item.id}" value="${esc(item.comment ?? "")}" /></td></tr>`;
-  }, "Mahsulotlar hali yo'q.")}<div class="form-footer"><button class="btn primary" type="submit">Miqdorlarni saqlash</button></div></form>`);
+    return `<tr data-batch-item-row="${item.id}"><td>${fmt(item.product_name)}</td><td>${fmt(item.unit)}</td><td>${fmtQty(item.planned_quantity, item.unit)}</td><td>${editable ? `<input name="loaded_quantity_${item.id}" type="number" step="any" value="${esc(item.loaded_quantity ?? "")}" />` : fmtQty(item.loaded_quantity, item.unit)}</td><td>${editable ? `<input name="accepted_quantity_${item.id}" type="number" step="any" value="${esc(item.accepted_quantity ?? "")}" placeholder="Qabul kutilmoqda" />` : quantityDisplay(item.accepted_quantity, item.unit)}</td><td>${quantityDisplay(item.difference_quantity, item.unit)}</td><td>${statusChip(status)}</td><td>${editable ? `<input name="comment_${item.id}" value="${esc(item.comment ?? "")}" />` : fmt(item.comment)}</td></tr>`;
+  }, "Mahsulotlar hali yo'q.")}${editable ? `<div class="form-footer"><button class="btn primary" type="submit">Miqdorlarni saqlash</button></div>` : ""}</form>`);
   if (active === "logistics") {
     const logistics = batch.logistics || {};
-    return `${section("Logistika xulosasi", `<div class="actions"><button class="btn primary" type="button" data-transport-assignment>Transportni biriktirish</button>${logistics.id ? `<button class="btn" data-nav="/logistics/${logistics.id}">Logistika sahifasi</button>` : ""}</div>${summaryCards([["Logistika raqami", fmt(logisticsNumber(logistics, batch))], ["Partiya", fmt(batch.batch_number)], ["Buyurtma", fmt(batch.order?.order_number)], ["Mijoz", fmt(batch.client?.name)], ["Mahsulot", fmt(batchPrimaryProduct(batch))], ["Miqdor", fmtQty(batch.summary?.total_planned_quantity, batch.items?.[0]?.unit)], ["Manba", fmt(optionLabel(sourceTypes, batch.source_type))], ["Model", fmt(optionLabel(fulfillmentTypes, batch.fulfillment_type))], ["Logistika holati", statusBadge(logistics.status || "not_assigned")]])}${logisticsWarnings(logistics, batch)}`)}${section("Transport biriktirish", detailList([["Tashuvchi", logistics.carrier_name], ["Haydovchi", logistics.driver_name], ["Haydovchi telefoni", logistics.driver_phone], ["Transport raqami", logistics.vehicle_number], ["Tirkama raqami", logistics.trailer_number]]))}${section("Sanalar", detailList([["Reja yuklash sanasi", logistics.planned_pickup_date], ["Reja yetkazish sanasi", logistics.planned_delivery_date], ["Haqiqiy yuklash sanasi", logistics.actual_pickup_date], ["Haqiqiy yetkazish sanasi", logistics.actual_delivery_date]]))}${section("Manzillar", detailList([["Yuklash manzili", logistics.loading_address], ["Yetkazish manzili", logistics.delivery_address]]))}${section("Reys tafsilotlari", logisticsTripDetailsList(logistics, batch))}${section("Xarajatlar", detailList([["Transport xarajati", fmtMoney(logistics.cost_amount)], ["Mijozga transport narxi", fmtMoney(logistics.customer_price)], ["Kim to'laydi", optionLabel(paidByTypes, logistics.paid_by)], ["Transport foydasi", transportProfit(logistics)]]))}${section("Logistika izohlari", detailList([["Izoh", logistics.notes]]))}`;
+    return `${section("Logistika xulosasi", `<div class="actions">${editable ? `<button class="btn primary" type="button" data-transport-assignment>Transportni biriktirish</button>` : ""}${logistics.id ? `<button class="btn" data-nav="/logistics/${logistics.id}">Logistika sahifasi</button>` : ""}</div>${summaryCards([["Logistika raqami", fmt(logisticsNumber(logistics, batch))], ["Partiya", fmt(batch.batch_number)], ["Buyurtma", fmt(batch.order?.order_number)], ["Mijoz", fmt(batch.client?.name)], ["Mahsulot", fmt(batchPrimaryProduct(batch))], ["Miqdor", fmtQty(batch.summary?.total_planned_quantity, batch.items?.[0]?.unit)], ["Manba", fmt(optionLabel(sourceTypes, batch.source_type))], ["Model", fmt(optionLabel(fulfillmentTypes, batch.fulfillment_type))], ["Logistika holati", statusBadge(logistics.status || "not_assigned")]])}${logisticsWarnings(logistics, batch)}`)}${section("Transport biriktirish", detailList([["Tashuvchi", logistics.carrier_name], ["Haydovchi", logistics.driver_name], ["Haydovchi telefoni", logistics.driver_phone], ["Transport raqami", logistics.vehicle_number], ["Tirkama raqami", logistics.trailer_number]]))}${section("Sanalar", detailList([["Reja yuklash sanasi", logistics.planned_pickup_date], ["Reja yetkazish sanasi", logistics.planned_delivery_date], ["Haqiqiy yuklash sanasi", logistics.actual_pickup_date], ["Haqiqiy yetkazish sanasi", logistics.actual_delivery_date]]))}${section("Manzillar", detailList([["Yuklash manzili", logistics.loading_address], ["Yetkazish manzili", logistics.delivery_address]]))}${section("Reys tafsilotlari", logisticsTripDetailsList(logistics, batch))}${section("Xarajatlar", detailList([["Transport xarajati", fmtMoney(logistics.cost_amount)], ["Mijozga transport narxi", fmtMoney(logistics.customer_price)], ["Kim to'laydi", optionLabel(paidByTypes, logistics.paid_by)], ["Transport foydasi", transportProfit(logistics)]]))}${section("Logistika izohlari", detailList([["Izoh", logistics.notes]]))}`;
   }
   if (active === "finance") {
     const logistics = batch.logistics || {};
-    return `${section("Moliya xulosasi", `${summaryCards([["Mijoz hisobi", "Hisoblar modulida"], ["Mijozdan to'lov", "To'lovlar modulida"], ["Ta'minotchi hisobi", "Ta'minotchi hisoblari modulida"], ["Ta'minotchi to'lovi", "Ta'minotchi to'lovlari modulida"], ["Transport xarajati", fmtMoney(logistics.cost_amount)], ["Mijozga transport narxi", fmtMoney(logistics.customer_price)], ["Transport foydasi", transportProfit(logistics)]])}<div class="actions"><button class="btn primary" data-nav="/customer-invoices/new?client_id=${batch.client_id}&contract_id=${batch.contract_id}&order_id=${batch.order_id}&delivery_batch_id=${batch.id}">Mijoz hisob-fakturasi yaratish</button><button class="btn" data-nav="/supplier-invoices/new?delivery_batch_id=${batch.id}">Ta'minotchi hisobi yaratish</button><button class="btn" data-nav="/customer-payments?client_id=${batch.client_id}">To'lovlarni ko'rish</button></div>`)}`;
+    return `${section("Moliya xulosasi", `${summaryCards([["Mijoz hisobi", "Hisoblar modulida"], ["Mijozdan to'lov", "To'lovlar modulida"], ["Ta'minotchi hisobi", "Ta'minotchi hisoblari modulida"], ["Ta'minotchi to'lovi", "Ta'minotchi to'lovlari modulida"], ["Transport xarajati", fmtMoney(logistics.cost_amount)], ["Mijozga transport narxi", fmtMoney(logistics.customer_price)], ["Transport foydasi", transportProfit(logistics)]])}<div class="actions">${canEdit("moliya") ? `<button class="btn primary" data-nav="/customer-invoices/new?client_id=${batch.client_id}&contract_id=${batch.contract_id}&order_id=${batch.order_id}&delivery_batch_id=${batch.id}">Mijoz hisob-fakturasi yaratish</button><button class="btn" data-nav="/supplier-invoices/new?delivery_batch_id=${batch.id}">Ta'minotchi hisobi yaratish</button>` : ""}<button class="btn" data-nav="/customer-payments?client_id=${batch.client_id}">To'lovlarni ko'rish</button></div>`)}`;
   }
   if (active === "documents") {
     const docStatus = batchDocumentStatus(batch);
-    return section("Hujjatlar", `<div class="workflow-doc-head"><div>${statusChip(docStatus)}${docStatus.key !== "complete" ? `<p class="helper-text">TTN va qabul dalolatnomasi majburiy hujjatlar.</p>` : ""}</div></div><form id="batch-document-form" class="toolbar"><select name="document_type">${batchDocumentTypes.map(([key, label]) => `<option value="${key}">${label}</option>`).join("")}</select><input name="title" placeholder="Hujjat nomi" required /><input name="uploaded_by" placeholder="Yuklagan" /><input name="file" type="file" required /><button class="btn primary" type="submit">Hujjat yuklash</button></form>${tableOrEmpty(batch.documents, ["Hujjat nomi", "Turi", "Yuklangan sana", "Yuklagan", "Amal"], (item) => `<tr><td>${fmt(item.title)}</td><td>${fmt(optionLabel(batchDocumentTypes, item.document_type))}</td><td>${fmtDate(item.uploaded_at)}</td><td>${fmt(item.uploaded_by)}</td><td>${item.file_url ? `<a class="link-btn" target="_blank" href="${esc(item.file_url)}">Ko'rish</a>` : dash}</td></tr>`, "Hujjatlar hali yo'q.")}`);
+    return section("Hujjatlar", `<div class="workflow-doc-head"><div>${statusChip(docStatus)}${docStatus.key !== "complete" ? `<p class="helper-text">TTN va qabul dalolatnomasi majburiy hujjatlar.</p>` : ""}</div></div>${editable ? `<form id="batch-document-form" class="toolbar"><select name="document_type">${batchDocumentTypes.map(([key, label]) => `<option value="${key}">${label}</option>`).join("")}</select><input name="title" placeholder="Hujjat nomi" required /><input name="uploaded_by" placeholder="Yuklagan" /><input name="file" type="file" required /><button class="btn primary" type="submit">Hujjat yuklash</button></form>` : ""}${tableOrEmpty(batch.documents, ["Hujjat nomi", "Turi", "Yuklangan sana", "Yuklagan", "Amal"], (item) => `<tr><td>${fmt(item.title)}</td><td>${fmt(optionLabel(batchDocumentTypes, item.document_type))}</td><td>${fmtDate(item.uploaded_at)}</td><td>${fmt(item.uploaded_by)}</td><td>${item.file_url ? `<a class="link-btn" target="_blank" href="${esc(item.file_url)}">Ko'rish</a>` : dash}</td></tr>`, "Hujjatlar hali yo'q.")}`);
   }
   if (active === "history") return `${section("Jarayon tarixi", `<div class="workflow-timeline">${[
     ["Partiya yaratildi", fmtDate(batch.created_at)],
@@ -1306,6 +1309,19 @@ async function markBatchInTransit(batch) {
 }
 
 function bindBatchDetailActions(batch) {
+  const editable = canEdit("yetkazib_berish");
+
+  // Some workflow-progression buttons (e.g. the "next action" panel) are rendered
+  // from a shared helper outside this file, so gate them here by disabling instead
+  // of not rendering them.
+  if (!editable) {
+    document.querySelectorAll("[data-transport-assignment], [data-loading-confirmation], [data-delivery-confirmation], [data-completion-confirmation], [data-mark-in-transit]").forEach((button) => {
+      button.disabled = true;
+      button.title = "Bu amal uchun ruxsatingiz yo'q.";
+    });
+    return;
+  }
+
   document.querySelectorAll("[data-transport-assignment]").forEach((button) => {
     button.addEventListener("click", () => openTransportAssignmentModal(batch).catch((error) => showToast(error.message, true)));
   });
@@ -1409,6 +1425,7 @@ async function renderLogisticsDetail(id) {
   const number = logisticsNumber(row, batch);
   const tone = logisticsStatusTone(row.status);
   const statusLabel = optionLabel(logisticsStatuses, row.status);
+  const editable = canEdit("yetkazib_berish");
 
   const costCaption = numberValue(row.cost_amount) ? "Haqiqiy transport xarajati" : "— Hisob-kitob qilinmagan";
   const priceCaption = numberValue(row.customer_price) ? "Mijozga taqdim etilgan narx" : "— Belgilanmagan";
@@ -1443,7 +1460,7 @@ async function renderLogisticsDetail(id) {
         <div class="detail-header-actions">
           <button class="btn" data-nav="/logistics">${detailIcon("arrowLeft", 14)} Orqaga</button>
           <button class="btn primary" data-nav="/delivery-batches/${batch.id}?tab=logistics">Partiyani ochish</button>
-          <button class="btn" data-nav="/delivery-batches/${batch.id}/edit">${detailIcon("edit", 14)} Tahrirlash</button>
+          ${editable ? `<button class="btn" data-nav="/delivery-batches/${batch.id}/edit">${detailIcon("edit", 14)} Tahrirlash</button>` : ""}
         </div>
       </div>
 
@@ -1531,15 +1548,15 @@ async function renderLogisticsDetail(id) {
 
       ${detailCard({
         icon: "paperclip", title: "Hujjatlar", badge: row.documents?.length || 0,
-        headerActions: `<button type="button" class="btn sm">${detailIcon("upload", 13)} Fayl yuklash</button>`,
+        headerActions: editable ? `<button type="button" class="btn sm">${detailIcon("upload", 13)} Fayl yuklash</button>` : "",
         body: (row.documents || []).length
           ? tableOrEmpty(row.documents, ["Nomi", "Turi", "Yuklangan sana", "Yuklagan"], (item) => `<tr><td>${fmt(item.title)}</td><td>${fmt(item.document_type)}</td><td>${fmtDate(item.uploaded_at)}</td><td>${fmt(item.uploaded_by)}</td></tr>`, "")
-          : detailEmptyState({ icon: "file", title: "Hujjatlar hali yo'q", subtitle: "Bu bo'limda logistika buyurtmasiga tegishli barcha hujjatlar saqlanadi.", action: `<button type="button" class="btn primary sm">${detailIcon("upload", 13)} Hujjat yuklash</button>` }),
+          : detailEmptyState({ icon: "file", title: "Hujjatlar hali yo'q", subtitle: "Bu bo'limda logistika buyurtmasiga tegishli barcha hujjatlar saqlanadi.", action: editable ? `<button type="button" class="btn primary sm">${detailIcon("upload", 13)} Hujjat yuklash</button>` : "" }),
       })}
 
       ${detailCard({
         icon: "message", title: "Izohlar / Tarix", badge: row.notes_history?.length || 0,
-        headerActions: `<button type="button" class="btn sm">${detailIcon("plus", 13)} Izoh qo'shish</button>`,
+        headerActions: editable ? `<button type="button" class="btn sm">${detailIcon("plus", 13)} Izoh qo'shish</button>` : "",
         body: (row.notes_history || []).length
           ? tableOrEmpty(row.notes_history, ["Sana", "Foydalanuvchi", "Izoh"], (item) => `<tr><td>${fmtDate(item.created_at)}</td><td>${fmt(item.created_by)}</td><td>${fmt(item.note)}</td></tr>`, "")
           : detailEmptyState({ icon: "message", title: "Izohlar hali yo'q", subtitle: "Bu buyurtmaga doir birinchi izohni qo'shing." }),

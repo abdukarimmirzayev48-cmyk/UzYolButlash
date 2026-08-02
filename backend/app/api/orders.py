@@ -51,6 +51,7 @@ from backend.app.schemas.order import (
 )
 from backend.app.services.order_status import MANUAL_ORDER_STATUSES, sync_order_status
 from backend.app.services.contract_status import sync_contract_status
+from backend.app.services.auth import require_edit
 
 
 router = APIRouter(prefix="/api/orders", tags=["orders"])
@@ -396,7 +397,7 @@ def list_orders(
     return Page(items=[serialize_list_item(order) for order in orders], total=total, page=page, page_size=page_size)
 
 
-@router.post("", response_model=OrderDetail, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=OrderDetail, status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_edit("sotuv"))])
 def create_order(payload: OrderCreate, db: Session = Depends(get_db)):
     contract = get_contract_or_400(db, payload.contract_id)
     ensure_contract_has_client(contract)
@@ -449,7 +450,7 @@ def get_order_detail(order_id: int, db: Session = Depends(get_db)):
     )
 
 
-@router.patch("/{order_id}", response_model=OrderDetail)
+@router.patch("/{order_id}", response_model=OrderDetail, dependencies=[Depends(require_edit("sotuv"))])
 def update_order(order_id: int, payload: OrderUpdate, db: Session = Depends(get_db)):
     order = load_order_detail(db, order_id)
     contract = get_contract_or_400(db, payload.contract_id or order.contract_id)
@@ -479,7 +480,7 @@ def update_order(order_id: int, payload: OrderUpdate, db: Session = Depends(get_
     return get_order_detail(order.id, db)
 
 
-@router.patch("/{order_id}/status", response_model=OrderDetail)
+@router.patch("/{order_id}/status", response_model=OrderDetail, dependencies=[Depends(require_edit("sotuv"))])
 def update_order_status(order_id: int, payload: OrderManualStatusUpdate, db: Session = Depends(get_db)):
     order = load_order_detail(db, order_id)
     if payload.status in MANUAL_ORDER_STATUSES:
@@ -496,7 +497,7 @@ def update_order_status(order_id: int, payload: OrderManualStatusUpdate, db: Ses
     return get_order_detail(order.id, db)
 
 
-@router.delete("/{order_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/{order_id}", status_code=status.HTTP_204_NO_CONTENT, dependencies=[Depends(require_edit("sotuv"))])
 def delete_order(order_id: int, db: Session = Depends(get_db)):
     order = get_order_or_404(db, order_id)
     if db.scalar(select(func.count()).where(DeliveryBatch.order_id == order_id)):
@@ -517,7 +518,7 @@ def delete_order(order_id: int, db: Session = Depends(get_db)):
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
-@router.post("/{order_id}/items", response_model=OrderItemRead, status_code=status.HTTP_201_CREATED)
+@router.post("/{order_id}/items", response_model=OrderItemRead, status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_edit("sotuv"))])
 def create_item(order_id: int, payload: OrderItemCreate, db: Session = Depends(get_db)):
     order = load_order_detail(db, order_id)
     contract_items = validate_items_against_contract(db, order.contract, [payload], exclude_order_id=order.id)
@@ -535,7 +536,7 @@ def create_item(order_id: int, payload: OrderItemCreate, db: Session = Depends(g
     return item
 
 
-@router.patch("/{order_id}/items/{item_id}", response_model=OrderItemRead)
+@router.patch("/{order_id}/items/{item_id}", response_model=OrderItemRead, dependencies=[Depends(require_edit("sotuv"))])
 def update_item(order_id: int, item_id: int, payload: OrderItemUpdate, db: Session = Depends(get_db)):
     order = load_order_detail(db, order_id)
     item = get_child_or_404(db, OrderItem, order_id, item_id)
@@ -565,7 +566,7 @@ def update_item(order_id: int, item_id: int, payload: OrderItemUpdate, db: Sessi
     return item
 
 
-@router.delete("/{order_id}/items/{item_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/{order_id}/items/{item_id}", status_code=status.HTTP_204_NO_CONTENT, dependencies=[Depends(require_edit("sotuv"))])
 def delete_item(order_id: int, item_id: int, db: Session = Depends(get_db)):
     order = load_order_detail(db, order_id)
     if len(order.items) <= 1:
@@ -593,7 +594,7 @@ def select_supplier_option(db: Session, order: Order, option: OrderSupplierOptio
     order.supplier_status = SupplierStatus.confirmed if confirmed else SupplierStatus.selected
 
 
-@router.post("/{order_id}/supplier-options", response_model=SupplierOptionRead, status_code=status.HTTP_201_CREATED)
+@router.post("/{order_id}/supplier-options", response_model=SupplierOptionRead, status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_edit("sotuv"))])
 def create_supplier_option(order_id: int, payload: SupplierOptionCreate, db: Session = Depends(get_db)):
     order = load_order_detail(db, order_id)
     option = OrderSupplierOption(order_id=order_id, **payload.model_dump())
@@ -607,7 +608,7 @@ def create_supplier_option(order_id: int, payload: SupplierOptionCreate, db: Ses
     return option
 
 
-@router.patch("/{order_id}/supplier-options/{option_id}", response_model=SupplierOptionRead)
+@router.patch("/{order_id}/supplier-options/{option_id}", response_model=SupplierOptionRead, dependencies=[Depends(require_edit("sotuv"))])
 def update_supplier_option(order_id: int, option_id: int, payload: SupplierOptionUpdate, db: Session = Depends(get_db)):
     order = load_order_detail(db, order_id)
     option = get_child_or_404(db, OrderSupplierOption, order_id, option_id)
@@ -620,7 +621,7 @@ def update_supplier_option(order_id: int, option_id: int, payload: SupplierOptio
     return option
 
 
-@router.post("/{order_id}/supplier-options/{option_id}/select", response_model=SupplierOptionRead)
+@router.post("/{order_id}/supplier-options/{option_id}/select", response_model=SupplierOptionRead, dependencies=[Depends(require_edit("sotuv"))])
 def select_supplier(order_id: int, option_id: int, db: Session = Depends(get_db)):
     order = load_order_detail(db, order_id)
     option = get_child_or_404(db, OrderSupplierOption, order_id, option_id)
@@ -631,7 +632,7 @@ def select_supplier(order_id: int, option_id: int, db: Session = Depends(get_db)
     return option
 
 
-@router.post("/{order_id}/supplier-options/{option_id}/confirm", response_model=SupplierOptionRead)
+@router.post("/{order_id}/supplier-options/{option_id}/confirm", response_model=SupplierOptionRead, dependencies=[Depends(require_edit("sotuv"))])
 def confirm_supplier(order_id: int, option_id: int, db: Session = Depends(get_db)):
     order = load_order_detail(db, order_id)
     option = get_child_or_404(db, OrderSupplierOption, order_id, option_id)
@@ -642,7 +643,7 @@ def confirm_supplier(order_id: int, option_id: int, db: Session = Depends(get_db
     return option
 
 
-@router.delete("/{order_id}/supplier-options/{option_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/{order_id}/supplier-options/{option_id}", status_code=status.HTTP_204_NO_CONTENT, dependencies=[Depends(require_edit("sotuv"))])
 def delete_supplier_option(order_id: int, option_id: int, db: Session = Depends(get_db)):
     order = load_order_detail(db, order_id)
     option = get_child_or_404(db, OrderSupplierOption, order_id, option_id)
@@ -660,7 +661,7 @@ def delete_supplier_option(order_id: int, option_id: int, db: Session = Depends(
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
-@router.post("/{order_id}/documents", response_model=OrderDocumentRead, status_code=status.HTTP_201_CREATED)
+@router.post("/{order_id}/documents", response_model=OrderDocumentRead, status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_edit("sotuv"))])
 def create_document(order_id: int, payload: OrderDocumentCreate, db: Session = Depends(get_db)):
     order = load_order_detail(db, order_id)
     document = OrderDocument(order_id=order_id, **payload.model_dump())
@@ -672,7 +673,7 @@ def create_document(order_id: int, payload: OrderDocumentCreate, db: Session = D
     return document
 
 
-@router.post("/{order_id}/documents/upload", response_model=OrderDocumentRead, status_code=status.HTTP_201_CREATED)
+@router.post("/{order_id}/documents/upload", response_model=OrderDocumentRead, status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_edit("sotuv"))])
 def upload_document(
     order_id: int,
     document_type: OrderDocumentType = Form(...),
@@ -705,7 +706,7 @@ def upload_document(
     return document
 
 
-@router.patch("/{order_id}/documents/{document_id}", response_model=OrderDocumentRead)
+@router.patch("/{order_id}/documents/{document_id}", response_model=OrderDocumentRead, dependencies=[Depends(require_edit("sotuv"))])
 def update_document(order_id: int, document_id: int, payload: OrderDocumentUpdate, db: Session = Depends(get_db)):
     order = load_order_detail(db, order_id)
     document = get_child_or_404(db, OrderDocument, order_id, document_id)
@@ -717,7 +718,7 @@ def update_document(order_id: int, document_id: int, payload: OrderDocumentUpdat
     return document
 
 
-@router.delete("/{order_id}/documents/{document_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/{order_id}/documents/{document_id}", status_code=status.HTTP_204_NO_CONTENT, dependencies=[Depends(require_edit("sotuv"))])
 def delete_document(order_id: int, document_id: int, db: Session = Depends(get_db)):
     order = load_order_detail(db, order_id)
     document = get_child_or_404(db, OrderDocument, order_id, document_id)
@@ -728,7 +729,7 @@ def delete_document(order_id: int, document_id: int, db: Session = Depends(get_d
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
-@router.post("/{order_id}/notes", response_model=OrderNoteRead, status_code=status.HTTP_201_CREATED)
+@router.post("/{order_id}/notes", response_model=OrderNoteRead, status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_edit("sotuv"))])
 def create_note(order_id: int, payload: OrderNoteCreate, db: Session = Depends(get_db)):
     get_order_or_404(db, order_id)
     note = OrderNote(order_id=order_id, **payload.model_dump())
@@ -738,7 +739,7 @@ def create_note(order_id: int, payload: OrderNoteCreate, db: Session = Depends(g
     return note
 
 
-@router.patch("/{order_id}/notes/{note_id}", response_model=OrderNoteRead)
+@router.patch("/{order_id}/notes/{note_id}", response_model=OrderNoteRead, dependencies=[Depends(require_edit("sotuv"))])
 def update_note(order_id: int, note_id: int, payload: OrderNoteUpdate, db: Session = Depends(get_db)):
     note = get_child_or_404(db, OrderNote, order_id, note_id)
     update_model(note, payload.model_dump(exclude_unset=True))
@@ -747,7 +748,7 @@ def update_note(order_id: int, note_id: int, payload: OrderNoteUpdate, db: Sessi
     return note
 
 
-@router.delete("/{order_id}/notes/{note_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/{order_id}/notes/{note_id}", status_code=status.HTTP_204_NO_CONTENT, dependencies=[Depends(require_edit("sotuv"))])
 def delete_note(order_id: int, note_id: int, db: Session = Depends(get_db)):
     note = get_child_or_404(db, OrderNote, order_id, note_id)
     db.delete(note)

@@ -91,7 +91,7 @@ def list_departments(db: Session = Depends(get_db), is_active: bool | None = Non
     return [department_read_with_count(db, d) for d in departments]
 
 
-@departments_router.post("", response_model=DepartmentRead, status_code=status.HTTP_201_CREATED)
+@departments_router.post("", response_model=DepartmentRead, status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_edit("xodimlar"))])
 def create_department(payload: DepartmentCreate, db: Session = Depends(get_db)):
     if db.scalar(select(Department).where(Department.name == payload.name)):
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Bu nomdagi bo'lim allaqachon mavjud.")
@@ -102,7 +102,7 @@ def create_department(payload: DepartmentCreate, db: Session = Depends(get_db)):
     return department_read_with_count(db, department)
 
 
-@departments_router.patch("/{department_id}", response_model=DepartmentRead)
+@departments_router.patch("/{department_id}", response_model=DepartmentRead, dependencies=[Depends(require_edit("xodimlar"))])
 def update_department(department_id: int, payload: DepartmentUpdate, db: Session = Depends(get_db)):
     department = get_department_or_404(db, department_id)
     data = payload.model_dump(exclude_unset=True)
@@ -119,7 +119,7 @@ def update_department(department_id: int, payload: DepartmentUpdate, db: Session
     return department_read_with_count(db, department)
 
 
-@departments_router.delete("/{department_id}", status_code=status.HTTP_204_NO_CONTENT)
+@departments_router.delete("/{department_id}", status_code=status.HTTP_204_NO_CONTENT, dependencies=[Depends(require_edit("xodimlar"))])
 def delete_department(department_id: int, db: Session = Depends(get_db)):
     department = get_department_or_404(db, department_id)
     employee_count = db.scalar(select(func.count()).select_from(Employee).where(Employee.department_id == department_id)) or 0
@@ -143,7 +143,7 @@ def list_employees(db: Session = Depends(get_db), department: str | None = None,
     return db.scalars(stmt.order_by(Employee.department, Employee.full_name)).all()
 
 
-@employees_router.post("", response_model=EmployeeRead, status_code=status.HTTP_201_CREATED)
+@employees_router.post("", response_model=EmployeeRead, status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_edit("xodimlar"))])
 def create_employee(payload: EmployeeCreate, db: Session = Depends(get_db)):
     employee = Employee(**payload.model_dump())
     sync_employee_department_name(employee, db)
@@ -153,7 +153,7 @@ def create_employee(payload: EmployeeCreate, db: Session = Depends(get_db)):
     return employee
 
 
-@employees_router.patch("/{employee_id}", response_model=EmployeeRead)
+@employees_router.patch("/{employee_id}", response_model=EmployeeRead, dependencies=[Depends(require_edit("xodimlar"))])
 def update_employee(employee_id: int, payload: EmployeeUpdate, db: Session = Depends(get_db)):
     employee = get_employee_or_404(db, employee_id)
     for key, value in payload.model_dump(exclude_unset=True).items():
@@ -164,7 +164,7 @@ def update_employee(employee_id: int, payload: EmployeeUpdate, db: Session = Dep
     return employee
 
 
-@employees_router.delete("/{employee_id}", status_code=status.HTTP_204_NO_CONTENT)
+@employees_router.delete("/{employee_id}", status_code=status.HTTP_204_NO_CONTENT, dependencies=[Depends(require_edit("xodimlar"))])
 def delete_employee(employee_id: int, db: Session = Depends(get_db)):
     employee = get_employee_or_404(db, employee_id)
     task_count = db.scalar(select(func.count()).select_from(Task).where(Task.assigned_employee_id == employee_id)) or 0

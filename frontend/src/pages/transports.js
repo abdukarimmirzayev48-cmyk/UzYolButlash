@@ -72,6 +72,7 @@ async function renderTransportsList() {
   const params = new URLSearchParams(location.search);
   const data = await api(`/api/transports?${params.toString()}`);
   const activeCount = data.items.filter((item) => item.status === "active").length;
+  const editable = canEdit("yetkazib_berish");
   app.innerHTML = opsListPage({
     className: "transports-ops-page",
     title: "Transportlar",
@@ -81,11 +82,11 @@ async function renderTransportsList() {
     formId: "transport-search-form",
     filters: `<input name="search" placeholder="Tashuvchi, haydovchi, transport raqami" value="${esc(params.get("search") || "")}" /><select name="status"><option value="">Status</option>${transportStatuses.map(([key, label]) => `<option value="${key}" ${params.get("status") === key ? "selected" : ""}>${label}</option>`).join("")}</select>`,
     headers: ["Tashuvchi", "Haydovchi", "Telefon", "Transport", "Tirkama", "Turi", "Sig'im", "Status", ""],
-    rows: data.items.map((item) => `<tr><td><button class="ops-primary-link" data-nav="/transports/${item.id}/edit">${fmt(item.carrier_name)}</button></td><td>${fmt(item.driver_name)}</td><td>${fmt(item.driver_phone)}</td><td>${fmt(item.vehicle_number)}</td><td>${fmt(item.trailer_number)}</td><td>${fmt(item.vehicle_type)}</td><td>${fmt(item.capacity)}</td><td>${statusBadge(item.status)}</td><td><div class="ops-row-actions"><button class="link-btn" data-nav="/transports/${item.id}/edit">Tahrirlash</button><button class="link-btn" data-delete-transport="${item.id}">O'chirish</button></div></td></tr>`).join(""),
+    rows: data.items.map((item) => `<tr><td>${editable ? `<button class="ops-primary-link" data-nav="/transports/${item.id}/edit">${fmt(item.carrier_name)}</button>` : fmt(item.carrier_name)}</td><td>${fmt(item.driver_name)}</td><td>${fmt(item.driver_phone)}</td><td>${fmt(item.vehicle_number)}</td><td>${fmt(item.trailer_number)}</td><td>${fmt(item.vehicle_type)}</td><td>${fmt(item.capacity)}</td><td>${statusBadge(item.status)}</td><td><div class="ops-row-actions">${editable ? `<button class="link-btn" data-nav="/transports/${item.id}/edit">Tahrirlash</button><button class="link-btn" data-delete-transport="${item.id}">O'chirish</button>` : ""}</div></td></tr>`).join(""),
     emptyText: "Transportlar topilmadi.",
     colspan: 9,
     footer: opsFooter(data, "transport"),
-    createPath: "/transports/new",
+    createPath: editable ? "/transports/new" : undefined,
     createLabel: "Transport qo'shish",
   });
   bindOpsSearch("transport-search-form", "/transports", ["search", "status"]);

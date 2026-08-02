@@ -299,7 +299,8 @@ async function renderOrdersList() {
   const start = data.total ? (currentPage - 1) * pageSize + 1 : 0;
   const end = Math.min(currentPage * pageSize, data.total);
   const activeCount = data.items.filter((order) => !["closed", "cancelled"].includes(order.status)).length;
-  app.innerHTML = `<div class="page ops-page orders-ops-page"><div class="ops-titlebar"><div class="ops-title-left"><button class="ops-menu-btn" type="button" aria-label="Menyu">=</button><h1>Buyurtmalar</h1></div><nav class="ops-tabs" aria-label="Buyurtma ko'rinishlari"><button class="active" type="button">Buyurtmalar</button><button type="button" data-nav="/delivery-batches">Partiyalar</button><button type="button" data-nav="/procurements">Xaridlar</button><button type="button" data-nav="/customer-invoices">Hisoblar</button></nav></div><div class="ops-commandbar"><div class="ops-command-left"><button class="btn primary" data-nav="/orders/new">Yaratish</button><button class="btn" type="button" data-nav="/orders">Tozalash</button><span class="ops-counter">${fmt(data.total)} ta buyurtma · sahifada ${fmt(activeCount)} ta faol</span></div><form class="ops-search order-ops-search" id="order-search-form"><input name="search" placeholder="Qidirish..." value="${esc(params.get("search") || "")}" /><input name="order_number" placeholder="Buyurtma raqami" value="${esc(params.get("order_number") || "")}" /><input name="client_name" placeholder="Mijoz" value="${esc(params.get("client_name") || "")}" /><select name="status"><option value="">Status</option>${orderStatuses.map(([key, label]) => `<option value="${key}" ${params.get("status") === key ? "selected" : ""}>${label}</option>`).join("")}</select><button class="ops-tool-btn" type="submit">Saralash</button><button class="ops-tool-btn" type="button" data-nav="/orders">Yangilash</button></form></div><section class="ops-table-card"><table class="ops-table"><thead><tr><th>Buyurtma raqami</th><th>Sana</th><th>Mijoz</th><th>Shartnoma</th><th>Mahsulot</th><th>Miqdor</th><th>Yetkazilgan</th><th>Qoldiq</th><th>Manba</th><th>Model</th><th>Ta'minotchi</th><th>Jami summa</th><th>Status</th><th></th></tr></thead><tbody>${data.items.length ? data.items.map((order) => `<tr><td><button class="ops-primary-link" data-nav="/orders/${order.id}">${fmt(order.order_number)}</button></td><td>${fmt(order.order_date)}</td><td>${fmt(order.client?.name)}</td><td>${fmt(order.contract?.contract_number)}</td><td>${fmt(order.product)}</td><td>${fmtQty(order.total_quantity)}</td><td>${fmtQty(order.delivered_quantity)}</td><td class="${numberValue(order.remaining_quantity) > 0 ? "ops-warning" : ""}">${fmtQty(order.remaining_quantity)}</td><td>${fmt(optionLabel(sourceTypes, order.source_type))}</td><td>${fmt(optionLabel(fulfillmentTypes, order.fulfillment_type))}</td><td>${fmt(order.supplier_name)}</td><td class="ops-money">${fmtMoney(order.total_amount)}</td><td>${statusBadge(order.status)}</td><td><div class="ops-row-actions"><button class="link-btn" data-nav="/orders/${order.id}">Ochish</button><button class="link-btn" data-nav="/orders/${order.id}?tab=supplier">Ta'minotchi</button><button class="link-btn" data-nav="/delivery-batches/new?order_id=${order.id}">Partiya</button></div></td></tr>`).join("") : `<tr><td colspan="14"><div class="empty">Buyurtmalar topilmadi.</div></td></tr>`}</tbody></table></section><div class="ops-footer"><span>Ko'rsatilmoqda: ${fmt(start)}-${fmt(end)} / ${fmt(data.total)}</span><div class="ops-pagination"><button type="button" class="ops-tool-btn" data-order-page="${currentPage - 1}" ${currentPage <= 1 ? "disabled" : ""}>Oldingi</button><span>${fmt(currentPage)}</span><button type="button" class="ops-tool-btn" data-order-page="${currentPage + 1}" ${end >= data.total ? "disabled" : ""}>Keyingi</button></div></div></div>`;
+  const editable = canEdit("sotuv");
+  app.innerHTML = `<div class="page ops-page orders-ops-page"><div class="ops-titlebar"><div class="ops-title-left"><button class="ops-menu-btn" type="button" aria-label="Menyu">=</button><h1>Buyurtmalar</h1></div><nav class="ops-tabs" aria-label="Buyurtma ko'rinishlari"><button class="active" type="button">Buyurtmalar</button><button type="button" data-nav="/delivery-batches">Partiyalar</button><button type="button" data-nav="/procurements">Xaridlar</button><button type="button" data-nav="/customer-invoices">Hisoblar</button></nav></div><div class="ops-commandbar"><div class="ops-command-left">${editable ? `<button class="btn primary" data-nav="/orders/new">Yaratish</button>` : ""}<button class="btn" type="button" data-nav="/orders">Tozalash</button><span class="ops-counter">${fmt(data.total)} ta buyurtma · sahifada ${fmt(activeCount)} ta faol</span></div><form class="ops-search order-ops-search" id="order-search-form"><input name="search" placeholder="Qidirish..." value="${esc(params.get("search") || "")}" /><input name="order_number" placeholder="Buyurtma raqami" value="${esc(params.get("order_number") || "")}" /><input name="client_name" placeholder="Mijoz" value="${esc(params.get("client_name") || "")}" /><select name="status"><option value="">Status</option>${orderStatuses.map(([key, label]) => `<option value="${key}" ${params.get("status") === key ? "selected" : ""}>${label}</option>`).join("")}</select><button class="ops-tool-btn" type="submit">Saralash</button><button class="ops-tool-btn" type="button" data-nav="/orders">Yangilash</button></form></div><section class="ops-table-card"><table class="ops-table"><thead><tr><th>Buyurtma raqami</th><th>Sana</th><th>Mijoz</th><th>Shartnoma</th><th>Mahsulot</th><th>Miqdor</th><th>Yetkazilgan</th><th>Qoldiq</th><th>Manba</th><th>Model</th><th>Ta'minotchi</th><th>Jami summa</th><th>Status</th><th></th></tr></thead><tbody>${data.items.length ? data.items.map((order) => `<tr><td><button class="ops-primary-link" data-nav="/orders/${order.id}">${fmt(order.order_number)}</button></td><td>${fmt(order.order_date)}</td><td>${fmt(order.client?.name)}</td><td>${fmt(order.contract?.contract_number)}</td><td>${fmt(order.product)}</td><td>${fmtQty(order.total_quantity)}</td><td>${fmtQty(order.delivered_quantity)}</td><td class="${numberValue(order.remaining_quantity) > 0 ? "ops-warning" : ""}">${fmtQty(order.remaining_quantity)}</td><td>${fmt(optionLabel(sourceTypes, order.source_type))}</td><td>${fmt(optionLabel(fulfillmentTypes, order.fulfillment_type))}</td><td>${fmt(order.supplier_name)}</td><td class="ops-money">${fmtMoney(order.total_amount)}</td><td>${statusBadge(order.status)}</td><td><div class="ops-row-actions"><button class="link-btn" data-nav="/orders/${order.id}">Ochish</button><button class="link-btn" data-nav="/orders/${order.id}?tab=supplier">Ta'minotchi</button>${canEdit("yetkazib_berish") ? `<button class="link-btn" data-nav="/delivery-batches/new?order_id=${order.id}">Partiya</button>` : ""}</div></td></tr>`).join("") : `<tr><td colspan="14"><div class="empty">Buyurtmalar topilmadi.</div></td></tr>`}</tbody></table></section><div class="ops-footer"><span>Ko'rsatilmoqda: ${fmt(start)}-${fmt(end)} / ${fmt(data.total)}</span><div class="ops-pagination"><button type="button" class="ops-tool-btn" data-order-page="${currentPage - 1}" ${currentPage <= 1 ? "disabled" : ""}>Oldingi</button><span>${fmt(currentPage)}</span><button type="button" class="ops-tool-btn" data-order-page="${currentPage + 1}" ${end >= data.total ? "disabled" : ""}>Keyingi</button></div></div></div>`;
   document.querySelector("#order-search-form").addEventListener("submit", (event) => {
     event.preventDefault();
     const form = event.currentTarget;
@@ -658,19 +659,20 @@ function orderHeader(order, related = {}) {
   const supplyLabel = isStockOrder
     ? (hasStockAllocation ? { label: "Zaxiradan ajratilgan", tone: "success" } : { label: "Zaxira kutilmoqda", tone: "warning" })
     : order.supplier_name ? { label: "Ta'minotchi tanlangan", tone: "success" } : { label: "Ta'minotchi tanlanmagan", tone: "warning" };
+  const editable = canEdit("sotuv");
   return `
     ${workflowHeader({
       title: order.order_number,
       subtitle: `${fmt(order.client?.name)} · ${fmt(order.contract?.contract_number)} · ${fmt(optionLabel(sourceTypes, order.source_type))} · ${fmt(optionLabel(fulfillmentTypes, order.fulfillment_type))}`,
       backPath: "/orders",
-      fullEditPath: `/orders/${order.id}/edit`,
+      fullEditPath: editable ? `/orders/${order.id}/edit` : "",
       actions: [
-        { label: "Istisno status", modal: "order-status" },
-        isStockOrder ? { label: "Zaxiradan ajratish", modal: "order-stock" } : { label: "Ta'minotchini tanlash", modal: "order-supplier-select" },
-        { label: "Partiya yaratish", modal: "order-batch", primary: supplierReady },
-        { label: "Hisob yaratish", modal: "order-invoice" },
-        { label: "Hujjat yuklash", modal: "order-document" },
-      ],
+        editable ? { label: "Istisno status", modal: "order-status" } : null,
+        isStockOrder ? (canEdit("taminot") ? { label: "Zaxiradan ajratish", modal: "order-stock" } : null) : (editable ? { label: "Ta'minotchini tanlash", modal: "order-supplier-select" } : null),
+        canEdit("yetkazib_berish") ? { label: "Partiya yaratish", modal: "order-batch", primary: supplierReady } : null,
+        canEdit("moliya") ? { label: "Hisob yaratish", modal: "order-invoice" } : null,
+        editable ? { label: "Hujjat yuklash", modal: "order-document" } : null,
+      ].filter(Boolean),
     })}
     ${workflowStatusGrid([
       ["Buyurtma holati", statusBadge(order.status)],
@@ -689,8 +691,22 @@ function orderHeader(order, related = {}) {
       ["Oxirgi faollik", dash],
     ])}
     ${workflowWarningsPanel(orderWarningMessages(order, related))}
-    ${workflowNextActionPanel(nextAction)}
+    ${nextAction.done || !nextAction.modal || canEdit(orderActionModule(nextAction.modal)) ? workflowNextActionPanel(nextAction) : workflowNextActionPanel({ title: nextAction.title })}
   `;
+}
+
+function orderActionModule(modal) {
+  const map = {
+    "order-batch": "yetkazib_berish",
+    "order-stock": "taminot",
+    "order-supplier-offer": "sotuv",
+    "order-supplier-select": "sotuv",
+    "order-invoice": "moliya",
+    "order-payment": "moliya",
+    "order-document": "sotuv",
+    "order-status": "sotuv",
+  };
+  return map[modal] || "sotuv";
 }
 
 function orderWarningMessages(order = {}, related = {}) {
@@ -769,8 +785,9 @@ function orderGeneralTab(order) {
 }
 
 function orderProductsTab(order) {
+  const editable = canEdit("sotuv");
   return section("Mahsulotlar", `
-    <div class="actions"><button class="btn" data-nav="/orders/${order.id}/edit">Amallar → To'liq tahrirlash</button></div>
+    ${editable ? `<div class="actions"><button class="btn" data-nav="/orders/${order.id}/edit">Amallar → To'liq tahrirlash</button></div>` : ""}
     ${tableOrEmpty(order.items, ["Mahsulot", "Birlik", "Buyurtma miqdori", "Shartnoma qoldig'i", "Birlik narxi", "QQS", "Jami"], (item) => `
       <tr><td>${fmt(item.product_name)}</td><td>${fmt(item.unit)}</td><td>${fmtQty(item.quantity, item.unit)}</td><td>${item.balance ? fmtQty(item.balance.remaining_quantity, item.unit) : dash}</td><td>${fmtMoney(item.unit_price)}</td><td>${fmtMoney(item.vat_amount)} (${fmt(item.vat_rate)}%)</td><td>${fmtMoney(item.total_with_vat)}</td></tr>
     `, "Mahsulotlar hali kiritilmagan.")}
@@ -778,12 +795,13 @@ function orderProductsTab(order) {
 }
 
 function orderSupplierTab(order, related = {}) {
+  const editable = canEdit("sotuv");
   if (order.source_type === "supplier_held_stock") {
     const allocations = related.allocations || [];
     const lotsById = new Map((related.stockLots || []).map((lot) => [lot.id, lot]));
     return section("Zaxira / Xarid", `
       ${detailList([["Manba", optionLabel(sourceTypes, order.source_type)], ["Zaxira holati", allocations.length ? "Zaxiradan ajratilgan" : "Zaxira ajratilmagan"], ["Ta'minotchi", order.supplier_name]])}
-      <div class="actions"><button class="btn primary" type="button" data-order-stock>Zaxiradan ajratish</button></div>
+      ${canEdit("taminot") ? `<div class="actions"><button class="btn primary" type="button" data-order-stock>Zaxiradan ajratish</button></div>` : ""}
       ${tableOrEmpty(allocations, ["Mahsulot", "Ta'minotchi", "Ticket", "Joylashuv", "Ajratilgan miqdor", "Birlik xarid narxi", "Status"], (allocation) => {
         const lot = lotsById.get(allocation.stock_lot_id) || {};
         return `<tr><td>${fmt(lot.product_name)}</td><td>${fmt(lot.supplier_name)}</td><td>${fmt(lot.ticket_number)}</td><td>${fmt(lot.location_name)}</td><td>${fmtQty(allocation.allocated_quantity, lot.unit)}</td><td>${fmtMoney(lot.unit_cost)}</td><td>${fmt(optionLabel(stockAllocationStatuses, allocation.status))}</td></tr>`;
@@ -793,9 +811,9 @@ function orderSupplierTab(order, related = {}) {
   }
   return section("Xarid jarayoni", `
     ${detailList([["Ta'minotchi holati", optionLabel(supplierStatuses, order.supplier_status)], ["Tanlangan ta'minotchi", order.supplier_name], ["Izoh", order.supplier_notes]])}
-    <div class="actions"><button class="btn primary" type="button" data-order-supplier-offer>Ta'minotchi taklifini qo'shish</button><button class="btn" type="button" data-order-supplier-select>Ta'minotchini tanlash</button></div>
+    ${editable ? `<div class="actions"><button class="btn primary" type="button" data-order-supplier-offer>Ta'minotchi taklifini qo'shish</button><button class="btn" type="button" data-order-supplier-select>Ta'minotchini tanlash</button></div>` : ""}
     ${tableOrEmpty(order.supplier_options, ["Ta'minotchi", "Birlik xarid narxi", "Mavjud miqdor", "Tayyor sana", "Yetkazib berish shartlari", "Izoh", "Tanlov", "Amallar"], (item) => `
-      <tr><td>${fmt(item.supplier_name)}</td><td>${fmtMoney(item.offered_price)}</td><td>${fmtQty(item.available_quantity)}</td><td>${fmt(item.ready_date)}</td><td>${fmt(item.delivery_terms)}</td><td>${fmt(item.comment)}</td><td>${item.is_selected ? '<span class="pill">Tanlangan</span>' : dash}</td><td><div class="table-actions"><button class="link-btn" data-order-select="${item.id}">Tanlash</button><button class="link-btn" data-order-confirm="${item.id}">Tasdiqlash</button><button class="link-btn" data-order-edit="supplier-options" data-id="${item.id}">Tahrirlash</button><button class="link-btn" data-order-delete="supplier-options" data-id="${item.id}">O'chirish</button></div></td></tr>
+      <tr><td>${fmt(item.supplier_name)}</td><td>${fmtMoney(item.offered_price)}</td><td>${fmtQty(item.available_quantity)}</td><td>${fmt(item.ready_date)}</td><td>${fmt(item.delivery_terms)}</td><td>${fmt(item.comment)}</td><td>${item.is_selected ? '<span class="pill">Tanlangan</span>' : dash}</td><td><div class="table-actions">${editable ? `<button class="link-btn" data-order-select="${item.id}">Tanlash</button><button class="link-btn" data-order-confirm="${item.id}">Tasdiqlash</button><button class="link-btn" data-order-edit="supplier-options" data-id="${item.id}">Tahrirlash</button><button class="link-btn" data-order-delete="supplier-options" data-id="${item.id}">O'chirish</button>` : ""}</div></td></tr>
     `, "Ta'minotchi takliflari hali kiritilmagan.")}
   `);
 }
@@ -805,24 +823,26 @@ function orderPriceTab(order) {
 }
 
 function orderDocumentsTab(order) {
+  const editable = canEdit("sotuv");
   return section("Hujjatlar", `
-    <div class="actions"><button class="btn primary" type="button" data-order-document>Hujjat yuklash</button><button class="btn" data-order-child="documents">Hujjat ma'lumotini qo'shish</button></div>
+    ${editable ? `<div class="actions"><button class="btn primary" type="button" data-order-document>Hujjat yuklash</button><button class="btn" data-order-child="documents">Hujjat ma'lumotini qo'shish</button></div>` : ""}
     ${tableOrEmpty(order.documents, ["Hujjat nomi", "Turi", "Yuklangan sana", "Yuklagan", "Amallar"], (item) => `
-      <tr><td>${fmt(item.title)}</td><td>${fmt(optionLabel(orderDocumentTypes, item.document_type))}</td><td>${fmtDate(item.uploaded_at)}</td><td>${fmt(item.uploaded_by)}</td><td><div class="table-actions">${item.file_url ? `<a class="link-btn" target="_blank" href="${esc(item.file_url)}">Ko'rish</a><a class="link-btn" href="${esc(item.file_url)}" download>Yuklab olish</a>` : `<button class="link-btn" disabled>Ko'rish</button><button class="link-btn" disabled>Yuklab olish</button>`}<button class="link-btn" data-order-edit="documents" data-id="${item.id}">Tahrirlash</button><button class="link-btn" data-order-delete="documents" data-id="${item.id}">O'chirish</button></div></td></tr>
+      <tr><td>${fmt(item.title)}</td><td>${fmt(optionLabel(orderDocumentTypes, item.document_type))}</td><td>${fmtDate(item.uploaded_at)}</td><td>${fmt(item.uploaded_by)}</td><td><div class="table-actions">${item.file_url ? `<a class="link-btn" target="_blank" href="${esc(item.file_url)}">Ko'rish</a><a class="link-btn" href="${esc(item.file_url)}" download>Yuklab olish</a>` : `<button class="link-btn" disabled>Ko'rish</button><button class="link-btn" disabled>Yuklab olish</button>`}${editable ? `<button class="link-btn" data-order-edit="documents" data-id="${item.id}">Tahrirlash</button><button class="link-btn" data-order-delete="documents" data-id="${item.id}">O'chirish</button>` : ""}</div></td></tr>
     `, "Buyurtma hujjatlari hali yuklanmagan.")}
   `);
 }
 
 function orderNotesTab(order) {
+  const editable = canEdit("sotuv");
   return section("Tarix", `
-    <div class="actions"><button class="btn primary" data-order-child="notes">Izoh qo'shish</button></div>
-    ${tableOrEmpty(order.notes_history, ["Sana", "Foydalanuvchi", "Izoh", "Amal"], (item) => `<tr><td>${fmtDate(item.created_at)}</td><td>${fmt(item.created_by)}</td><td>${fmt(item.note)}</td><td><button class="link-btn" data-order-delete="notes" data-id="${item.id}">O'chirish</button></td></tr>`, "Tarix yozuvlari hali yo'q.")}
+    ${editable ? `<div class="actions"><button class="btn primary" data-order-child="notes">Izoh qo'shish</button></div>` : ""}
+    ${tableOrEmpty(order.notes_history, ["Sana", "Foydalanuvchi", "Izoh", "Amal"], (item) => `<tr><td>${fmtDate(item.created_at)}</td><td>${fmt(item.created_by)}</td><td>${fmt(item.note)}</td><td>${editable ? `<button class="link-btn" data-order-delete="notes" data-id="${item.id}">O'chirish</button>` : ""}</td></tr>`, "Tarix yozuvlari hali yo'q.")}
   `);
 }
 
 function orderBatchesTab(order, batches = []) {
   return section("Partiyalar", `
-    <div class="actions"><button class="btn primary" type="button" data-order-batch>Partiya yaratish</button></div>
+    ${canEdit("yetkazib_berish") ? `<div class="actions"><button class="btn primary" type="button" data-order-batch>Partiya yaratish</button></div>` : ""}
     ${tableOrEmpty(batches, ["Partiya raqami", "Sana", "Mahsulot", "Reja", "Yuklangan", "Qabul qilingan", "Farq", "Ta'minotchi", "Status", "Amallar"], (batch) => `
       <tr>
         <td><strong>${fmt(batch.batch_number)}</strong></td>
@@ -852,7 +872,7 @@ function orderFinanceTab(order, related = {}) {
       ["Qoldiq", fmtMoney(finance.remaining)],
       ["Moliya holati", statusChip(orderFinanceStatusChip(finance))],
     ])}
-    <div class="actions"><button class="btn primary" type="button" data-order-invoice>Hisob yaratish</button><button class="btn" type="button" data-order-payment>To'lov qo'shish</button></div>
+    ${canEdit("moliya") ? `<div class="actions"><button class="btn primary" type="button" data-order-invoice>Hisob yaratish</button><button class="btn" type="button" data-order-payment>To'lov qo'shish</button></div>` : ""}
     ${tableOrEmpty(invoices, ["Hisob raqami", "Turi", "Hisob sanasi", "To'lov muddati", "Jami", "To'langan", "Qoldiq", "Status", "Amallar"], (invoice) => `
       <tr><td>${fmt(invoice.invoice_number)}</td><td>${fmt(optionLabel(invoiceTypes, invoice.invoice_type))}</td><td>${fmt(invoice.invoice_date)}</td><td>${fmt(invoice.due_date)}</td><td>${fmtMoney(invoice.total_amount)}</td><td>${fmtMoney(invoice.paid_amount)}</td><td>${fmtMoney(invoice.remaining_amount)}</td><td>${statusBadge(invoice.status)}</td><td><button class="link-btn" data-nav="/customer-invoices/${invoice.id}">Ochish</button></td></tr>
     `, "Ushbu buyurtma bo'yicha hisob-fakturalar topilmadi.")}

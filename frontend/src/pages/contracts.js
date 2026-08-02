@@ -748,18 +748,19 @@ async function renderContractsList() {
   app.innerHTML = `<div class="page ops-page"><div class="empty">Shartnomalar yuklanmoqda...</div></div>`;
   const params = new URLSearchParams(location.search);
   const data = await api(`/api/contracts?${params.toString()}`);
+  const editable = canEdit("sotuv");
   app.innerHTML = opsListPage({
     className: "contracts-ops-page",
     title: "Shartnomalar",
     tabs: [{ label: "Mijozlar", path: "/clients" }, { label: "Shartnomalar", active: true }, { label: "Buyurtmalar", path: "/orders" }],
-    createPath: "/contracts/upload",
+    createPath: editable ? "/contracts/upload" : null,
     createLabel: "PDF orqali yaratish",
     clearPath: "/contracts",
-    counter: `<button class="btn" data-nav="/contracts/new">Yangi shartnoma</button><span>${fmt(data.total)} ta shartnoma</span>`,
+    counter: `${editable ? `<button class="btn" data-nav="/contracts/new">Yangi shartnoma</button>` : ""}<span>${fmt(data.total)} ta shartnoma</span>`,
     formId: "contract-search-form",
     filters: `<input name="contract_number" placeholder="Shartnoma raqami" value="${esc(params.get("contract_number") || "")}" /><input name="client_name" placeholder="Mijoz" value="${esc(params.get("client_name") || "")}" /><input name="inn" placeholder="STIR" value="${esc(params.get("inn") || "")}" /><input name="product_name" placeholder="Mahsulot" value="${esc(params.get("product_name") || "")}" /><select name="status"><option value="">Status</option>${contractStatuses.map(([key, label]) => `<option value="${key}" ${params.get("status") === key ? "selected" : ""}>${label}</option>`).join("")}</select>`,
     headers: ["Shartnoma raqami", "Sana", "Amal qilish muddati", "Buyurtmachi", "STIR", "Umumiy summa", "Status", "Amallar"],
-    rows: data.items.map((contract) => `<tr><td><button class="ops-primary-link" data-nav="/contracts/${contract.id}">${fmt(contract.contract_number)}</button></td><td>${fmt(contract.contract_date)}</td><td>${fmt(contract.valid_until)}</td><td>${fmt(contract.customer_name || contract.client?.name)}</td><td>${fmt(contract.customer_inn || contract.client?.inn)}</td><td class="ops-money">${fmtMoney(contract.total_amount)}</td><td>${statusBadge(contract.status)}</td><td><div class="ops-row-actions"><button class="link-btn" data-nav="/contracts/${contract.id}">Ko'rish</button><button class="link-btn" data-nav="/contracts/${contract.id}/edit">Tahrirlash</button>${contract.source_file_path ? `<a class="link-btn" target="_blank" href="/api/contracts/${contract.id}/file">Faylni ko'rish</a>` : ""}</div></td></tr>`).join(""),
+    rows: data.items.map((contract) => `<tr><td><button class="ops-primary-link" data-nav="/contracts/${contract.id}">${fmt(contract.contract_number)}</button></td><td>${fmt(contract.contract_date)}</td><td>${fmt(contract.valid_until)}</td><td>${fmt(contract.customer_name || contract.client?.name)}</td><td>${fmt(contract.customer_inn || contract.client?.inn)}</td><td class="ops-money">${fmtMoney(contract.total_amount)}</td><td>${statusBadge(contract.status)}</td><td><div class="ops-row-actions"><button class="link-btn" data-nav="/contracts/${contract.id}">Ko'rish</button>${editable ? `<button class="link-btn" data-nav="/contracts/${contract.id}/edit">Tahrirlash</button>` : ""}${contract.source_file_path ? `<a class="link-btn" target="_blank" href="/api/contracts/${contract.id}/file">Faylni ko'rish</a>` : ""}</div></td></tr>`).join(""),
     emptyText: "Shartnomalar topilmadi.",
     colspan: 12,
     footer: opsFooter(data, "contract"),
@@ -914,13 +915,23 @@ function contractHeader(contract) {
   if (numberValue(contract.summary?.paid_amount) <= 0 && numberValue(contract.summary?.advance_amount) > 0) warnings.push("Avans to'lovi hali kelmagan.");
   if (numberValue(contract.summary?.remaining_quantity) > 0) warnings.push("Shartnoma bo'yicha yetkazilmagan qoldiq mavjud.");
   if (!hasDocs(contract)) warnings.push("Shartnoma hujjatlari to'liq emas.");
+  const editable = canEdit("sotuv");
+  const nextAction = !contract.client_id ? {title:"Shartnoma mijozga bog'lanmagan. Buyurtma yaratishdan oldin mijozni bog'lang.",button:"Mijozni bog'lash",modal:"contract-link-client"} : numberValue(contract.summary?.paid_amount)<=0 && numberValue(contract.summary?.advance_amount)>0 ? {title:"Avans hisob-fakturasini yarating yoki to'lovni kiriting",button:"Hisob yaratish",modal:"contract-invoice-modal"} : numberValue(contract.summary?.remaining_quantity)>0 ? {title:"Shartnoma bo'yicha buyurtma yarating",button:"Buyurtma yaratish",path:`/orders/new?contract_id=${contract.id}`} : {title:"Shartnoma yakunlashga tayyor",button:"Tarix",path:`/contracts/${contract.id}?tab=notes`,done:true};
   return `
-    ${workflowHeader({title:contract.contract_number,subtitle:`${fmt(contract.customer_name || contract.client?.name)} · ${fmt(contract.contract_date)} · ${fmt(contract.valid_until)} gacha · ${fmt(statusLabel(contract.status))}`,backPath:"/contracts",fullEditPath:`/contracts/${contract.id}/edit`,actions:[...(contract.client_id ? [{label:"Buyurtma yaratish",path:`/orders/new?contract_id=${contract.id}`,primary:true}] : [{label:"Mijozni bog'lash",modal:"contract-link-client",primary:true}]),{label:"Hujjat yuklash",path:`/contracts/${contract.id}?tab=documents`}]})}
+    ${workflowHeader({title:contract.contract_number,subtitle:`${fmt(contract.customer_name || contract.client?.name)} · ${fmt(contract.contract_date)} · ${fmt(contract.valid_until)} gacha · ${fmt(statusLabel(contract.status))}`,backPath:"/contracts",fullEditPath:editable ? `/contracts/${contract.id}/edit` : "",actions: editable ? [...(contract.client_id ? [{label:"Buyurtma yaratish",path:`/orders/new?contract_id=${contract.id}`,primary:true}] : [{label:"Mijozni bog'lash",modal:"contract-link-client",primary:true}]),{label:"Hujjat yuklash",path:`/contracts/${contract.id}?tab=documents`}] : [{label:"Hujjat yuklash",path:`/contracts/${contract.id}?tab=documents`}]})}
     ${workflowStatusGrid([["Shartnoma holati",statusBadge(contract.status)],["Buyurtmalar holati",statusChip(numberValue(contract.summary?.remaining_quantity)>0?{label:"Jarayonda",tone:"warning"}:{label:"Yopilgan",tone:"success"})],["To'lov holati",statusChip(numberValue(contract.summary?.remaining_amount)>0?{label:"Qoldiq bor",tone:"warning"}:{label:"Yopilgan",tone:"success"})],["Yetkazib berish holati",statusChip(numberValue(contract.summary?.remaining_quantity)>0?{label:"Qoldiq bor",tone:"warning"}:{label:"To'liq",tone:"success"})]])}
     ${summaryCards([["Jami summa",fmtMoney(contract.summary?.total_amount)],["Jami miqdor",fmtQty(contract.summary?.total_quantity)],["Yetkazilgan",fmtQty(contract.summary?.delivered_quantity)],["Qoldiq",fmtQty(contract.summary?.remaining_quantity)],["Avans summasi",fmtMoney(contract.summary?.advance_amount)],["To'langan summa",fmtMoney(contract.summary?.paid_amount)],["Qolgan to'lov",fmtMoney(contract.summary?.remaining_amount)],["Transport xarajatlari",fmtMoney(contract.summary?.transport_expense_total)]])}
     ${workflowWarningsPanel(warnings)}
-    ${workflowNextActionPanel(!contract.client_id ? {title:"Shartnoma mijozga bog'lanmagan. Buyurtma yaratishdan oldin mijozni bog'lang.",button:"Mijozni bog'lash",modal:"contract-link-client"} : numberValue(contract.summary?.paid_amount)<=0 && numberValue(contract.summary?.advance_amount)>0 ? {title:"Avans hisob-fakturasini yarating yoki to'lovni kiriting",button:"Hisob yaratish",modal:"contract-invoice-modal"} : numberValue(contract.summary?.remaining_quantity)>0 ? {title:"Shartnoma bo'yicha buyurtma yarating",button:"Buyurtma yaratish",path:`/orders/new?contract_id=${contract.id}`} : {title:"Shartnoma yakunlashga tayyor",button:"Tarix",path:`/contracts/${contract.id}?tab=notes`,done:true})}
+    ${nextAction.done || !nextAction.modal || canEdit(contractActionModule(nextAction.modal)) ? workflowNextActionPanel(nextAction) : workflowNextActionPanel({ title: nextAction.title })}
   `;
+}
+
+function contractActionModule(modal) {
+  const map = {
+    "contract-link-client": "sotuv",
+    "contract-invoice-modal": "moliya",
+  };
+  return map[modal] || "sotuv";
 }
 
 function contractTabs(active) {
@@ -960,14 +971,15 @@ function contractGeneralTab(contract) {
 }
 
 function contractSpecificationTab(contract) {
+  const editable = canEdit("sotuv");
   return section("Spetsifikatsiya", `
-    <div class="actions"><button class="btn primary" data-contract-child="items">Mahsulot qo'shish</button></div>
+    ${editable ? `<div class="actions"><button class="btn primary" data-contract-child="items">Mahsulot qo'shish</button></div>` : ""}
     ${tableOrEmpty(contract.items, ["Mahsulot", "Kod", "Birlik", "Miqdor", "Birlik narxi", "QQS", "Jami", "Amallar"], (item) => `
       <tr>
         <td>${fmt(item.product_name)}</td><td>${fmt(item.product_code)}</td><td>${fmt(item.unit)}</td>
         <td>${fmtQty(item.quantity)}</td><td>${fmtMoney(item.unit_price)}</td><td>${fmtMoney(item.vat_amount)} (${fmt(item.vat_rate)}%)</td>
         <td>${fmtMoney(item.total_with_vat)}</td>
-        <td><div class="table-actions"><button class="link-btn" data-contract-edit="items" data-id="${item.id}">Tahrirlash</button><button class="link-btn" data-contract-delete="items" data-id="${item.id}">O'chirish</button></div></td>
+        <td><div class="table-actions">${editable ? `<button class="link-btn" data-contract-edit="items" data-id="${item.id}">Tahrirlash</button><button class="link-btn" data-contract-delete="items" data-id="${item.id}">O'chirish</button>` : ""}</div></td>
       </tr>
     `, "Spetsifikatsiya elementlari yo'q.")}
     <div class="totals-bar">
@@ -982,8 +994,9 @@ function contractSpecificationTab(contract) {
 function contractPaymentTab(contract, invoices = []) {
   const item = contract.payment_terms || {};
   const clientId = contract.client_id || contract.client?.id || "";
+  const editable = canEdit("sotuv");
   return section("To'lov shartlari", `
-    <div class="actions"><button class="btn primary" data-contract-child="payment">To'lov shartlarini tahrirlash</button><button class="btn" type="button" data-contract-invoice-modal>Hisob yaratish</button><button class="btn" data-nav="/customer-payments/new?client_id=${clientId}&contract_id=${contract.id}">To'lov qo'shish</button></div>
+    <div class="actions">${editable ? `<button class="btn primary" data-contract-child="payment">To'lov shartlarini tahrirlash</button>` : ""}${canEdit("moliya") ? `<button class="btn" type="button" data-contract-invoice-modal>Hisob yaratish</button><button class="btn" data-nav="/customer-payments/new?client_id=${clientId}&contract_id=${contract.id}">To'lov qo'shish</button>` : ""}</div>
     <div class="detail-list">
       ${[
         ["Avans foizi", item.advance_percent ? `${item.advance_percent}%` : null],
@@ -1015,7 +1028,7 @@ function contractPaymentTab(contract, invoices = []) {
 function contractTransportTab(contract, logisticsRows = []) {
   const item = contract.transport_terms || {};
   return section("Transport", `
-    <div class="actions"><button class="btn primary" data-contract-child="transport">Transport shartlarini tahrirlash</button></div>
+    ${canEdit("sotuv") ? `<div class="actions"><button class="btn primary" data-contract-child="transport">Transport shartlarini tahrirlash</button></div>` : ""}
     <div class="detail-list">
       ${[
         ["Transport to'lovi turi", optionLabel(transportPaymentTypes, item.transport_payment_type)],
@@ -1041,15 +1054,16 @@ function contractTransportTab(contract, logisticsRows = []) {
 }
 
 function contractDocumentsTab(contract) {
+  const editable = canEdit("sotuv");
   return section("Hujjatlar", `
-    <div class="actions"><button class="btn primary" data-contract-child="documents">Hujjat qo'shish</button></div>
+    ${editable ? `<div class="actions"><button class="btn primary" data-contract-child="documents">Hujjat qo'shish</button></div>` : ""}
     ${tableOrEmpty(contract.documents, ["Hujjat nomi", "Turi", "Yuklangan sana", "Yuklagan", "Amallar"], (item) => `
       <tr>
         <td>${fmt(item.title)}</td><td>${fmt(optionLabel(contractDocumentTypes, item.document_type))}</td><td>${fmtDate(item.uploaded_at)}</td><td>${fmt(item.uploaded_by)}</td>
         <td><div class="table-actions">
           ${item.file_url ? `<a class="link-btn" target="_blank" href="${esc(item.file_url)}">Ochish</a><a class="link-btn" href="${esc(item.file_url)}" download>Yuklab olish</a>` : `<button class="link-btn" disabled>Ochish</button><button class="link-btn" disabled>Yuklab olish</button>`}
-          <button class="link-btn" data-contract-edit="documents" data-id="${item.id}">Tahrirlash</button>
-          <button class="link-btn" data-contract-delete="documents" data-id="${item.id}">O'chirish</button>
+          ${editable ? `<button class="link-btn" data-contract-edit="documents" data-id="${item.id}">Tahrirlash</button>
+          <button class="link-btn" data-contract-delete="documents" data-id="${item.id}">O'chirish</button>` : ""}
         </div></td>
       </tr>
     `, "Shartnoma hujjatlari hali yo'q.")}
@@ -1057,17 +1071,19 @@ function contractDocumentsTab(contract) {
 }
 
 function contractNotesTab(contract) {
+  const editable = canEdit("sotuv");
   return section("Izohlar / Tarix", `
-    <div class="actions"><button class="btn primary" data-contract-child="notes">Izoh qo'shish</button></div>
+    ${editable ? `<div class="actions"><button class="btn primary" data-contract-child="notes">Izoh qo'shish</button></div>` : ""}
     ${tableOrEmpty(contract.notes_history, ["Sana", "Foydalanuvchi", "Izoh", "Amallar"], (item) => `
-      <tr><td>${fmtDate(item.created_at)}</td><td>${fmt(item.created_by)}</td><td>${fmt(item.note)}</td><td><button class="link-btn" data-contract-delete="notes" data-id="${item.id}">O'chirish</button></td></tr>
+      <tr><td>${fmtDate(item.created_at)}</td><td>${fmt(item.created_by)}</td><td>${fmt(item.note)}</td><td>${editable ? `<button class="link-btn" data-contract-delete="notes" data-id="${item.id}">O'chirish</button>` : ""}</td></tr>
     `, "Izohlar hali yo'q.")}
   `);
 }
 
 function contractOrdersTab(contract, orders = []) {
+  const editable = canEdit("sotuv");
   return section("Buyurtmalar", `
-    <div class="actions"><button class="btn primary" data-nav="/orders/new?contract_id=${contract.id}">Buyurtma yaratish</button></div>
+    ${editable ? `<div class="actions"><button class="btn primary" data-nav="/orders/new?contract_id=${contract.id}">Buyurtma yaratish</button></div>` : ""}
     ${tableOrEmpty(orders, ["Buyurtma raqami", "Sana", "Mahsulot", "Miqdor", "Yetkazilgan", "Qoldiq", "Ta'minotchi", "Status", "Amallar"], (order) => `
       <tr>
         <td><strong>${fmt(order.order_number)}</strong></td>
@@ -1078,7 +1094,7 @@ function contractOrdersTab(contract, orders = []) {
         <td>${fmtQty(order.remaining_quantity)}</td>
         <td>${fmt(order.supplier_name)}</td>
         <td>${fmt(optionLabel(orderStatuses, order.status))}</td>
-        <td><div class="table-actions"><button class="link-btn" data-nav="/orders/${order.id}">Ochish</button><button class="link-btn" data-nav="/orders/${order.id}/edit">To'liq tahrirlash</button></div></td>
+        <td><div class="table-actions"><button class="link-btn" data-nav="/orders/${order.id}">Ochish</button>${editable ? `<button class="link-btn" data-nav="/orders/${order.id}/edit">To'liq tahrirlash</button>` : ""}</div></td>
       </tr>
     `, "Ushbu shartnoma bo'yicha buyurtmalar topilmadi.")}
   `);

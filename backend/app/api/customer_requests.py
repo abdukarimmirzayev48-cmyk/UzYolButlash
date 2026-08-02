@@ -32,6 +32,7 @@ from backend.app.schemas.customer_request import (
     ProductSummary,
     PublicProductRead,
 )
+from backend.app.services.auth import require_edit
 
 
 router = APIRouter(prefix="/api/customer-requests", tags=["customer-requests"])
@@ -293,7 +294,7 @@ def get_customer_request(request_id: int, db: Session = Depends(get_db)):
     return serialize_detail(get_request_or_404(db, request_id))
 
 
-@router.patch("/{request_id}", response_model=CustomerRequestDetail)
+@router.patch("/{request_id}", response_model=CustomerRequestDetail, dependencies=[Depends(require_edit("sotuv"))])
 def update_customer_request(request_id: int, payload: CustomerRequestUpdate, db: Session = Depends(get_db)):
     request = get_request_or_404(db, request_id)
     if request.status == CustomerRequestStatus.converted_to_order:
@@ -316,7 +317,7 @@ def update_customer_request(request_id: int, payload: CustomerRequestUpdate, db:
     return serialize_detail(get_request_or_404(db, request_id))
 
 
-@router.post("/{request_id}/status", response_model=CustomerRequestDetail)
+@router.post("/{request_id}/status", response_model=CustomerRequestDetail, dependencies=[Depends(require_edit("sotuv"))])
 def update_customer_request_status(
     request_id: int,
     payload: CustomerRequestStatusChange,
@@ -347,7 +348,7 @@ def update_customer_request_status(
     return serialize_detail(get_request_or_404(db, request_id))
 
 
-@router.post("/{request_id}/convert-to-order")
+@router.post("/{request_id}/convert-to-order", dependencies=[Depends(require_edit("sotuv"))])
 def convert_customer_request_to_order(request_id: int, db: Session = Depends(get_db)):
     request = get_request_or_404(db, request_id)
     return {

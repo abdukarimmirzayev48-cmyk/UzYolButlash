@@ -64,6 +64,7 @@ from backend.app.services.client_matching import (
     find_client_by_inn,
     find_registry_by_inn,
 )
+from backend.app.services.auth import require_edit
 from backend.app.services.contract_pdf_parser import PARSER_VERSION, parse_contract_pdf
 
 
@@ -438,7 +439,7 @@ def load_contract_detail(db: Session, contract_id: int) -> Contract:
     return contract
 
 
-@router.post("/parse-pdf")
+@router.post("/parse-pdf", dependencies=[Depends(require_edit("sotuv"))])
 def parse_contract_pdf_endpoint(
     file: UploadFile = File(...),
     uploaded_by: str | None = Form(None),
@@ -514,7 +515,7 @@ def get_parse_session_file(session_id: int, db: Session = Depends(get_db)):
     return FileResponse(path, media_type="application/pdf", filename=session.original_filename)
 
 
-@router.post("/from-parsed", response_model=ContractDetail, status_code=status.HTTP_201_CREATED)
+@router.post("/from-parsed", response_model=ContractDetail, status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_edit("sotuv"))])
 def create_contract_from_parsed(payload: ContractFromParsedCreate, db: Session = Depends(get_db)):
     session = db.get(ContractParseSession, payload.parse_session_id)
     if not session:
@@ -630,7 +631,7 @@ def create_contract_from_parsed(payload: ContractFromParsedCreate, db: Session =
     return get_contract_detail(contract.id, db)
 
 
-@router.post("/{contract_id}/cancel", response_model=ContractDetail)
+@router.post("/{contract_id}/cancel", response_model=ContractDetail, dependencies=[Depends(require_edit("sotuv"))])
 def cancel_contract(contract_id: int, db: Session = Depends(get_db)):
     contract = get_contract_or_404(db, contract_id)
     contract.status = ContractStatus.cancelled
@@ -638,7 +639,7 @@ def cancel_contract(contract_id: int, db: Session = Depends(get_db)):
     return get_contract_detail(contract.id, db)
 
 
-@router.post("/{contract_id}/link-new-client", response_model=ContractDetail)
+@router.post("/{contract_id}/link-new-client", response_model=ContractDetail, dependencies=[Depends(require_edit("sotuv"))])
 def link_contract_to_new_client(contract_id: int, db: Session = Depends(get_db)):
     contract = get_contract_or_404(db, contract_id)
     if contract.client_id:
@@ -782,7 +783,7 @@ def get_next_contract_number(db: Session = Depends(get_db)):
     return {"contract_number": next_contract_number(db)}
 
 
-@router.post("", response_model=ContractDetail, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=ContractDetail, status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_edit("sotuv"))])
 def create_contract(payload: ContractCreate, db: Session = Depends(get_db)):
     ensure_optional_client_exists(db, payload.client_id)
     data = payload.model_dump(exclude={"items", "payment_terms", "transport_terms", "documents", "initial_note"})
@@ -813,7 +814,7 @@ def get_contract_detail(contract_id: int, db: Session = Depends(get_db)):
     return ContractDetail.model_validate(contract).model_copy(update={"summary": summary_for(db, contract)})
 
 
-@router.patch("/{contract_id}", response_model=ContractDetail)
+@router.patch("/{contract_id}", response_model=ContractDetail, dependencies=[Depends(require_edit("sotuv"))])
 def update_contract(contract_id: int, payload: ContractUpdate, db: Session = Depends(get_db)):
     contract = load_contract_detail(db, contract_id)
     data = payload.model_dump(exclude_unset=True, exclude={"items", "payment_terms", "transport_terms"})
@@ -854,7 +855,7 @@ def update_contract(contract_id: int, payload: ContractUpdate, db: Session = Dep
     return get_contract_detail(contract.id, db)
 
 
-@router.delete("/{contract_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/{contract_id}", status_code=status.HTTP_204_NO_CONTENT, dependencies=[Depends(require_edit("sotuv"))])
 def delete_contract(contract_id: int, db: Session = Depends(get_db)):
     contract = get_contract_or_404(db, contract_id)
     if db.scalar(select(func.count()).where(Order.contract_id == contract_id)):
@@ -877,7 +878,7 @@ def delete_contract(contract_id: int, db: Session = Depends(get_db)):
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
-@router.post("/{contract_id}/items", response_model=ContractItemRead, status_code=status.HTTP_201_CREATED)
+@router.post("/{contract_id}/items", response_model=ContractItemRead, status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_edit("sotuv"))])
 def create_item(contract_id: int, payload: ContractItemCreate, db: Session = Depends(get_db)):
     contract = load_contract_detail(db, contract_id)
     item = ContractItem(contract_id=contract_id, **payload.model_dump())
@@ -892,7 +893,7 @@ def create_item(contract_id: int, payload: ContractItemCreate, db: Session = Dep
     return item
 
 
-@router.patch("/{contract_id}/items/{item_id}", response_model=ContractItemRead)
+@router.patch("/{contract_id}/items/{item_id}", response_model=ContractItemRead, dependencies=[Depends(require_edit("sotuv"))])
 def update_item(contract_id: int, item_id: int, payload: ContractItemUpdate, db: Session = Depends(get_db)):
     contract = load_contract_detail(db, contract_id)
     item = get_child_or_404(db, ContractItem, contract_id, item_id)
@@ -905,7 +906,7 @@ def update_item(contract_id: int, item_id: int, payload: ContractItemUpdate, db:
     return item
 
 
-@router.delete("/{contract_id}/items/{item_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/{contract_id}/items/{item_id}", status_code=status.HTTP_204_NO_CONTENT, dependencies=[Depends(require_edit("sotuv"))])
 def delete_item(contract_id: int, item_id: int, db: Session = Depends(get_db)):
     contract = load_contract_detail(db, contract_id)
     if len(contract.items) <= 1:
@@ -919,7 +920,7 @@ def delete_item(contract_id: int, item_id: int, db: Session = Depends(get_db)):
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
-@router.put("/{contract_id}/payment-terms", response_model=ContractPaymentTermsRead)
+@router.put("/{contract_id}/payment-terms", response_model=ContractPaymentTermsRead, dependencies=[Depends(require_edit("sotuv"))])
 def upsert_payment_terms(contract_id: int, payload: ContractPaymentTermsCreate, db: Session = Depends(get_db)):
     contract = load_contract_detail(db, contract_id)
     if contract.payment_terms:
@@ -932,7 +933,7 @@ def upsert_payment_terms(contract_id: int, payload: ContractPaymentTermsCreate, 
     return contract.payment_terms
 
 
-@router.patch("/{contract_id}/payment-terms", response_model=ContractPaymentTermsRead)
+@router.patch("/{contract_id}/payment-terms", response_model=ContractPaymentTermsRead, dependencies=[Depends(require_edit("sotuv"))])
 def update_payment_terms(contract_id: int, payload: ContractPaymentTermsUpdate, db: Session = Depends(get_db)):
     contract = load_contract_detail(db, contract_id)
     if not contract.payment_terms:
@@ -944,7 +945,7 @@ def update_payment_terms(contract_id: int, payload: ContractPaymentTermsUpdate, 
     return contract.payment_terms
 
 
-@router.put("/{contract_id}/transport-terms", response_model=ContractTransportTermsRead)
+@router.put("/{contract_id}/transport-terms", response_model=ContractTransportTermsRead, dependencies=[Depends(require_edit("sotuv"))])
 def upsert_transport_terms(contract_id: int, payload: ContractTransportTermsCreate, db: Session = Depends(get_db)):
     contract = load_contract_detail(db, contract_id)
     if contract.transport_terms:
@@ -956,7 +957,7 @@ def upsert_transport_terms(contract_id: int, payload: ContractTransportTermsCrea
     return contract.transport_terms
 
 
-@router.patch("/{contract_id}/transport-terms", response_model=ContractTransportTermsRead)
+@router.patch("/{contract_id}/transport-terms", response_model=ContractTransportTermsRead, dependencies=[Depends(require_edit("sotuv"))])
 def update_transport_terms(contract_id: int, payload: ContractTransportTermsUpdate, db: Session = Depends(get_db)):
     contract = load_contract_detail(db, contract_id)
     if not contract.transport_terms:
@@ -967,7 +968,7 @@ def update_transport_terms(contract_id: int, payload: ContractTransportTermsUpda
     return contract.transport_terms
 
 
-@router.post("/{contract_id}/documents", response_model=ContractDocumentRead, status_code=status.HTTP_201_CREATED)
+@router.post("/{contract_id}/documents", response_model=ContractDocumentRead, status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_edit("sotuv"))])
 def create_document(contract_id: int, payload: ContractDocumentCreate, db: Session = Depends(get_db)):
     get_contract_or_404(db, contract_id)
     document = ContractDocument(contract_id=contract_id, **payload.model_dump())
@@ -977,7 +978,7 @@ def create_document(contract_id: int, payload: ContractDocumentCreate, db: Sessi
     return document
 
 
-@router.post("/{contract_id}/documents/upload", response_model=ContractDocumentRead, status_code=status.HTTP_201_CREATED)
+@router.post("/{contract_id}/documents/upload", response_model=ContractDocumentRead, status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_edit("sotuv"))])
 def upload_document(
     contract_id: int,
     document_type: ContractDocumentType = Form(...),
@@ -1000,7 +1001,7 @@ def upload_document(
     return document
 
 
-@router.patch("/{contract_id}/documents/{document_id}/upload", response_model=ContractDocumentRead)
+@router.patch("/{contract_id}/documents/{document_id}/upload", response_model=ContractDocumentRead, dependencies=[Depends(require_edit("sotuv"))])
 def replace_document_file(
     contract_id: int,
     document_id: int,
@@ -1021,7 +1022,7 @@ def replace_document_file(
     return document
 
 
-@router.patch("/{contract_id}/documents/{document_id}", response_model=ContractDocumentRead)
+@router.patch("/{contract_id}/documents/{document_id}", response_model=ContractDocumentRead, dependencies=[Depends(require_edit("sotuv"))])
 def update_document(contract_id: int, document_id: int, payload: ContractDocumentUpdate, db: Session = Depends(get_db)):
     document = get_child_or_404(db, ContractDocument, contract_id, document_id)
     update_model(document, payload.model_dump(exclude_unset=True))
@@ -1030,7 +1031,7 @@ def update_document(contract_id: int, document_id: int, payload: ContractDocumen
     return document
 
 
-@router.delete("/{contract_id}/documents/{document_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/{contract_id}/documents/{document_id}", status_code=status.HTTP_204_NO_CONTENT, dependencies=[Depends(require_edit("sotuv"))])
 def delete_document(contract_id: int, document_id: int, db: Session = Depends(get_db)):
     document = get_child_or_404(db, ContractDocument, contract_id, document_id)
     db.delete(document)
@@ -1038,7 +1039,7 @@ def delete_document(contract_id: int, document_id: int, db: Session = Depends(ge
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
-@router.post("/{contract_id}/notes", response_model=ContractNoteRead, status_code=status.HTTP_201_CREATED)
+@router.post("/{contract_id}/notes", response_model=ContractNoteRead, status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_edit("sotuv"))])
 def create_note(contract_id: int, payload: ContractNoteCreate, db: Session = Depends(get_db)):
     get_contract_or_404(db, contract_id)
     note = ContractNote(contract_id=contract_id, **payload.model_dump())
@@ -1048,7 +1049,7 @@ def create_note(contract_id: int, payload: ContractNoteCreate, db: Session = Dep
     return note
 
 
-@router.patch("/{contract_id}/notes/{note_id}", response_model=ContractNoteRead)
+@router.patch("/{contract_id}/notes/{note_id}", response_model=ContractNoteRead, dependencies=[Depends(require_edit("sotuv"))])
 def update_note(contract_id: int, note_id: int, payload: ContractNoteUpdate, db: Session = Depends(get_db)):
     note = get_child_or_404(db, ContractNote, contract_id, note_id)
     update_model(note, payload.model_dump(exclude_unset=True))
@@ -1057,7 +1058,7 @@ def update_note(contract_id: int, note_id: int, payload: ContractNoteUpdate, db:
     return note
 
 
-@router.delete("/{contract_id}/notes/{note_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/{contract_id}/notes/{note_id}", status_code=status.HTTP_204_NO_CONTENT, dependencies=[Depends(require_edit("sotuv"))])
 def delete_note(contract_id: int, note_id: int, db: Session = Depends(get_db)):
     note = get_child_or_404(db, ContractNote, contract_id, note_id)
     db.delete(note)

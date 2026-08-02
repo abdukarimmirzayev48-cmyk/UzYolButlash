@@ -33,6 +33,7 @@ from backend.app.schemas.inventory import (
     StockLotSummary,
     StockMovementRead,
 )
+from backend.app.services.auth import require_edit
 from backend.app.services.order_status import sync_order_status
 
 
@@ -272,7 +273,7 @@ def list_exchange_tickets(
     return Page(items=[ticket_read(ticket) for ticket in tickets], total=total, page=page, page_size=page_size)
 
 
-@router.post("/exchange-tickets", response_model=ExchangeTicketRead, status_code=status.HTTP_201_CREATED)
+@router.post("/exchange-tickets", response_model=ExchangeTicketRead, status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_edit("taminot"))])
 def create_exchange_ticket(payload: ExchangeTicketCreate, db: Session = Depends(get_db)):
     supplier = db.get(Supplier, payload.supplier_id)
     if not supplier:
@@ -309,7 +310,7 @@ def get_exchange_ticket(ticket_id: int, db: Session = Depends(get_db)):
     return ticket_read(ticket)
 
 
-@router.patch("/exchange-tickets/{ticket_id}", response_model=ExchangeTicketRead)
+@router.patch("/exchange-tickets/{ticket_id}", response_model=ExchangeTicketRead, dependencies=[Depends(require_edit("taminot"))])
 def update_exchange_ticket(ticket_id: int, payload: ExchangeTicketUpdate, db: Session = Depends(get_db)):
     ticket = db.get(ExchangeTicket, ticket_id)
     if not ticket:
@@ -330,7 +331,7 @@ def update_exchange_ticket(ticket_id: int, payload: ExchangeTicketUpdate, db: Se
     return get_exchange_ticket(ticket.id, db)
 
 
-@router.post("/exchange-tickets/{ticket_id}/open", response_model=ExchangeTicketRead)
+@router.post("/exchange-tickets/{ticket_id}/open", response_model=ExchangeTicketRead, dependencies=[Depends(require_edit("taminot"))])
 def open_exchange_ticket(ticket_id: int, db: Session = Depends(get_db)):
     ticket = db.get(ExchangeTicket, ticket_id)
     if not ticket:
@@ -406,7 +407,7 @@ def get_stock_lot(lot_id: int, db: Session = Depends(get_db)):
     return StockLotDetail(**stock_lot_summary(lot).model_dump(), allocations=lot.allocations, movements=lot.movements)
 
 
-@router.post("/stock-allocations", response_model=StockAllocationRead, status_code=status.HTTP_201_CREATED)
+@router.post("/stock-allocations", response_model=StockAllocationRead, status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_edit("taminot"))])
 def create_stock_allocation(payload: StockAllocationCreate, db: Session = Depends(get_db)):
     allocation = reserve_stock_for_order(
         db,

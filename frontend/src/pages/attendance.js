@@ -602,27 +602,29 @@ async function renderEmployeesList() {
       <select name="status"><option value="">Holat</option><option value="active" ${statusFilter === "active" ? "selected" : ""}>Faol</option><option value="inactive" ${statusFilter === "inactive" ? "selected" : ""}>Faol emas</option></select>`,
     headers: ["F.I.Sh.", "Lavozimi", "Bo'lim", "Tabel raqami", "Ishga kelish vaqti", "Holat", ""],
     rows: filtered.map((e) => `<tr>
-      <td><button class="ops-primary-link" data-edit-employee="${e.id}">${fmt(e.full_name)}</button></td>
+      <td>${canEdit("xodimlar") ? `<button class="ops-primary-link" data-edit-employee="${e.id}">${fmt(e.full_name)}</button>` : fmt(e.full_name)}</td>
       <td>${fmt(e.position)}</td>
       <td>${fmt(e.department)}</td>
       <td>${fmt(e.badge_number)}</td>
       <td>${attendanceTimeShort(e.scheduled_check_in) || dash}</td>
       <td><span class="status-badge ${e.is_active ? "success" : "muted"}">${e.is_active ? "Faol" : "Faol emas"}</span></td>
       <td><div class="ops-row-actions">
-        <button class="link-btn" data-edit-employee="${e.id}">Tahrirlash</button>
-        <button class="link-btn" style="color:var(--danger)" data-delete-employee="${e.id}">O'chirish</button>
+        ${canEdit("xodimlar") ? `<button class="link-btn" data-edit-employee="${e.id}">Tahrirlash</button>
+        <button class="link-btn" style="color:var(--danger)" data-delete-employee="${e.id}">O'chirish</button>` : ""}
       </div></td>
     </tr>`).join(""),
     emptyText: "Xodimlar topilmadi.",
     colspan: 7,
   });
 
-  const addButton = document.createElement("button");
-  addButton.className = "btn primary";
-  addButton.type = "button";
-  addButton.textContent = "Xodim qo'shish";
-  addButton.addEventListener("click", () => attendanceEmployeeModal(null, () => renderEmployeesList()));
-  document.querySelector(".ops-command-left")?.prepend(addButton);
+  if (canEdit("xodimlar")) {
+    const addButton = document.createElement("button");
+    addButton.className = "btn primary";
+    addButton.type = "button";
+    addButton.textContent = "Xodim qo'shish";
+    addButton.addEventListener("click", () => attendanceEmployeeModal(null, () => renderEmployeesList()));
+    document.querySelector(".ops-command-left")?.prepend(addButton);
+  }
 
   bindOpsSearch("employees-search-form", "/employees", ["search", "department", "status"]);
   document.querySelectorAll("[data-edit-employee]").forEach((btn) => btn.addEventListener("click", () => {
@@ -710,25 +712,27 @@ async function renderDepartmentsList() {
     counter: `${fmt(departments.length)} ta bo'lim`,
     headers: ["Nomi", "Tavsif", "Xodimlar soni", "Holat", ""],
     rows: departments.map((d) => `<tr>
-      <td><button class="ops-primary-link" data-edit-department="${d.id}">${fmt(d.name)}</button></td>
+      <td>${canEdit("xodimlar") ? `<button class="ops-primary-link" data-edit-department="${d.id}">${fmt(d.name)}</button>` : fmt(d.name)}</td>
       <td>${fmt(d.description)}</td>
       <td>${fmt(d.employee_count)}</td>
       <td><span class="status-badge ${d.is_active ? "success" : "muted"}">${d.is_active ? "Faol" : "Faol emas"}</span></td>
       <td><div class="ops-row-actions">
-        <button class="link-btn" data-edit-department="${d.id}">Tahrirlash</button>
-        <button class="link-btn" style="color:var(--danger)" data-delete-department="${d.id}">O'chirish</button>
+        ${canEdit("xodimlar") ? `<button class="link-btn" data-edit-department="${d.id}">Tahrirlash</button>
+        <button class="link-btn" style="color:var(--danger)" data-delete-department="${d.id}">O'chirish</button>` : ""}
       </div></td>
     </tr>`).join(""),
     emptyText: "Bo'limlar topilmadi.",
     colspan: 5,
   });
 
-  const addButton = document.createElement("button");
-  addButton.className = "btn primary";
-  addButton.type = "button";
-  addButton.textContent = "Bo'lim qo'shish";
-  addButton.addEventListener("click", () => departmentModal(null, () => renderDepartmentsList()));
-  document.querySelector(".ops-command-left")?.prepend(addButton);
+  if (canEdit("xodimlar")) {
+    const addButton = document.createElement("button");
+    addButton.className = "btn primary";
+    addButton.type = "button";
+    addButton.textContent = "Bo'lim qo'shish";
+    addButton.addEventListener("click", () => departmentModal(null, () => renderDepartmentsList()));
+    document.querySelector(".ops-command-left")?.prepend(addButton);
+  }
 
   document.querySelectorAll("[data-edit-department]").forEach((btn) => btn.addEventListener("click", () => {
     const department = departments.find((d) => d.id === Number(btn.dataset.editDepartment));

@@ -13,13 +13,14 @@ async function renderProductsList() {
 
 async function _renderProductsTab() {
   const data = await api("/api/products");
+  const editable = canEdit("sotuv");
   app.innerHTML = opsListPage({
     title: "Mahsulotlar",
     tabs: [
       { label: "Mahsulotlar", active: true, path: "/products" },
       { label: "Kategoriyalar", active: false, path: "/products?tab=categories" },
     ],
-    createPath: "/products/new",
+    createPath: editable ? "/products/new" : null,
     createLabel: "Mahsulot qo'shish",
     clearPath: "/products",
     counter: `${data.length} ta mahsulot`,
@@ -28,13 +29,13 @@ async function _renderProductsTab() {
       <tr>
         <td class="muted">${idx + 1}</td>
         <td>${fmt(p.category.name)}</td>
-        <td><button class="ops-primary-link" data-nav="/products/${p.id}/edit">${fmt(p.name)}</button></td>
+        <td>${editable ? `<button class="ops-primary-link" data-nav="/products/${p.id}/edit">${fmt(p.name)}</button>` : fmt(p.name)}</td>
         <td>${fmt(p.unit)}</td>
         <td class="muted">${fmt(p.notes)}</td>
         <td>
           <div class="ops-row-actions">
-            <button class="link-btn" data-nav="/products/${p.id}/edit">Tahrirlash</button>
-            <button class="link-btn" style="color:var(--danger)" data-product-delete="${p.id}">O'chirish</button>
+            ${editable ? `<button class="link-btn" data-nav="/products/${p.id}/edit">Tahrirlash</button>
+            <button class="link-btn" style="color:var(--danger)" data-product-delete="${p.id}">O'chirish</button>` : ""}
           </div>
         </td>
       </tr>
@@ -59,6 +60,7 @@ async function _renderProductsTab() {
 
 async function _renderCategoriesTab() {
   const data = await api("/api/product-categories");
+  const editable = canEdit("sotuv");
   app.innerHTML = opsListPage({
     title: "Mahsulotlar",
     tabs: [
@@ -75,8 +77,8 @@ async function _renderCategoriesTab() {
         <td class="muted">${fmt(cat.notes)}</td>
         <td>
           <div class="ops-row-actions">
-            <button class="link-btn" data-category-edit="${cat.id}" data-category-name="${esc(cat.name)}" data-category-notes="${esc(cat.notes || "")}">Tahrirlash</button>
-            <button class="link-btn" style="color:var(--danger)" data-category-delete="${cat.id}">O'chirish</button>
+            ${editable ? `<button class="link-btn" data-category-edit="${cat.id}" data-category-name="${esc(cat.name)}" data-category-notes="${esc(cat.notes || "")}">Tahrirlash</button>
+            <button class="link-btn" style="color:var(--danger)" data-category-delete="${cat.id}">O'chirish</button>` : ""}
           </div>
         </td>
       </tr>
@@ -85,13 +87,15 @@ async function _renderCategoriesTab() {
     colspan: 4,
   });
 
-  const cmdLeft = document.querySelector(".ops-command-left");
-  if (cmdLeft) {
-    const addBtn = document.createElement("button");
-    addBtn.className = "btn primary";
-    addBtn.textContent = "Kategoriya qo'shish";
-    addBtn.addEventListener("click", () => _showCategoryModal());
-    cmdLeft.prepend(addBtn);
+  if (editable) {
+    const cmdLeft = document.querySelector(".ops-command-left");
+    if (cmdLeft) {
+      const addBtn = document.createElement("button");
+      addBtn.className = "btn primary";
+      addBtn.textContent = "Kategoriya qo'shish";
+      addBtn.addEventListener("click", () => _showCategoryModal());
+      cmdLeft.prepend(addBtn);
+    }
   }
 
   document.querySelectorAll("[data-category-edit]").forEach((btn) => {

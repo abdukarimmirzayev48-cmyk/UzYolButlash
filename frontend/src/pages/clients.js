@@ -78,6 +78,7 @@ function clientRow(client) {
   const hasPhone = Boolean(client.phone);
   const hasRegion = Boolean(client.primary_region);
   const hasAddress = Boolean(client.legal_address);
+  const editable = canEdit("sotuv");
   return `
     <tr>
       <td>
@@ -96,14 +97,14 @@ function clientRow(client) {
       <td>
         <div class="clients-actions-cell">
           <button class="action-view" type="button" data-nav="/clients/${client.id}">Ko'rish</button>
-          <button type="button" data-nav="/clients/${client.id}/edit" title="Tahrirlash" aria-label="Tahrirlash">${clientsIcon("pencil", 16)}</button>
+          ${editable ? `<button type="button" data-nav="/clients/${client.id}/edit" title="Tahrirlash" aria-label="Tahrirlash">${clientsIcon("pencil", 16)}</button>
           <details class="clients-actions-menu">
             <summary aria-label="Ko'proq amallar">${clientsIcon("moreVertical", 16)}</summary>
             <div class="menu-panel">
               <button type="button" data-nav="/clients/${client.id}/edit">Tahrirlash</button>
               <button type="button" data-nav="/clients/${client.id}?tab=documents">Hujjatlar</button>
             </div>
-          </details>
+          </details>` : ""}
         </div>
       </td>
     </tr>
@@ -188,7 +189,7 @@ async function renderClientsList() {
 
       <form id="clients-filter-form">
         <div class="clients-toolbar">
-          <button type="button" class="clients-btn-primary" data-nav="/clients/new">${clientsIcon("plus", 16)}Yangi mijoz</button>
+          ${canEdit("sotuv") ? `<button type="button" class="clients-btn-primary" data-nav="/clients/new">${clientsIcon("plus", 16)}Yangi mijoz</button>` : ""}
           <div class="clients-filters">
             <label class="clients-field has-icon-left clients-field-search">
               <span class="field-icon-left">${clientsIcon("search", 16)}</span>
@@ -312,9 +313,9 @@ function detailHeader(client) {
       </div>
       <div class="actions">
         <button class="btn" data-nav="/clients">Back</button>
-        <button class="btn" data-nav="/clients/${client.id}/edit">Edit</button>
+        ${canEdit("sotuv") ? `<button class="btn" data-nav="/clients/${client.id}/edit">Edit</button>
         <button class="btn" data-nav="/contracts/new?client_id=${client.id}">Create contract</button>
-        <button class="btn" data-nav="/orders/new">Create order</button>
+        <button class="btn" data-nav="/orders/new">Create order</button>` : ""}
       </div>
     </div>
     <div class="summary-grid">
@@ -529,6 +530,9 @@ function batchNextAction(batch = {}) {
 
 function batchNextActionPanel(batch) {
   const action = batchNextAction(batch);
+  if (!action.done && !canEdit("yetkazib_berish")) {
+    return `<section class="next-action-panel"><div><span>Keyingi amal</span><strong>${fmt(action.title)}</strong></div></section>`;
+  }
   let button = action.modal === "transport"
     ? `<button class="btn primary" type="button" data-transport-assignment>${fmt(action.button)}</button>`
     : action.modal === "loading"
@@ -595,16 +599,17 @@ function quantityDisplay(value, unit = "") {
 }
 
 function contactsTab(client) {
+  const editable = canEdit("sotuv");
   return section("Contacts", `
-    <div class="actions"><button class="btn primary" data-add="contacts">Add contact</button></div>
+    ${editable ? `<div class="actions"><button class="btn primary" data-add="contacts">Add contact</button></div>` : ""}
     ${tableOrEmpty(client.contacts, ["Full name", "Position", "Phone", "Email", "Primary", "Actions"], (item) => `
       <tr>
         <td>${fmt(item.full_name)}</td><td>${fmt(item.position)}</td><td>${fmt(item.phone)}</td><td>${fmt(item.email)}</td>
         <td>${item.is_primary ? '<span class="pill">Primary</span>' : dash}</td>
         <td><div class="table-actions">
-          <button class="link-btn" data-edit="contacts" data-id="${item.id}">Edit</button>
+          ${editable ? `<button class="link-btn" data-edit="contacts" data-id="${item.id}">Edit</button>
           <button class="link-btn" data-primary="contacts" data-id="${item.id}">Set as primary</button>
-          <button class="link-btn" data-delete="contacts" data-id="${item.id}">Delete</button>
+          <button class="link-btn" data-delete="contacts" data-id="${item.id}">Delete</button>` : ""}
         </div></td>
       </tr>
     `, "No contacts yet.")}
@@ -612,8 +617,9 @@ function contactsTab(client) {
 }
 
 function addressesTab(client) {
+  const editable = canEdit("sotuv");
   return section("Addresses", `
-    <div class="actions"><button class="btn primary" data-add="addresses">Add address</button></div>
+    ${editable ? `<div class="actions"><button class="btn primary" data-add="addresses">Add address</button></div>` : ""}
     ${tableOrEmpty(client.addresses, ["Type", "Region", "District", "Address", "Coordinates", "Actions"], (item) => {
       const hasCoords = item.latitude && item.longitude;
       return `
@@ -621,8 +627,8 @@ function addressesTab(client) {
           <td>${fmt(item.address_type)}</td><td>${fmt(item.region)}</td><td>${fmt(item.district)}</td><td>${fmt(item.address)}</td>
           <td>${hasCoords ? `${fmt(item.latitude)}, ${fmt(item.longitude)}` : dash}</td>
           <td><div class="table-actions">
-            <button class="link-btn" data-edit="addresses" data-id="${item.id}">Edit</button>
-            <button class="link-btn" data-delete="addresses" data-id="${item.id}">Delete</button>
+            ${editable ? `<button class="link-btn" data-edit="addresses" data-id="${item.id}">Edit</button>
+            <button class="link-btn" data-delete="addresses" data-id="${item.id}">Delete</button>` : ""}
             ${hasCoords ? `<a class="link-btn" target="_blank" href="https://maps.google.com/?q=${esc(item.latitude)},${esc(item.longitude)}">View on map</a>` : `<button class="link-btn" disabled>View on map</button>`}
           </div></td>
         </tr>
@@ -632,16 +638,17 @@ function addressesTab(client) {
 }
 
 function bankTab(client) {
+  const editable = canEdit("sotuv");
   return section("Bank accounts", `
-    <div class="actions"><button class="btn primary" data-add="bank">Add bank account</button></div>
+    ${editable ? `<div class="actions"><button class="btn primary" data-add="bank">Add bank account</button></div>` : ""}
     ${tableOrEmpty(client.bank_accounts, ["Bank", "MFO", "Account number", "Primary", "Actions"], (item) => `
       <tr>
         <td>${fmt(item.bank_name)}</td><td>${fmt(item.mfo)}</td><td>${fmt(item.account_number)}</td>
         <td>${item.is_primary ? '<span class="pill">Primary</span>' : dash}</td>
         <td><div class="table-actions">
-          <button class="link-btn" data-edit="bank" data-id="${item.id}">Edit</button>
+          ${editable ? `<button class="link-btn" data-edit="bank" data-id="${item.id}">Edit</button>
           <button class="link-btn" data-primary="bank" data-id="${item.id}">Set as primary</button>
-          <button class="link-btn" data-delete="bank" data-id="${item.id}">Delete</button>
+          <button class="link-btn" data-delete="bank" data-id="${item.id}">Delete</button>` : ""}
         </div></td>
       </tr>
     `, "No bank accounts yet.")}
@@ -649,15 +656,16 @@ function bankTab(client) {
 }
 
 function documentsTab(client) {
+  const editable = canEdit("sotuv");
   return section("Documents", `
-    <div class="actions"><button class="btn primary" data-add="documents">Add document</button></div>
+    ${editable ? `<div class="actions"><button class="btn primary" data-add="documents">Add document</button></div>` : ""}
     ${tableOrEmpty(client.documents, ["Document title", "Type", "Uploaded date", "Uploaded by", "Actions"], (item) => `
       <tr>
         <td>${fmt(item.title)}</td><td>${fmt(item.document_type)}</td><td>${fmtDate(item.uploaded_at)}</td><td>${fmt(item.uploaded_by)}</td>
         <td><div class="table-actions">
           ${item.file_url ? `<a class="link-btn" target="_blank" href="${esc(item.file_url)}">View</a><a class="link-btn" href="${esc(item.file_url)}" download>Download</a>` : `<button class="link-btn" disabled>View</button><button class="link-btn" disabled>Download</button>`}
-          <button class="link-btn" data-edit="documents" data-id="${item.id}">Edit</button>
-          <button class="link-btn" data-delete="documents" data-id="${item.id}">Delete</button>
+          ${editable ? `<button class="link-btn" data-edit="documents" data-id="${item.id}">Edit</button>
+          <button class="link-btn" data-delete="documents" data-id="${item.id}">Delete</button>` : ""}
         </div></td>
       </tr>
     `, "No documents yet.")}
@@ -665,20 +673,22 @@ function documentsTab(client) {
 }
 
 function notesTab(client) {
+  const editable = canEdit("sotuv");
   return section("Notes / History", `
-    <div class="actions"><button class="btn primary" data-add="notes">Add note</button></div>
+    ${editable ? `<div class="actions"><button class="btn primary" data-add="notes">Add note</button></div>` : ""}
     ${tableOrEmpty(client.notes_history, ["Date", "Employee/User", "Note", "Actions"], (item) => `
       <tr>
         <td>${fmtDate(item.created_at)}</td><td>${fmt(item.created_by)}</td><td>${fmt(item.note)}</td>
-        <td><button class="link-btn" data-delete="notes" data-id="${item.id}">Delete</button></td>
+        <td>${editable ? `<button class="link-btn" data-delete="notes" data-id="${item.id}">Delete</button>` : ""}</td>
       </tr>
     `, "No notes yet.")}
   `);
 }
 
 function clientContractsTab(client, contracts = []) {
+  const editable = canEdit("sotuv");
   return section("Contracts", `
-    <div class="actions"><button class="btn primary" data-nav="/contracts/new?client_id=${client.id}">Create contract</button></div>
+    ${editable ? `<div class="actions"><button class="btn primary" data-nav="/contracts/new?client_id=${client.id}">Create contract</button></div>` : ""}
     ${tableOrEmpty(contracts, ["Contract number", "Date", "Product", "Total quantity", "Total amount", "Delivered", "Remaining", "Status", "Actions"], (contract) => `
       <tr>
         <td><strong>${fmt(contract.contract_number)}</strong></td>
@@ -689,15 +699,16 @@ function clientContractsTab(client, contracts = []) {
         <td>${fmtQty(contract.delivered_quantity)}</td>
         <td>${fmtQty(contract.remaining_quantity)}</td>
         <td>${fmt(optionLabel(contractStatuses, contract.status))}</td>
-        <td><div class="table-actions"><button class="link-btn" data-nav="/contracts/${contract.id}">View</button><button class="link-btn" data-nav="/contracts/${contract.id}/edit">Edit</button></div></td>
+        <td><div class="table-actions"><button class="link-btn" data-nav="/contracts/${contract.id}">View</button>${editable ? `<button class="link-btn" data-nav="/contracts/${contract.id}/edit">Edit</button>` : ""}</div></td>
       </tr>
     `, "No contracts found.")}
   `);
 }
 
 function clientOrdersTab(client, orders = []) {
+  const editable = canEdit("sotuv");
   return section("Orders", `
-    <div class="actions"><button class="btn primary" data-nav="/orders/new">Create order</button></div>
+    ${editable ? `<div class="actions"><button class="btn primary" data-nav="/orders/new">Create order</button></div>` : ""}
     ${tableOrEmpty(orders, ["Order number", "Date", "Contract", "Product", "Quantity", "Delivered", "Remaining", "Supplier", "Status", "Actions"], (order) => `
       <tr>
         <td><strong>${fmt(order.order_number)}</strong></td>
@@ -709,7 +720,7 @@ function clientOrdersTab(client, orders = []) {
         <td>${fmtQty(order.remaining_quantity)}</td>
         <td>${fmt(order.supplier_name)}</td>
         <td>${fmt(optionLabel(orderStatuses, order.status))}</td>
-        <td><div class="table-actions"><button class="link-btn" data-nav="/orders/${order.id}">View</button><button class="link-btn" data-nav="/orders/${order.id}/edit">Edit</button></div></td>
+        <td><div class="table-actions"><button class="link-btn" data-nav="/orders/${order.id}">View</button>${editable ? `<button class="link-btn" data-nav="/orders/${order.id}/edit">Edit</button>` : ""}</div></td>
       </tr>
     `, "No orders found.")}
   `);

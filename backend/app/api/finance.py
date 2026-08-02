@@ -48,6 +48,7 @@ from backend.app.schemas.finance import (
     PaymentSummary,
     PaymentUpdate,
 )
+from backend.app.services.auth import require_edit
 from backend.app.services.order_status import sync_order_status
 from backend.app.services.contract_status import sync_contract_status, sync_contracts_for_invoices
 
@@ -229,7 +230,7 @@ def list_invoices(
     return Page(items=list(items), total=total, page=page, page_size=page_size)
 
 
-@invoice_router.post("", response_model=InvoiceDetail, status_code=201)
+@invoice_router.post("", response_model=InvoiceDetail, status_code=201, dependencies=[Depends(require_edit("moliya"))])
 def create_invoice(payload: InvoiceCreate, db: Session = Depends(get_db)):
     data = payload.model_dump(exclude={"items", "documents", "initial_note"})
     invoice = CustomerInvoice(**data)
@@ -267,7 +268,7 @@ def get_invoice_detail(invoice_id: int, db: Session = Depends(get_db)):
     return result.model_copy(update={"summary": invoice_summary(invoice)})
 
 
-@invoice_router.patch("/{invoice_id}", response_model=InvoiceDetail)
+@invoice_router.patch("/{invoice_id}", response_model=InvoiceDetail, dependencies=[Depends(require_edit("moliya"))])
 def update_invoice(invoice_id: int, payload: InvoiceUpdate, db: Session = Depends(get_db)):
     invoice = load_invoice(db, invoice_id)
     old_contract_id = invoice.contract_id
@@ -296,7 +297,7 @@ def update_invoice(invoice_id: int, payload: InvoiceUpdate, db: Session = Depend
     return get_invoice_detail(invoice.id, db)
 
 
-@invoice_router.delete("/{invoice_id}", status_code=204)
+@invoice_router.delete("/{invoice_id}", status_code=204, dependencies=[Depends(require_edit("moliya"))])
 def delete_invoice(invoice_id: int, db: Session = Depends(get_db)):
     invoice = load_invoice(db, invoice_id)
     order_id = invoice.order_id
@@ -333,7 +334,7 @@ def list_payments(db: Session = Depends(get_db), page: int = Query(1, ge=1), pag
     return Page(items=items, total=total, page=page, page_size=page_size)
 
 
-@payment_router.post("", response_model=PaymentDetail, status_code=201)
+@payment_router.post("", response_model=PaymentDetail, status_code=201, dependencies=[Depends(require_edit("moliya"))])
 def create_payment(payload: PaymentCreate, db: Session = Depends(get_db)):
     data = payload.model_dump(exclude={"allocations", "documents", "initial_note"})
     payment = CustomerPayment(**data)
@@ -371,7 +372,7 @@ def get_payment_detail(payment_id: int, db: Session = Depends(get_db)):
     return result.model_copy(update={"summary": payment_summary(payment)})
 
 
-@payment_router.patch("/{payment_id}", response_model=PaymentDetail)
+@payment_router.patch("/{payment_id}", response_model=PaymentDetail, dependencies=[Depends(require_edit("moliya"))])
 def update_payment(payment_id: int, payload: PaymentUpdate, db: Session = Depends(get_db)):
     payment = load_payment(db, payment_id)
     data = payload.model_dump(exclude_unset=True, exclude={"allocations"})
@@ -395,7 +396,7 @@ def update_payment(payment_id: int, payload: PaymentUpdate, db: Session = Depend
     return get_payment_detail(payment.id, db)
 
 
-@payment_router.delete("/{payment_id}", status_code=204)
+@payment_router.delete("/{payment_id}", status_code=204, dependencies=[Depends(require_edit("moliya"))])
 def delete_payment(payment_id: int, db: Session = Depends(get_db)):
     payment = load_payment(db, payment_id)
     invoices = [allocation.invoice for allocation in payment.allocations]
@@ -408,7 +409,7 @@ def delete_payment(payment_id: int, db: Session = Depends(get_db)):
     return Response(status_code=204)
 
 
-@payment_router.post("/{payment_id}/allocations", response_model=AllocationRead, status_code=201)
+@payment_router.post("/{payment_id}/allocations", response_model=AllocationRead, status_code=201, dependencies=[Depends(require_edit("moliya"))])
 def create_allocation(payment_id: int, payload: AllocationCreate, db: Session = Depends(get_db)):
     payment = load_payment(db, payment_id)
     validate_allocations(db, payment, [payload])
@@ -423,7 +424,7 @@ def create_allocation(payment_id: int, payload: AllocationCreate, db: Session = 
     return allocation
 
 
-@finance_router.post("/documents", response_model=FinanceDocumentRead, status_code=201)
+@finance_router.post("/documents", response_model=FinanceDocumentRead, status_code=201, dependencies=[Depends(require_edit("moliya"))])
 def create_document(payload: FinanceDocumentCreate, db: Session = Depends(get_db)):
     data = payload.model_dump()
     if not data.get("client_id"):
@@ -439,7 +440,7 @@ def create_document(payload: FinanceDocumentCreate, db: Session = Depends(get_db
     return document
 
 
-@finance_router.post("/documents/upload", response_model=FinanceDocumentRead, status_code=201)
+@finance_router.post("/documents/upload", response_model=FinanceDocumentRead, status_code=201, dependencies=[Depends(require_edit("moliya"))])
 def upload_document(
     document_type: FinanceDocumentType = Form(...),
     title: str = Form(...),
@@ -481,7 +482,7 @@ def upload_document(
     return document
 
 
-@finance_router.post("/notes", response_model=FinanceNoteRead, status_code=201)
+@finance_router.post("/notes", response_model=FinanceNoteRead, status_code=201, dependencies=[Depends(require_edit("moliya"))])
 def create_note(payload: FinanceNoteCreate, db: Session = Depends(get_db)):
     data = payload.model_dump()
     if not data.get("client_id"):

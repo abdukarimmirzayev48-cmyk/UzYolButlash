@@ -10,6 +10,7 @@ from backend.app.db.session import get_db
 from backend.app.models.delivery import DeliveryBatch, Logistics, LogisticsStatus
 from backend.app.models.transport import Transport, TransportStatus
 from backend.app.schemas.client import Page
+from backend.app.services.auth import require_edit
 from backend.app.schemas.transport import TransportCreate, TransportRead, TransportUpdate
 
 TERMINAL_LOGISTICS_STATUSES = {LogisticsStatus.delivered, LogisticsStatus.completed, LogisticsStatus.cancelled, LogisticsStatus.issue}
@@ -169,7 +170,7 @@ def transport_monitoring(db: Session = Depends(get_db)):
     return {"summary": summary, "working": working_rows, "idle": idle_rows, "routes": routes}
 
 
-@router.post("", response_model=TransportRead, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=TransportRead, status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_edit("yetkazib_berish"))])
 def create_transport(payload: TransportCreate, db: Session = Depends(get_db)):
     transport = Transport(**payload.model_dump())
     db.add(transport)
@@ -183,7 +184,7 @@ def get_transport(transport_id: int, db: Session = Depends(get_db)):
     return get_transport_or_404(db, transport_id)
 
 
-@router.patch("/{transport_id}", response_model=TransportRead)
+@router.patch("/{transport_id}", response_model=TransportRead, dependencies=[Depends(require_edit("yetkazib_berish"))])
 def update_transport(transport_id: int, payload: TransportUpdate, db: Session = Depends(get_db)):
     transport = get_transport_or_404(db, transport_id)
     update_model(transport, payload.model_dump(exclude_unset=True))
@@ -192,7 +193,7 @@ def update_transport(transport_id: int, payload: TransportUpdate, db: Session = 
     return transport
 
 
-@router.delete("/{transport_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/{transport_id}", status_code=status.HTTP_204_NO_CONTENT, dependencies=[Depends(require_edit("yetkazib_berish"))])
 def delete_transport(transport_id: int, db: Session = Depends(get_db)):
     transport = get_transport_or_404(db, transport_id)
     db.delete(transport)

@@ -12,6 +12,7 @@ from backend.app.schemas.product import (
     ProductRead,
     ProductUpdate,
 )
+from backend.app.services.auth import require_edit
 
 categories_router = APIRouter(prefix="/api/product-categories", tags=["product-categories"])
 products_router = APIRouter(prefix="/api/products", tags=["products"])
@@ -42,7 +43,7 @@ def list_categories(db: Session = Depends(get_db)):
     return db.scalars(select(ProductCategory).order_by(ProductCategory.name)).all()
 
 
-@categories_router.post("", response_model=ProductCategoryRead, status_code=status.HTTP_201_CREATED)
+@categories_router.post("", response_model=ProductCategoryRead, status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_edit("sotuv"))])
 def create_category(payload: ProductCategoryCreate, db: Session = Depends(get_db)):
     category = ProductCategory(**payload.model_dump())
     db.add(category)
@@ -51,7 +52,7 @@ def create_category(payload: ProductCategoryCreate, db: Session = Depends(get_db
     return category
 
 
-@categories_router.patch("/{category_id}", response_model=ProductCategoryRead)
+@categories_router.patch("/{category_id}", response_model=ProductCategoryRead, dependencies=[Depends(require_edit("sotuv"))])
 def update_category(category_id: int, payload: ProductCategoryUpdate, db: Session = Depends(get_db)):
     category = get_category_or_404(db, category_id)
     for key, value in payload.model_dump(exclude_unset=True).items():
@@ -61,7 +62,7 @@ def update_category(category_id: int, payload: ProductCategoryUpdate, db: Sessio
     return category
 
 
-@categories_router.delete("/{category_id}", status_code=status.HTTP_204_NO_CONTENT)
+@categories_router.delete("/{category_id}", status_code=status.HTTP_204_NO_CONTENT, dependencies=[Depends(require_edit("sotuv"))])
 def delete_category(category_id: int, db: Session = Depends(get_db)):
     category = get_category_or_404(db, category_id)
     db.delete(category)
@@ -77,7 +78,7 @@ def list_products(db: Session = Depends(get_db), category_id: int | None = None)
     return db.scalars(stmt.order_by(Product.category_id, Product.name)).all()
 
 
-@products_router.post("", response_model=ProductRead, status_code=status.HTTP_201_CREATED)
+@products_router.post("", response_model=ProductRead, status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_edit("sotuv"))])
 def create_product(payload: ProductCreate, db: Session = Depends(get_db)):
     get_category_or_404(db, payload.category_id)
     product = Product(**payload.model_dump())
@@ -95,7 +96,7 @@ def get_product(product_id: int, db: Session = Depends(get_db)):
     return product
 
 
-@products_router.patch("/{product_id}", response_model=ProductRead)
+@products_router.patch("/{product_id}", response_model=ProductRead, dependencies=[Depends(require_edit("sotuv"))])
 def update_product(product_id: int, payload: ProductUpdate, db: Session = Depends(get_db)):
     product = get_product_or_404(db, product_id)
     data = payload.model_dump(exclude_unset=True)
@@ -107,7 +108,7 @@ def update_product(product_id: int, payload: ProductUpdate, db: Session = Depend
     return load_product(db, product_id)
 
 
-@products_router.delete("/{product_id}", status_code=status.HTTP_204_NO_CONTENT)
+@products_router.delete("/{product_id}", status_code=status.HTTP_204_NO_CONTENT, dependencies=[Depends(require_edit("sotuv"))])
 def delete_product(product_id: int, db: Session = Depends(get_db)):
     product = get_product_or_404(db, product_id)
     db.delete(product)

@@ -80,7 +80,7 @@ async function renderCustomerRequestsList() {
         <td>${fmt(item.payment_source_label)}</td>
         <td>${requestStatusBadge(item)}</td>
         <td>${fmtDate(item.created_at)}</td>
-        <td><div class="ops-row-actions"><button class="link-btn" data-nav="/customer-requests/${item.id}">Ko'rish</button><button class="link-btn" data-nav="/customer-requests/${item.id}/edit">Tahrirlash</button></div></td>
+        <td><div class="ops-row-actions"><button class="link-btn" data-nav="/customer-requests/${item.id}">Ko'rish</button>${canEdit("sotuv") ? `<button class="link-btn" data-nav="/customer-requests/${item.id}/edit">Tahrirlash</button>` : ""}</div></td>
       </tr>
     `).join(""),
     emptyText: "Talabnomalar topilmadi.",
@@ -104,8 +104,8 @@ async function renderCustomerRequestDetail(id) {
         </div>
         <div class="actions workflow-actions">
           <button class="btn" data-nav="/customer-requests">Orqaga</button>
-          <button class="btn" data-nav="/customer-requests/${request.id}/edit">Tahrirlash</button>
-          <button class="btn primary" data-convert-request="${request.id}">Buyurtmaga o'tkazish</button>
+          ${canEdit("sotuv") ? `<button class="btn" data-nav="/customer-requests/${request.id}/edit">Tahrirlash</button>
+          <button class="btn primary" data-convert-request="${request.id}">Buyurtmaga o'tkazish</button>` : ""}
         </div>
       </div>
       ${section("Mijoz turi va to'lov manbasi", detailList([["Mijoz turi", request.customer_type_label], ["To'lov manbasi", request.payment_source_label], ["Status", request.status_label]]))}
@@ -120,7 +120,7 @@ async function renderCustomerRequestDetail(id) {
           <div class="total-box"><span>Umumiy miqdor</span><strong>${fmtQty(request.total_quantity, request.unit)}</strong></div>
         </div>
       `)}
-      ${section("Statusni o'zgartirish", `<div class="actions">${customerRequestStatusActions.map(([status, label]) => `<button class="btn" type="button" data-request-status="${status}">${label}</button>`).join("")}</div>`)}
+      ${canEdit("sotuv") ? section("Statusni o'zgartirish", `<div class="actions">${customerRequestStatusActions.map(([status, label]) => `<button class="btn" type="button" data-request-status="${status}">${label}</button>`).join("")}</div>`) : ""}
       ${section("Status tarixi", tableOrEmpty(request.status_history, ["Sana", "Oldingi status", "Yangi status", "Izoh", "Foydalanuvchi"], (item) => `<tr><td>${fmtDate(item.created_at)}</td><td>${fmt(item.old_status_label)}</td><td>${fmt(item.new_status_label)}</td><td>${fmt(item.comment)}</td><td>${fmt(item.changed_by)}</td></tr>`, "Status tarixi mavjud emas."))}
     </div>
   `;
