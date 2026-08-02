@@ -110,23 +110,23 @@ def recalculate_payment(db: Session, payment: CustomerPayment) -> None:
 
 def validate_invoice_links(db: Session, invoice: CustomerInvoice) -> None:
     if not db.get(Client, invoice.client_id):
-        raise HTTPException(status_code=400, detail="Client does not exist")
+        raise HTTPException(status_code=400, detail="Mijoz mavjud emas.")
     contract = db.get(Contract, invoice.contract_id) if invoice.contract_id else None
     if invoice.contract_id and (not contract or contract.client_id != invoice.client_id):
-        raise HTTPException(status_code=422, detail="Contract must belong to the selected client")
+        raise HTTPException(status_code=422, detail="Shartnoma tanlangan mijozga tegishli bo'lishi kerak.")
     order = db.get(Order, invoice.order_id) if invoice.order_id else None
     if invoice.order_id and (not order or order.client_id != invoice.client_id or (invoice.contract_id and order.contract_id != invoice.contract_id)):
-        raise HTTPException(status_code=422, detail="Order must belong to the selected client and contract")
+        raise HTTPException(status_code=422, detail="Buyurtma tanlangan mijoz va shartnomaga tegishli bo'lishi kerak.")
     batch = db.get(DeliveryBatch, invoice.delivery_batch_id) if invoice.delivery_batch_id else None
     if invoice.delivery_batch_id and (not batch or batch.client_id != invoice.client_id or (invoice.contract_id and batch.contract_id != invoice.contract_id) or (invoice.order_id and batch.order_id != invoice.order_id)):
-        raise HTTPException(status_code=422, detail="Delivery batch must belong to the selected client, contract, and order")
+        raise HTTPException(status_code=422, detail="Yetkazib berish partiyasi tanlangan mijoz, shartnoma va buyurtmaga tegishli bo'lishi kerak.")
     logistics = db.get(Logistics, invoice.logistics_id) if invoice.logistics_id else None
     if invoice.logistics_id and (not logistics or (invoice.delivery_batch_id and logistics.delivery_batch_id != invoice.delivery_batch_id)):
-        raise HTTPException(status_code=422, detail="Logistics must match the selected delivery batch")
+        raise HTTPException(status_code=422, detail="Logistika tanlangan yetkazib berish partiyasiga mos kelishi kerak.")
     if invoice.invoice_type in {InvoiceType.advance, InvoiceType.batch_payment, InvoiceType.transport, InvoiceType.adjustment} and not invoice.contract_id:
-        raise HTTPException(status_code=422, detail="contract_id is required for this invoice type")
+        raise HTTPException(status_code=422, detail="Ushbu hisob-faktura turi uchun contract_id majburiy.")
     if invoice.invoice_type in {InvoiceType.batch_payment, InvoiceType.transport} and (not invoice.order_id or not invoice.delivery_batch_id):
-        raise HTTPException(status_code=422, detail="order_id and delivery_batch_id are required for this invoice type")
+        raise HTTPException(status_code=422, detail="Ushbu hisob-faktura turi uchun order_id va delivery_batch_id majburiy.")
 
 
 def load_invoice(db: Session, invoice_id: int) -> CustomerInvoice:
@@ -146,7 +146,7 @@ def load_invoice(db: Session, invoice_id: int) -> CustomerInvoice:
         )
     ).first()
     if not invoice:
-        raise HTTPException(status_code=404, detail="Invoice not found")
+        raise HTTPException(status_code=404, detail="Hisob-faktura topilmadi.")
     return invoice
 
 
@@ -157,7 +157,7 @@ def load_payment(db: Session, payment_id: int) -> CustomerPayment:
         .options(selectinload(CustomerPayment.client), selectinload(CustomerPayment.allocations), selectinload(CustomerPayment.documents), selectinload(CustomerPayment.notes_history))
     ).first()
     if not payment:
-        raise HTTPException(status_code=404, detail="Payment not found")
+        raise HTTPException(status_code=404, detail="To'lov topilmadi.")
     return payment
 
 
@@ -173,15 +173,15 @@ def payment_summary(payment: CustomerPayment) -> PaymentSummary:
 def validate_allocations(db: Session, payment: CustomerPayment, allocations: list[AllocationCreate], exclude_payment_id: int | None = None) -> None:
     total = money(sum((item.allocated_amount for item in allocations), Decimal("0")))
     if total > payment.amount:
-        raise HTTPException(status_code=422, detail="Allocated amount cannot exceed payment amount")
+        raise HTTPException(status_code=422, detail="Taqsimlangan summa to'lov summasidan oshmasligi kerak.")
     for item in allocations:
         invoice = load_invoice(db, item.invoice_id)
         if invoice.client_id != payment.client_id:
-            raise HTTPException(status_code=422, detail="Payment and invoice must belong to the same client")
+            raise HTTPException(status_code=422, detail="To'lov va hisob-faktura bir xil mijozga tegishli bo'lishi kerak.")
         current_from_payment = sum((a.allocated_amount for a in invoice.allocations if exclude_payment_id and a.payment_id == exclude_payment_id), Decimal("0"))
         available = money(invoice.remaining_amount + current_from_payment)
         if item.allocated_amount > available:
-            raise HTTPException(status_code=422, detail="Allocated amount cannot exceed invoice remaining amount")
+            raise HTTPException(status_code=422, detail="Taqsimlangan summa hisob-fakturaning qolgan summasidan oshmasligi kerak.")
 
 
 def sync_orders_for_invoices(db: Session, invoices: list[CustomerInvoice]) -> None:
@@ -278,7 +278,7 @@ def update_invoice(invoice_id: int, payload: InvoiceUpdate, db: Session = Depend
     validate_invoice_links(db, invoice)
     if payload.items is not None:
         if not payload.items:
-            raise HTTPException(status_code=422, detail="Invoice must have at least one item")
+            raise HTTPException(status_code=422, detail="Hisob-fakturada kamida bitta band bo'lishi kerak.")
         invoice.items.clear()
         db.flush()
         for item_payload in payload.items:
@@ -339,7 +339,7 @@ def create_payment(payload: PaymentCreate, db: Session = Depends(get_db)):
     data = payload.model_dump(exclude={"allocations", "documents", "initial_note"})
     payment = CustomerPayment(**data)
     if not db.get(Client, payment.client_id):
-        raise HTTPException(status_code=400, detail="Client does not exist")
+        raise HTTPException(status_code=400, detail="Mijoz mavjud emas.")
     db.add(payment)
     db.flush()
     validate_allocations(db, payment, payload.allocations)
@@ -432,7 +432,7 @@ def create_document(payload: FinanceDocumentCreate, db: Session = Depends(get_db
         payment = db.get(CustomerPayment, data.get("payment_id")) if data.get("payment_id") else None
         data["client_id"] = invoice.client_id if invoice else payment.client_id if payment else None
     if not data.get("client_id"):
-        raise HTTPException(status_code=422, detail="client_id is required")
+        raise HTTPException(status_code=422, detail="client_id majburiy.")
     document = FinanceDocument(**data)
     db.add(document)
     db.commit()
@@ -453,13 +453,13 @@ def upload_document(
     db: Session = Depends(get_db),
 ):
     if not file.filename:
-        raise HTTPException(status_code=422, detail="File is required")
+        raise HTTPException(status_code=422, detail="Fayl majburiy.")
     invoice = db.get(CustomerInvoice, invoice_id) if invoice_id else None
     payment = db.get(CustomerPayment, payment_id) if payment_id else None
     resolved_client_id = client_id or (invoice.client_id if invoice else payment.client_id if payment else None)
     resolved_contract_id = contract_id or (invoice.contract_id if invoice else None)
     if not resolved_client_id:
-        raise HTTPException(status_code=422, detail="client_id is required")
+        raise HTTPException(status_code=422, detail="client_id majburiy.")
     UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
     safe_name = Path(file.filename).name.replace(" ", "_")
     stored_name = f"{uuid4().hex}_{safe_name}"
@@ -490,7 +490,7 @@ def create_note(payload: FinanceNoteCreate, db: Session = Depends(get_db)):
         payment = db.get(CustomerPayment, data.get("payment_id")) if data.get("payment_id") else None
         data["client_id"] = invoice.client_id if invoice else payment.client_id if payment else None
     if not data.get("client_id"):
-        raise HTTPException(status_code=422, detail="client_id is required")
+        raise HTTPException(status_code=422, detail="client_id majburiy.")
     note = FinanceNote(**data)
     db.add(note)
     db.commit()

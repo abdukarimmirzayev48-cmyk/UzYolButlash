@@ -50,14 +50,14 @@ router = APIRouter(prefix="/api/clients", tags=["clients"])
 def get_client_or_404(db: Session, client_id: int) -> Client:
     client = db.get(Client, client_id)
     if not client:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Client not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Mijoz topilmadi.")
     return client
 
 
 def get_child_or_404(db: Session, model: Any, client_id: int, item_id: int):
     item = db.get(model, item_id)
     if not item or item.client_id != client_id:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Item not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Element topilmadi.")
     return item
 
 
@@ -207,11 +207,15 @@ def get_client_detail(client_id: int, db: Session = Depends(get_db)):
             selectinload(Client.documents),
             selectinload(Client.notes_history),
             selectinload(Client.contracts),
+            selectinload(Client.orders),
         )
     ).first()
     if not client:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Client not found")
-    return client
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Mijoz topilmadi.")
+    detail = ClientDetail.model_validate(client)
+    detail.active_contracts = sum(1 for contract in client.contracts if contract.status in {"signed", "active"})
+    detail.active_orders = sum(1 for order in client.orders if order.status not in {"cancelled", "closed", "delivered"})
+    return detail
 
 
 @router.patch("/{client_id}", response_model=ClientRead, dependencies=[Depends(require_edit("sotuv"))])

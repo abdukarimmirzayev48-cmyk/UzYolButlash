@@ -67,6 +67,48 @@ function handleAuthResponse(path, response) {
   }
 }
 
+const PYDANTIC_ERROR_MESSAGES = {
+  missing: "to'ldirilishi shart",
+  string_type: "matn bo'lishi kerak",
+  string_too_short: "juda qisqa",
+  string_too_long: "juda uzun",
+  string_pattern_mismatch: "formati noto'g'ri",
+  int_type: "butun son bo'lishi kerak",
+  int_parsing: "butun son bo'lishi kerak",
+  float_type: "raqam bo'lishi kerak",
+  float_parsing: "raqam bo'lishi kerak",
+  decimal_parsing: "raqam bo'lishi kerak",
+  bool_type: "ha/yo'q qiymati bo'lishi kerak",
+  bool_parsing: "ha/yo'q qiymati bo'lishi kerak",
+  greater_than: "qiymat juda kichik",
+  greater_than_equal: "qiymat juda kichik",
+  less_than: "qiymat juda katta",
+  less_than_equal: "qiymat juda katta",
+  enum: "ruxsat etilmagan qiymat",
+  literal_error: "ruxsat etilmagan qiymat",
+  date_parsing: "sana formati noto'g'ri",
+  date_from_datetime_parsing: "sana formati noto'g'ri",
+  datetime_parsing: "sana/vaqt formati noto'g'ri",
+  time_parsing: "vaqt formati noto'g'ri",
+  json_invalid: "ma'lumot formati noto'g'ri",
+  extra_forbidden: "noma'lum maydon yuborildi",
+  uuid_parsing: "identifikator formati noto'g'ri",
+  list_type: "ro'yxat bo'lishi kerak",
+  dict_type: "obyekt bo'lishi kerak",
+  value_error: null,
+};
+
+function translateApiErrorDetail(detail) {
+  if (!Array.isArray(detail)) return detail;
+  return detail.map((item) => {
+    const field = (item.loc || []).filter((part) => part !== "body").join(".");
+    let msg = PYDANTIC_ERROR_MESSAGES[item.type];
+    if (msg === undefined) msg = item.msg;
+    else if (msg === null) msg = String(item.msg || "").replace(/^Value error,\s*/, "");
+    return field ? `${field}: ${msg}` : msg;
+  }).join("; ");
+}
+
 async function api(path, options = {}) {
   const response = await fetch(path, {
     headers: { "Content-Type": "application/json", ...(options.headers || {}) },
@@ -76,8 +118,8 @@ async function api(path, options = {}) {
   const body = await response.json().catch(() => ({}));
   if (!response.ok) {
     handleAuthResponse(path, response);
-    const detail = Array.isArray(body.detail) ? body.detail.map((item) => item.msg).join(", ") : body.detail;
-    throw new Error(detail || "Request failed");
+    const detail = translateApiErrorDetail(body.detail);
+    throw new Error(detail || "So'rovni bajarib bo'lmadi.");
   }
   return body;
 }
@@ -87,8 +129,8 @@ async function apiForm(path, formData, options = {}) {
   const body = await response.json().catch(() => ({}));
   if (!response.ok) {
     handleAuthResponse(path, response);
-    const detail = Array.isArray(body.detail) ? body.detail.map((item) => item.msg).join(", ") : body.detail;
-    throw new Error(detail || "Request failed");
+    const detail = translateApiErrorDetail(body.detail);
+    throw new Error(detail || "So'rovni bajarib bo'lmadi.");
   }
   return body;
 }
@@ -435,60 +477,60 @@ function clientForm(client = null) {
   const contact = client?.contacts?.[0] || {};
   const address = client?.addresses?.[0] || {};
   const account = client?.bank_accounts?.[0] || {};
-  const title = client ? "Edit client" : "New client";
+  const title = client ? "Mijozni tahrirlash" : "Yangi mijoz";
   return `
     <div class="page">
       <div class="page-header">
         <div class="page-title">
           <h1>${title}</h1>
-          <p>${client ? "Update client profile information." : "Create a legal entity client profile."}</p>
+          <p>${client ? "Mijoz profilini yangilang." : "Yuridik shaxs mijoz profilini yarating."}</p>
         </div>
-        <div class="actions"><button class="btn" data-nav="${client ? `/clients/${client.id}` : "/clients"}">Back</button></div>
+        <div class="actions"><button class="btn" data-nav="${client ? `/clients/${client.id}` : "/clients"}">Orqaga</button></div>
       </div>
       <form id="client-form">
-        ${section("Basic information", `
+        ${section("Asosiy ma'lumotlar", `
           <div class="grid">
-            ${textField("name", "Client name", client?.name)}
+            ${textField("name", "Mijoz nomi", client?.name)}
             ${textField("inn", "INN", client?.inn)}
             ${textField("oked", "OKED", client?.oked)}
-            ${textField("phone", "Phone", client?.phone)}
+            ${textField("phone", "Telefon", client?.phone)}
             ${textField("email", "Email", client?.email, "email")}
-            ${textArea("notes", "Notes", client?.notes)}
+            ${textArea("notes", "Izohlar", client?.notes)}
           </div>
         `)}
-        ${section("First contact person", `
+        ${section("Birlamchi kontakt shaxs", `
           <div class="grid">
-            ${textField("contact_full_name", "Full name", contact.full_name)}
-            ${textField("contact_position", "Position", contact.position)}
-            ${textField("contact_phone", "Phone", contact.phone)}
+            ${textField("contact_full_name", "F.I.Sh.", contact.full_name)}
+            ${textField("contact_position", "Lavozimi", contact.position)}
+            ${textField("contact_phone", "Telefon", contact.phone)}
             ${textField("contact_email", "Email", contact.email, "email")}
-            ${checkField("contact_is_primary", "Primary contact", contact.is_primary ?? true)}
-            ${textArea("contact_comment", "Comment", contact.comment)}
+            ${checkField("contact_is_primary", "Asosiy kontakt", contact.is_primary ?? true)}
+            ${textArea("contact_comment", "Izoh", contact.comment)}
           </div>
         `)}
-        ${section("Address", `
+        ${section("Manzil", `
           <div class="grid">
-            ${selectField("address_type", "Address type", addressTypes, address.address_type || "legal")}
-            ${textField("region", "Region", address.region)}
-            ${textField("district", "District", address.district)}
-            ${textField("address", "Address", address.address)}
-            ${textField("latitude", "Latitude", address.latitude)}
-            ${textField("longitude", "Longitude", address.longitude)}
-            ${textArea("address_comment", "Comment", address.comment)}
+            ${selectField("address_type", "Manzil turi", addressTypes, address.address_type || "legal")}
+            ${textField("region", "Hudud", address.region)}
+            ${textField("district", "Tuman", address.district)}
+            ${textField("address", "Manzil", address.address)}
+            ${textField("latitude", "Kenglik", address.latitude)}
+            ${textField("longitude", "Uzunlik", address.longitude)}
+            ${textArea("address_comment", "Izoh", address.comment)}
           </div>
         `)}
-        ${section("Bank account", `
+        ${section("Bank hisobi", `
           <div class="grid">
-            ${textField("bank_name", "Bank name", account.bank_name)}
+            ${textField("bank_name", "Bank nomi", account.bank_name)}
             ${textField("mfo", "MFO", account.mfo)}
-            ${textField("account_number", "Account number", account.account_number)}
-            ${checkField("bank_is_primary", "Primary account", account.is_primary ?? true)}
-            ${textArea("bank_comment", "Comment", account.comment)}
+            ${textField("account_number", "Hisob raqami", account.account_number)}
+            ${checkField("bank_is_primary", "Asosiy hisob", account.is_primary ?? true)}
+            ${textArea("bank_comment", "Izoh", account.comment)}
           </div>
         `)}
         <div class="form-footer">
-          <button type="button" class="btn" data-nav="${client ? `/clients/${client.id}` : "/clients"}">Cancel</button>
-          <button type="submit" class="btn primary">Save</button>
+          <button type="button" class="btn" data-nav="${client ? `/clients/${client.id}` : "/clients"}">Bekor qilish</button>
+          <button type="submit" class="btn primary">Saqlash</button>
         </div>
       </form>
     </div>
@@ -541,8 +583,265 @@ function createPayload(form) {
   return payload;
 }
 
-function opsListPage({ className = "", title, tabs = [], createPath, createLabel = "Yaratish", clearPath, counter = "", formId, filters = "", headers = [], rows = "", emptyText = "Ma'lumot topilmadi.", colspan = headers.length, footer = "" }) {
-  return `<div class="page ops-page ${className}"><div class="ops-titlebar"><div class="ops-title-left"><button class="ops-menu-btn" type="button" aria-label="Menyu">=</button><h1>${title}</h1></div>${tabs.length ? `<nav class="ops-tabs" aria-label="${title} ko'rinishlari">${tabs.map((tab) => `<button class="${tab.active ? "active" : ""}" type="button" ${tab.path ? `data-nav="${tab.path}"` : ""}>${tab.label}</button>`).join("")}</nav>` : ""}</div><div class="ops-commandbar"><div class="ops-command-left">${createPath ? `<button class="btn primary" data-nav="${createPath}">${createLabel}</button>` : ""}${clearPath ? `<button class="btn" type="button" data-nav="${clearPath}">Tozalash</button>` : ""}${counter ? `<span class="ops-counter">${counter}</span>` : ""}</div>${formId ? `<form class="ops-search" id="${formId}">${filters}<button class="ops-tool-btn" type="submit">Saralash</button>${clearPath ? `<button class="ops-tool-btn" type="button" data-nav="${clearPath}">Yangilash</button>` : ""}</form>` : ""}</div><section class="ops-table-card"><table class="ops-table"><thead><tr>${headers.map((head) => `<th>${head}</th>`).join("")}</tr></thead><tbody>${rows || `<tr><td colspan="${colspan}"><div class="empty">${emptyText}</div></td></tr>`}</tbody></table></section>${footer}</div>`;
+function tableOrEmpty(rows, headers, renderRow, emptyText) {
+  return `
+    <div class="table-scroll">
+      <table>
+        <thead><tr>${headers.map((head) => `<th>${head}</th>`).join("")}</tr></thead>
+        <tbody>${rows.length ? rows.map(renderRow).join("") : `<tr><td colspan="${headers.length}"><div class="empty">${emptyText}</div></td></tr>`}</tbody>
+      </table>
+    </div>
+  `;
+}
+
+function opsTableOrEmpty(rows, headers, renderRow, emptyText) {
+  return `<section class="ops-table-card"><table class="ops-table"><thead><tr>${headers.map((head) => `<th>${head}</th>`).join("")}</tr></thead><tbody>${rows.length ? rows.map(renderRow).join("") : `<tr><td colspan="${headers.length}"><div class="empty">${emptyText}</div></td></tr>`}</tbody></table></section>`;
+}
+
+function opsPageShell(title, tabs, body) {
+  return `<div class="page ops-page report-ops-page"><div class="ops-titlebar"><div class="ops-title-left"><button class="ops-menu-btn" type="button" aria-label="Menyu">=</button><h1>${title}</h1></div>${tabs?.length ? `<nav class="ops-tabs" aria-label="${title} ko'rinishlari">${tabs.map((tab) => `<button class="${tab.active ? "active" : ""}" type="button" ${tab.path ? `data-nav="${tab.path}"` : ""}>${tab.label}</button>`).join("")}</nav>` : ""}</div>${body}</div>`;
+}
+
+function summaryCards(items) {
+  return `<div class="summary-grid">${items.map(([label, value, cls = ""]) => `<div class="summary-card ${cls}"><span>${label}</span><strong>${value}</strong></div>`).join("")}</div>`;
+}
+
+function detailList(items) {
+  return `<div class="detail-list">${items.map(([label, value]) => `<div class="detail-item"><span>${label}</span><strong>${fmt(value)}</strong></div>`).join("")}</div>`;
+}
+
+function workflowHeader({ title, subtitle = "", backPath = "", actions = [], fullEditPath = "" }) {
+  const visibleActions = actions.map((action) => {
+    const attrs = action.modal ? `data-${esc(action.modal)}` : `data-nav="${esc(action.path || "#")}"`;
+    return `<button class="btn ${action.primary ? "primary" : ""}" type="button" ${attrs}>${fmt(action.label)}</button>`;
+  }).join("");
+  const editMenu = fullEditPath ? `<details class="action-menu"><summary>Amallar</summary><div><button type="button" data-nav="${esc(fullEditPath)}">To'liq tahrirlash</button></div></details>` : "";
+  return `<div class="workflow-header"><div class="page-title"><h1>${fmt(title)}</h1><p>${subtitle}</p></div><div class="actions workflow-actions">${backPath ? `<button class="btn" data-nav="${esc(backPath)}">Orqaga</button>` : ""}${visibleActions}${editMenu}</div></div>`;
+}
+
+function workflowStatusGrid(items) {
+  return `<div class="workflow-status-grid">${items.map(([label, value]) => `<div class="workflow-status-card"><span>${label}</span><strong>${value}</strong></div>`).join("")}</div>`;
+}
+
+function workflowWarningsPanel(messages, title = "E'tibor kerak") {
+  const clean = messages.filter(Boolean);
+  if (!clean.length) return "";
+  return `<div class="workflow-warning"><strong>${fmt(title)}</strong><ul>${clean.map((message) => `<li>${esc(message)}</li>`).join("")}</ul></div>`;
+}
+
+function workflowNextActionPanel(action = {}) {
+  if (!action.title) return "";
+  const attrs = action.modal ? `data-${esc(action.modal)}` : action.path ? `data-nav="${esc(action.path)}"` : "";
+  const button = attrs ? `<button class="btn primary" ${attrs}>${fmt(action.button || "Ochish")}</button>` : "";
+  return `<section class="next-action-panel ${action.done ? "done" : ""}"><div><span>Keyingi amal</span><strong>${fmt(action.title)}</strong></div>${button}</section>`;
+}
+
+function workflowTabs(active, items, attr) {
+  return `<div class="tabs workflow-tabs">${items.map(([key, label]) => `<button class="tab ${active === key ? "active" : ""}" data-${attr}="${key}">${label}</button>`).join("")}</div>`;
+}
+
+function workflowTimeline(items) {
+  return `<div class="workflow-timeline">${items.map(([label, value]) => `<div><span>${label}</span><strong>${fmt(value)}</strong></div>`).join("")}</div>`;
+}
+
+function hasDocs(entity = {}) {
+  return (entity.documents || []).length > 0;
+}
+
+function financePaymentState(entity = {}) {
+  const remaining = numberValue(entity.remaining_amount ?? entity.summary?.unallocated_amount);
+  const paid = numberValue(entity.paid_amount ?? entity.summary?.allocated_amount);
+  const total = numberValue(entity.total_amount ?? entity.amount ?? entity.summary?.amount);
+  if (remaining <= 0 && total > 0) return { label: "To'liq yopilgan", tone: "success" };
+  if (paid > 0) return { label: "Qisman yopilgan", tone: "warning" };
+  return { label: "To'lov kutilmoqda", tone: "muted" };
+}
+
+function logisticsNumber(logistics = {}, batch = {}) {
+  return logistics?.logistics_number || (batch?.batch_number ? `LOG-${batch.batch_number}` : dash);
+}
+
+function transportProfit(logistics = {}) {
+  if (!logistics || (logistics.cost_amount === undefined && logistics.customer_price === undefined)) return dash;
+  return fmtMoney(numberValue(logistics.customer_price) - numberValue(logistics.cost_amount));
+}
+
+function logisticsTimeline(logistics = {}, batch = {}) {
+  const steps = [
+    ["Yaratildi", logistics.created_at ? fmtDate(logistics.created_at) : dash],
+    ["Reja yuklash", logistics.planned_pickup_date],
+    ["Haqiqiy yuklash", logistics.actual_pickup_date],
+    ["Reja yetkazish", logistics.planned_delivery_date],
+    ["Haqiqiy yetkazish", logistics.actual_delivery_date],
+    ["Qabul", batch.accepted_date],
+    ["Holat", optionLabel(logisticsStatuses, logistics.status)],
+  ];
+  return detailList(steps);
+}
+
+function logisticsWarnings(logistics = {}, batch = {}) {
+  const warnings = [];
+  if (logistics.status === "completed" && !logistics.actual_delivery_date) warnings.push("Yakunlangan logistika uchun haqiqiy yetkazish sanasi kiritilmagan.");
+  if (["loaded", "in_transit", "delivered"].includes(logistics.status) && !logistics.vehicle_number) warnings.push("Bu holat uchun transport raqami kiritilishi kerak.");
+  if (batch.summary?.has_quantity_difference) warnings.push("Partiyada yuklangan va qabul qilingan miqdor farqi bor.");
+  return warnings.length ? `<div class="empty error">${warnings.map(esc).join("<br>")}</div>` : "";
+}
+
+function batchPrimaryProduct(batch = {}) {
+  const items = batch.items || [];
+  if (!items.length) return batch.product || dash;
+  const names = [...new Set(items.map((item) => item.product_name).filter(Boolean))];
+  return names.length <= 2 ? names.join(", ") : `${names.slice(0, 2).join(", ")} +${names.length - 2}`;
+}
+
+function batchHasAcceptedInput(batch = {}) {
+  return (batch.items || []).some((item) => item.accepted_quantity !== null && item.accepted_quantity !== undefined && item.accepted_quantity !== "");
+}
+
+function batchQuantityStatus(batch = {}) {
+  if (!batchHasAcceptedInput(batch)) return { key: "waiting_acceptance", label: "Qabul kutilmoqda", tone: "warning" };
+  if ((batch.items || []).some((item) => item.difference_quantity !== null && numberValue(item.difference_quantity) !== 0)) {
+    return { key: "difference", label: "Miqdor farqi bor", tone: "warning" };
+  }
+  return { key: "matched", label: "Mos", tone: "success" };
+}
+
+function batchDocumentStatus(batch = {}) {
+  const docs = batch.documents || [];
+  const required = ["ttn", "acceptance_act"];
+  const uploaded = new Set(docs.map((doc) => doc.document_type));
+  const count = required.filter((type) => uploaded.has(type)).length;
+  if (count === required.length) return { key: "complete", label: "To'liq", tone: "success" };
+  if (docs.length || count > 0) return { key: "partial", label: "Qisman yuklangan", tone: "warning" };
+  return { key: "waiting", label: "Kutilmoqda", tone: "muted" };
+}
+
+function statusChip(state) {
+  return `<span class="status-badge ${esc(state.tone || state.key || "")}">${fmt(state.label || state)}</span>`;
+}
+
+function batchWarningMessages(batch = {}) {
+  const logistics = batch.logistics || {};
+  const warnings = [];
+  const qStatus = batchQuantityStatus(batch);
+  const dStatus = batchDocumentStatus(batch);
+  if (!logistics || logistics.status === "not_assigned") warnings.push("Transport biriktirilmagan.");
+  if (!batchHasAcceptedInput(batch)) warnings.push("Qabul qilingan miqdor hali kiritilmagan.");
+  if (qStatus.key === "difference") warnings.push("Yuklangan va qabul qilingan miqdor farq qiladi.");
+  if (dStatus.key !== "complete") warnings.push("Hujjatlar hali to'liq yuklanmagan.");
+  return warnings;
+}
+
+function batchWarningsPanel(batch) {
+  const warnings = batchWarningMessages(batch);
+  if (!warnings.length) return "";
+  return `<div class="workflow-warning"><strong>E'tibor kerak</strong><ul>${warnings.map((warning) => `<li>${esc(warning)}</li>`).join("")}</ul></div>`;
+}
+
+function batchNextAction(batch = {}) {
+  const logistics = batch.logistics || {};
+  const docs = batchDocumentStatus(batch);
+  if (!logistics.id) return { title: "Logistika yozuvini yarating", button: "Logistika yaratish", path: `/delivery-batches/${batch.id}/edit` };
+  if (logistics.status === "not_assigned") return { title: "Transportni biriktiring", button: "Transport biriktirish", modal: "transport" };
+  if (["carrier_assigned", "vehicle_assigned", "loading"].includes(logistics.status) && !logistics.actual_pickup_date) return { title: "Haqiqiy yuklash sanasini kiriting", button: "Yuklandi deb belgilash", modal: "loading" };
+  if (logistics.status === "loaded") return { title: "Yo'lga chiqdi deb belgilang", button: "Yo'lga chiqdi", action: "transit" };
+  if (["in_transit", "arrived", "unloading"].includes(logistics.status) && !logistics.actual_delivery_date) return { title: "Yetkazilgan sanani kiriting", button: "Yetkazildi deb belgilash", modal: "delivery" };
+  if (logistics.actual_delivery_date && !batchHasAcceptedInput(batch)) return { title: "Qabul qilingan miqdorni kiriting", button: "Qabul miqdorini kiritish", path: `/delivery-batches/${batch.id}?tab=quantity` };
+  if (batch.status !== "completed" && batchHasAcceptedInput(batch)) return { title: "Partiyani yakunlash", button: "Yakunlash", modal: "completion" };
+  if (batch.status !== "completed" && docs.key !== "complete") return { title: "TTN va qabul dalolatnomasini yuklang", button: "Hujjat yuklash", path: `/delivery-batches/${batch.id}?tab=documents` };
+  if (batch.status !== "completed") return { title: "Partiyani yakunlash", button: "Yakunlash", modal: "completion" };
+  return { title: "Barcha jarayonlar yakunlangan", button: "Ko'rib chiqish", path: `/delivery-batches/${batch.id}?tab=history`, done: true };
+}
+
+function batchNextActionPanel(batch) {
+  const action = batchNextAction(batch);
+  if (!action.done && !canEdit("yetkazib_berish")) {
+    return `<section class="next-action-panel"><div><span>Keyingi amal</span><strong>${fmt(action.title)}</strong></div></section>`;
+  }
+  let button = action.modal === "transport"
+    ? `<button class="btn primary" type="button" data-transport-assignment>${fmt(action.button)}</button>`
+    : action.modal === "loading"
+      ? `<button class="btn primary" type="button" data-loading-confirmation>${fmt(action.button)}</button>`
+      : action.modal === "delivery"
+        ? `<button class="btn primary" type="button" data-delivery-confirmation>${fmt(action.button)}</button>`
+      : action.modal === "completion"
+        ? `<button class="btn primary" type="button" data-completion-confirmation>${fmt(action.button)}</button>`
+      : action.action === "transit"
+        ? `<button class="btn primary" type="button" data-mark-in-transit>${fmt(action.button)}</button>`
+        : `<button class="btn primary" data-nav="${esc(action.path)}">${fmt(action.button)}</button>`;
+  return `<section class="next-action-panel ${action.done ? "done" : ""}"><div><span>Keyingi amal</span><strong>${fmt(action.title)}</strong></div>${button}</section>`;
+}
+
+function batchStepState(batch = {}) {
+  const logistics = batch.logistics || {};
+  const docs = batchDocumentStatus(batch);
+  return {
+    planned: true,
+    assigned: logistics.status && logistics.status !== "not_assigned",
+    loaded: Boolean(logistics.actual_pickup_date || ["loaded", "in_transit", "arrived", "unloading", "delivered", "accepted", "completed"].includes(logistics.status)),
+    transit: ["in_transit", "arrived", "unloading", "delivered", "accepted", "completed"].includes(logistics.status),
+    delivered: Boolean(logistics.actual_delivery_date || ["delivered", "accepted", "completed"].includes(logistics.status)),
+    accepted: batchHasAcceptedInput(batch),
+    documents: docs.key === "complete",
+    completed: batch.status === "completed",
+  };
+}
+
+function batchWorkflowStepper(batch) {
+  const state = batchStepState(batch);
+  const steps = [
+    ["planned", "Rejalashtirilgan"],
+    ["assigned", "Transport biriktirildi"],
+    ["loaded", "Yuklandi"],
+    ["transit", "Yo'lda"],
+    ["delivered", "Yetkazildi"],
+    ["accepted", "Qabul"],
+    ["documents", "Hujjatlar"],
+    ["completed", "Yakunlandi"],
+  ];
+  const firstOpen = steps.findIndex(([key]) => !state[key]);
+  const currentIndex = firstOpen === -1 ? steps.length - 1 : firstOpen;
+  return `<div class="workflow-stepper">${steps.map(([key, label], index) => {
+    const cls = state[key] && index < currentIndex ? "completed" : index === currentIndex ? "current" : state[key] ? "completed" : "upcoming";
+    return `<div class="workflow-step ${cls}"><span class="workflow-dot">${index + 1}</span><span>${label}</span></div>`;
+  }).join("")}</div>`;
+}
+
+function batchStatusCards(batch) {
+  const logistics = batch.logistics || {};
+  const quantity = batchQuantityStatus(batch);
+  const documents = batchDocumentStatus(batch);
+  return `<div class="workflow-status-grid">
+    <div class="workflow-status-card"><span>Partiya holati</span><strong>${statusBadge(batch.status)}</strong></div>
+    <div class="workflow-status-card"><span>Logistika holati</span><strong>${statusBadge(logistics.status || "not_assigned")}</strong></div>
+    <div class="workflow-status-card"><span>Miqdor holati</span><strong>${statusChip(quantity)}</strong></div>
+    <div class="workflow-status-card"><span>Hujjatlar holati</span><strong>${statusChip(documents)}</strong></div>
+  </div>`;
+}
+
+function quantityDisplay(value, unit = "") {
+  return value === null || value === undefined || value === "" ? dash : fmtQty(value, unit);
+}
+
+function opsListPage({ className = "", title, tabs = [], createPath, createLabel = "Yaratish", clearPath, counter = "", statCards = [], formId, filters = "", headers = [], rows = "", emptyText = "Ma'lumot topilmadi.", colspan = headers.length, footer = "" }) {
+  return `<div class="page ops-page ${className}"><div class="ops-titlebar"><div class="ops-title-left"><button class="ops-menu-btn" type="button" aria-label="Menyu">=</button><h1>${title}</h1></div>${tabs.length ? `<nav class="ops-tabs" aria-label="${title} ko'rinishlari">${tabs.map((tab) => `<button class="${tab.active ? "active" : ""}" type="button" ${tab.path ? `data-nav="${tab.path}"` : ""}>${tab.label}</button>`).join("")}</nav>` : ""}</div>${statCards.length ? summaryCards(statCards.map((c) => [c.label, c.value, c.cls])) : ""}<div class="ops-commandbar"><div class="ops-command-left">${createPath ? `<button class="btn primary" data-nav="${createPath}">${createLabel}</button>` : ""}${clearPath ? `<button class="btn" type="button" data-nav="${clearPath}">Tozalash</button>` : ""}${counter ? `<span class="ops-counter">${counter}</span>` : ""}</div>${formId ? `<form class="ops-search" id="${formId}">${filters}<button class="ops-tool-btn" type="submit">Saralash</button>${clearPath ? `<button class="ops-tool-btn" type="button" data-nav="${clearPath}">Yangilash</button>` : ""}</form>` : ""}</div><section class="ops-table-card"><table class="ops-table"><thead><tr>${headers.map((head) => `<th>${head}</th>`).join("")}</tr></thead><tbody>${rows || `<tr><td colspan="${colspan}"><div class="empty">${emptyText}</div></td></tr>`}</tbody></table></section>${footer}</div>`;
+}
+
+function paginationChevron(direction) {
+  const d = direction === "left" ? "m15 18-6-6 6-6" : "m9 18 6-6-6-6";
+  return `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="${d}"/></svg>`;
+}
+
+function paginationPageList(current, total) {
+  const pages = [...new Set([1, total, current - 1, current, current + 1])].filter((p) => p >= 1 && p <= total).sort((a, b) => a - b);
+  const result = [];
+  let prev = 0;
+  pages.forEach((p) => {
+    if (p - prev > 1) result.push("...");
+    result.push(p);
+    prev = p;
+  });
+  return result;
 }
 
 function opsFooter(data, pageKey) {
@@ -550,7 +849,13 @@ function opsFooter(data, pageKey) {
   const pageSize = Number(data.page_size || 20);
   const start = data.total ? (currentPage - 1) * pageSize + 1 : 0;
   const end = Math.min(currentPage * pageSize, data.total);
-  return `<div class="ops-footer"><span>Ko'rsatilmoqda: ${fmt(start)}-${fmt(end)} / ${fmt(data.total)}</span><div class="ops-pagination"><button type="button" class="ops-tool-btn" data-${pageKey}-page="${currentPage - 1}" ${currentPage <= 1 ? "disabled" : ""}>Oldingi</button><span>${fmt(currentPage)}</span><button type="button" class="ops-tool-btn" data-${pageKey}-page="${currentPage + 1}" ${end >= data.total ? "disabled" : ""}>Keyingi</button></div></div>`;
+  const totalPages = Math.max(1, Math.ceil((data.total || 0) / pageSize));
+  const pages = paginationPageList(currentPage, totalPages);
+  return `<div class="ops-footer"><span>Ko'rsatilmoqda: ${fmt(start)}-${fmt(end)} / ${fmt(data.total)}</span><div class="ops-pagination">
+    <button type="button" class="ops-page-btn" data-${pageKey}-page="${currentPage - 1}" ${currentPage <= 1 ? "disabled" : ""} aria-label="Oldingi">${paginationChevron("left")}</button>
+    ${pages.map((p) => (p === "..." ? `<span class="ops-page-btn ellipsis">…</span>` : `<button type="button" class="ops-page-btn ${p === currentPage ? "active" : ""}" data-${pageKey}-page="${p}">${fmt(p)}</button>`)).join("")}
+    <button type="button" class="ops-page-btn" data-${pageKey}-page="${currentPage + 1}" ${end >= data.total ? "disabled" : ""} aria-label="Keyingi">${paginationChevron("right")}</button>
+  </div></div>`;
 }
 
 function bindOpsSearch(formId, basePath, keys) {

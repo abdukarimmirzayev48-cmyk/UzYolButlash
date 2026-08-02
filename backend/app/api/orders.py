@@ -77,14 +77,14 @@ def update_model(instance: Any, data: dict[str, Any]) -> Any:
 def get_order_or_404(db: Session, order_id: int) -> Order:
     order = db.get(Order, order_id)
     if not order:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Order not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Buyurtma topilmadi.")
     return order
 
 
 def get_child_or_404(db: Session, model: Any, order_id: int, item_id: int):
     item = db.get(model, item_id)
     if not item or item.order_id != order_id:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Item not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Mahsulot topilmadi.")
     return item
 
 
@@ -105,14 +105,14 @@ def load_order_detail(db: Session, order_id: int) -> Order:
         )
     ).first()
     if not order:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Order not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Buyurtma topilmadi.")
     return order
 
 
 def get_contract_or_400(db: Session, contract_id: int) -> Contract:
     contract = db.scalars(select(Contract).where(Contract.id == contract_id).options(selectinload(Contract.items))).first()
     if not contract:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Contract does not exist")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Shartnoma mavjud emas.")
     return contract
 
 
@@ -186,7 +186,7 @@ def validate_items_against_contract(
         if item.contract_item_id not in contract_items:
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail="Order item must be selected from the selected contract specification",
+                detail="Buyurtma mahsuloti tanlangan shartnoma spetsifikatsiyasidan tanlanishi kerak.",
             )
         requested[item.contract_item_id] = requested.get(item.contract_item_id, Decimal("0")) + item.quantity
     for contract_item_id, quantity in requested.items():
@@ -456,7 +456,7 @@ def update_order(order_id: int, payload: OrderUpdate, db: Session = Depends(get_
     contract = get_contract_or_400(db, payload.contract_id or order.contract_id)
     if payload.items is not None:
         if not payload.items:
-            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Order must have at least one item")
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Buyurtmada kamida bitta mahsulot bo'lishi kerak.")
         validate_items_against_contract(db, contract, payload.items, exclude_order_id=order.id)
     data = payload.model_dump(exclude_unset=True, exclude={"items"})
     for protected_field in ("status", "supplier_id", "supplier_name", "supplier_status"):
@@ -491,7 +491,7 @@ def update_order_status(order_id: int, payload: OrderManualStatusUpdate, db: Ses
     else:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="Only on_hold, cancelled, or created(auto) can be set manually",
+            detail="Faqat on_hold, cancelled yoki created(avtomatik) statuslarini qo'lda o'rnatish mumkin.",
         )
     db.commit()
     return get_order_detail(order.id, db)
@@ -503,12 +503,12 @@ def delete_order(order_id: int, db: Session = Depends(get_db)):
     if db.scalar(select(func.count()).where(DeliveryBatch.order_id == order_id)):
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="Cannot delete an order that has delivery batches. Remove them first.",
+            detail="Yetkazib berish partiyalari mavjud buyurtmani o'chirib bo'lmaydi. Avval ularni olib tashlang.",
         )
     if db.scalar(select(func.count()).where(CustomerInvoice.order_id == order_id)):
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="Cannot delete an order that has customer invoices. Remove them first.",
+            detail="Mijoz hisob-fakturalari mavjud buyurtmani o'chirib bo'lmaydi. Avval ularni olib tashlang.",
         )
     contract_id = order.contract_id
     db.delete(order)
@@ -570,7 +570,7 @@ def update_item(order_id: int, item_id: int, payload: OrderItemUpdate, db: Sessi
 def delete_item(order_id: int, item_id: int, db: Session = Depends(get_db)):
     order = load_order_detail(db, order_id)
     if len(order.items) <= 1:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Order must have at least one item")
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Buyurtmada kamida bitta mahsulot bo'lishi kerak.")
     item = get_child_or_404(db, OrderItem, order_id, item_id)
     db.delete(item)
     db.flush()
@@ -683,7 +683,7 @@ def upload_document(
     db: Session = Depends(get_db),
 ):
     if not file.filename:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="File is required")
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Fayl majburiy.")
     order = load_order_detail(db, order_id)
     UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
     safe_name = Path(file.filename).name.replace(" ", "_")

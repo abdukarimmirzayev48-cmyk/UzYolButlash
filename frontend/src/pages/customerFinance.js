@@ -190,18 +190,24 @@ async function renderInvoicesList() {
   const params = new URLSearchParams(location.search);
   const data = await api(`/api/customer-invoices?${params.toString()}`);
   const openCount = data.items.filter((item) => numberValue(item.remaining_amount) > 0).length;
-  const currentPage = Number(params.get("page") || data.page || 1);
-  const pageSize = Number(params.get("page_size") || data.page_size || 20);
-  const start = data.total ? (currentPage - 1) * pageSize + 1 : 0;
-  const end = Math.min(currentPage * pageSize, data.total);
   const editable = canEdit("moliya");
-  app.innerHTML = `<div class="page ops-page invoice-ops-page"><div class="ops-titlebar"><div class="ops-title-left"><button class="ops-menu-btn" type="button" aria-label="Menyu">=</button><h1>Mijoz hisoblari</h1></div><nav class="ops-tabs" aria-label="Hisob ko'rinishlari"><button class="active" type="button">Hisoblar</button><button type="button" data-nav="/receivables">Debitorlik</button><button type="button" data-nav="/customer-payments">To'lovlar</button></nav></div><div class="ops-commandbar"><div class="ops-command-left">${editable ? `<button class="btn primary" data-nav="/customer-invoices/new">Yaratish</button>` : ""}<button class="btn" type="button" data-nav="/customer-invoices">Tozalash</button><span class="ops-counter">${fmt(data.total)} ta hisob · ${fmt(openCount)} ta ochiq</span></div><form class="ops-search" id="invoice-search-form"><input name="search" placeholder="Qidirish..." value="${esc(params.get("search") || "")}" /><select name="invoice_type"><option value="">Turi</option>${invoiceTypes.map(([k,l])=>`<option value="${k}" ${params.get("invoice_type")===k?"selected":""}>${l}</option>`).join("")}</select><select name="status"><option value="">Status</option>${invoiceStatuses.map(([k,l])=>`<option value="${k}" ${params.get("status")===k?"selected":""}>${l}</option>`).join("")}</select><button class="ops-tool-btn" type="submit">Saralash</button><button class="ops-tool-btn" type="button" data-nav="/customer-invoices">Yangilash</button></form></div><section class="ops-table-card"><table class="ops-table"><thead><tr><th>Hisob raqami</th><th>Mijoz</th><th>Shartnoma</th><th>Buyurtma</th><th>Partiya</th><th>Turi</th><th>Hisob sanasi</th><th>Jami</th><th>To'langan</th><th>Qoldiq</th><th>Status</th><th></th></tr></thead><tbody>${data.items.length ? data.items.map((i)=>`<tr><td><button class="ops-primary-link" data-nav="/customer-invoices/${i.id}">${fmt(i.invoice_number)}</button></td><td>${fmt(i.client?.name)}</td><td>${fmt(i.contract?.contract_number)}</td><td>${fmt(i.order?.order_number)}</td><td>${fmt(i.delivery_batch?.batch_number)}</td><td>${fmt(optionLabel(invoiceTypes,i.invoice_type))}</td><td>${fmt(i.invoice_date)}</td><td class="ops-money">${fmtMoney(i.total_amount)}</td><td class="ops-money">${fmtMoney(i.paid_amount)}</td><td class="ops-money ${numberValue(i.remaining_amount) > 0 ? "ops-warning" : ""}">${fmtMoney(i.remaining_amount)}</td><td>${statusBadge(i.status)}</td><td><div class="ops-row-actions"><button class="link-btn" data-nav="/customer-invoices/${i.id}">Ochish</button>${editable ? `<button class="link-btn" data-nav="/customer-invoices/${i.id}/edit">Tahrirlash</button>` : ""}</div></td></tr>`).join(""):`<tr><td colspan="12"><div class="empty">Hisoblar topilmadi.</div></td></tr>`}</tbody></table></section><div class="ops-footer"><span>Ko'rsatilmoqda: ${fmt(start)}-${fmt(end)} / ${fmt(data.total)}</span><div class="ops-pagination"><button type="button" class="ops-tool-btn" data-invoice-page="${currentPage - 1}" ${currentPage <= 1 ? "disabled" : ""}>Oldingi</button><span>${fmt(currentPage)}</span><button type="button" class="ops-tool-btn" data-invoice-page="${currentPage + 1}" ${end >= data.total ? "disabled" : ""}>Keyingi</button></div></div></div>`;
-  document.querySelector("#invoice-search-form").addEventListener("submit", (e)=>{e.preventDefault(); const f=e.currentTarget; const q=new URLSearchParams(); if(f.search.value.trim())q.set("search",f.search.value.trim()); if(f.invoice_type.value)q.set("invoice_type",f.invoice_type.value); if(f.status.value)q.set("status",f.status.value); navigate(`/customer-invoices${q.toString()?`?${q}`:""}`);});
-  document.querySelectorAll("[data-invoice-page]").forEach((button) => button.addEventListener("click", () => {
-    const q = new URLSearchParams(location.search);
-    q.set("page", button.dataset.invoicePage);
-    navigate(`/customer-invoices?${q.toString()}`);
-  }));
+  app.innerHTML = opsListPage({
+    className: "invoice-ops-page",
+    title: "Mijoz hisoblari",
+    tabs: [{ label: "Hisoblar", active: true }, { label: "Debitorlik", path: "/receivables" }, { label: "To'lovlar", path: "/customer-payments" }],
+    createPath: editable ? "/customer-invoices/new" : null,
+    clearPath: "/customer-invoices",
+    counter: `${fmt(data.total)} ta hisob · ${fmt(openCount)} ta ochiq`,
+    formId: "invoice-search-form",
+    filters: `<input name="search" placeholder="Qidirish..." value="${esc(params.get("search") || "")}" /><select name="invoice_type"><option value="">Turi</option>${invoiceTypes.map(([k,l])=>`<option value="${k}" ${params.get("invoice_type")===k?"selected":""}>${l}</option>`).join("")}</select><select name="status"><option value="">Status</option>${invoiceStatuses.map(([k,l])=>`<option value="${k}" ${params.get("status")===k?"selected":""}>${l}</option>`).join("")}</select>`,
+    headers: ["Hisob raqami", "Mijoz", "Shartnoma", "Buyurtma", "Partiya", "Turi", "Hisob sanasi", "Jami", "To'langan", "Qoldiq", "Status", ""],
+    rows: data.items.map((i)=>`<tr><td><button class="ops-primary-link" data-nav="/customer-invoices/${i.id}">${fmt(i.invoice_number)}</button></td><td>${fmt(i.client?.name)}</td><td>${fmt(i.contract?.contract_number)}</td><td>${fmt(i.order?.order_number)}</td><td>${fmt(i.delivery_batch?.batch_number)}</td><td>${fmt(optionLabel(invoiceTypes,i.invoice_type))}</td><td>${fmt(i.invoice_date)}</td><td class="ops-money">${fmtMoney(i.total_amount)}</td><td class="ops-money">${fmtMoney(i.paid_amount)}</td><td class="ops-money ${numberValue(i.remaining_amount) > 0 ? "ops-warning" : ""}">${fmtMoney(i.remaining_amount)}</td><td>${statusBadge(i.status)}</td><td><div class="ops-row-actions"><button class="link-btn" data-nav="/customer-invoices/${i.id}">Ochish</button>${editable ? `<button class="link-btn" data-nav="/customer-invoices/${i.id}/edit">Tahrirlash</button>` : ""}</div></td></tr>`).join(""),
+    emptyText: "Hisoblar topilmadi.",
+    colspan: 12,
+    footer: opsFooter(data, "invoice"),
+  });
+  bindOpsSearch("invoice-search-form", "/customer-invoices", ["search", "invoice_type", "status"]);
+  bindOpsPagination("invoice", "/customer-invoices");
 }
 
 async function renderNewInvoice(){ app.innerHTML = await invoiceForm(); bindInvoiceForm(); }

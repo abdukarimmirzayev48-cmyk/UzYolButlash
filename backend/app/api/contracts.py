@@ -94,7 +94,7 @@ def update_model(instance: Any, data: dict[str, Any]) -> Any:
 
 def store_contract_upload(file: UploadFile) -> str:
     if not file.filename:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="File is required")
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Fayl talab qilinadi.")
     UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
     safe_name = Path(file.filename).name.replace(" ", "_")
     stored_name = f"{uuid4().hex}_{safe_name}"
@@ -260,20 +260,20 @@ def parsed_item_to_contract_item(contract_id: int, item_payload) -> ContractItem
 def get_contract_or_404(db: Session, contract_id: int) -> Contract:
     contract = db.get(Contract, contract_id)
     if not contract:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Contract not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Shartnoma topilmadi.")
     return contract
 
 
 def get_child_or_404(db: Session, model: Any, contract_id: int, item_id: int):
     item = db.get(model, item_id)
     if not item or item.contract_id != contract_id:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Item not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Element topilmadi.")
     return item
 
 
 def ensure_client_exists(db: Session, client_id: int) -> None:
     if not db.get(Client, client_id):
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Client does not exist")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Mijoz mavjud emas.")
 
 
 def calculate_item(item: ContractItem) -> None:
@@ -287,7 +287,7 @@ def apply_product_fields(db: Session, item: ContractItem) -> None:
         return
     product = db.get(Product, item.product_id)
     if not product:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=f"Product {item.product_id} not found")
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=f"{item.product_id} ID li mahsulot topilmadi.")
     item.product_name = product.name
     item.unit = product.unit
 
@@ -435,7 +435,7 @@ def load_contract_detail(db: Session, contract_id: int) -> Contract:
         )
     ).first()
     if not contract:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Contract not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Shartnoma topilmadi.")
     return contract
 
 
@@ -823,7 +823,7 @@ def update_contract(contract_id: int, payload: ContractUpdate, db: Session = Dep
     update_model(contract, data)
     if payload.items is not None:
         if not payload.items:
-            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Contract must have at least one item")
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Shartnomada kamida bitta mahsulot bo'lishi kerak.")
         existing_item_ids = [item.id for item in contract.items]
         if existing_item_ids:
             referenced = db.scalar(
@@ -832,7 +832,7 @@ def update_contract(contract_id: int, payload: ContractUpdate, db: Session = Dep
             if referenced:
                 raise HTTPException(
                     status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                    detail="Cannot replace specification while orders reference it. Edit items individually via the Specification tab.",
+                    detail="Buyurtmalar unga bog'liq bo'lgani uchun spetsifikatsiyani almashtirib bo'lmaydi. Elementlarni Spetsifikatsiya bo'limida alohida tahrirlang.",
                 )
         contract.items.clear()
         db.flush()
@@ -861,17 +861,17 @@ def delete_contract(contract_id: int, db: Session = Depends(get_db)):
     if db.scalar(select(func.count()).where(Order.contract_id == contract_id)):
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="Cannot delete a contract that has orders. Cancel or remove its orders first.",
+            detail="Buyurtmalari bo'lgan shartnomani o'chirib bo'lmaydi. Avval uning buyurtmalarini bekor qiling yoki olib tashlang.",
         )
     if db.scalar(select(func.count()).where(DeliveryBatch.contract_id == contract_id)):
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="Cannot delete a contract that has delivery batches.",
+            detail="Yetkazib berish partiyalari bo'lgan shartnomani o'chirib bo'lmaydi.",
         )
     if db.scalar(select(func.count()).where(CustomerInvoice.contract_id == contract_id)):
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="Cannot delete a contract that has customer invoices.",
+            detail="Mijoz hisob-fakturalari bo'lgan shartnomani o'chirib bo'lmaydi.",
         )
     db.delete(contract)
     db.commit()
@@ -910,7 +910,7 @@ def update_item(contract_id: int, item_id: int, payload: ContractItemUpdate, db:
 def delete_item(contract_id: int, item_id: int, db: Session = Depends(get_db)):
     contract = load_contract_detail(db, contract_id)
     if len(contract.items) <= 1:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Contract must have at least one item")
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Shartnomada kamida bitta mahsulot bo'lishi kerak.")
     item = get_child_or_404(db, ContractItem, contract_id, item_id)
     db.delete(item)
     db.flush()

@@ -204,3 +204,5 @@ class ClientDetail(ClientRead):
     bank_accounts: list[ClientBankAccountRead] = Field(default_factory=list)
     documents: list[ClientDocumentRead] = Field(default_factory=list)
     notes_history: list[ClientNoteRead] = Field(default_factory=list)
+    active_contracts: int | None = None
+    active_orders: int | None = None

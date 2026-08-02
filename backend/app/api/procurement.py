@@ -90,21 +90,21 @@ def update_model(instance: Any, data: dict[str, Any]) -> Any:
 def get_supplier_or_404(db: Session, supplier_id: int) -> Supplier:
     supplier = db.get(Supplier, supplier_id)
     if not supplier:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Supplier not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Ta'minotchi topilmadi.")
     return supplier
 
 
 def get_supplier_child_or_404(db: Session, model: Any, supplier_id: int, item_id: int):
     item = db.get(model, item_id)
     if not item or item.supplier_id != supplier_id:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Item not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Element topilmadi.")
     return item
 
 
 def get_procurement_child_or_404(db: Session, model: Any, procurement_id: int, item_id: int):
     item = db.get(model, item_id)
     if not item or item.procurement_id != procurement_id:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Item not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Element topilmadi.")
     return item
 
 
@@ -121,7 +121,7 @@ def load_supplier_detail(db: Session, supplier_id: int) -> Supplier:
         )
     ).first()
     if not supplier:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Supplier not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Ta'minotchi topilmadi.")
     return supplier
 
 
@@ -141,7 +141,7 @@ def load_procurement_detail(db: Session, procurement_id: int) -> Procurement:
         )
     ).first()
     if not procurement:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Procurement not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Xarid topilmadi.")
     return procurement
 
 
@@ -194,7 +194,7 @@ def calculate_offer_item(item: SupplierOfferItem) -> None:
     if item.selected_quantity and item.selected_quantity > item.offered_quantity:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="Selected quantity cannot exceed offered quantity",
+            detail="Tanlangan miqdor taklif qilingan miqdordan oshmasligi kerak.",
         )
     base_quantity = item.selected_quantity if item.selected_quantity and item.selected_quantity > 0 else item.offered_quantity
     item.is_selected = bool(item.selected_quantity and item.selected_quantity > 0)
@@ -301,7 +301,7 @@ def validate_selection_limits(procurement: Procurement) -> None:
         if total_selected > procurement_item.required_quantity:
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail=f"Selected quantity for {procurement_item.product_name} exceeds required quantity",
+                detail=f"{procurement_item.product_name} uchun tanlangan miqdor talab qilingan miqdordan oshmasligi kerak.",
             )
 
 
@@ -625,7 +625,7 @@ def list_procurements(
 def create_procurement(payload: ProcurementCreate, db: Session = Depends(get_db)):
     order = db.scalars(select(Order).where(Order.id == payload.order_id).options(selectinload(Order.items), selectinload(Order.procurement))).first()
     if not order:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Order does not exist")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Buyurtma mavjud emas.")
     procurement = ensure_procurement_for_order(db, order, payload.created_by)
     if payload.procurement_number:
         procurement.procurement_number = payload.procurement_number
@@ -650,7 +650,7 @@ def get_procurement(procurement_id: int, db: Session = Depends(get_db)):
 def create_procurement_document(procurement_id: int, payload: ProcurementDocumentCreate, db: Session = Depends(get_db)):
     procurement = load_procurement_detail(db, procurement_id)
     if payload.supplier_offer_id and not any(offer.id == payload.supplier_offer_id for offer in procurement.offers):
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Supplier offer must belong to this procurement")
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Ta'minotchi taklifi ushbu xaridga tegishli bo'lishi kerak.")
     item = ProcurementDocument(procurement_id=procurement_id, **payload.model_dump())
     db.add(item)
     db.commit()
@@ -664,7 +664,7 @@ def update_procurement_document(procurement_id: int, item_id: int, payload: Proc
     item = get_procurement_child_or_404(db, ProcurementDocument, procurement_id, item_id)
     data = payload.model_dump(exclude_unset=True)
     if data.get("supplier_offer_id") and not any(offer.id == data["supplier_offer_id"] for offer in procurement.offers):
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Supplier offer must belong to this procurement")
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Ta'minotchi taklifi ushbu xaridga tegishli bo'lishi kerak.")
     update_model(item, data)
     db.commit()
     db.refresh(item)
@@ -711,7 +711,7 @@ def create_supplier_offer(procurement_id: int, payload: SupplierOfferCreate, db:
     procurement = load_procurement_detail(db, procurement_id)
     supplier = db.get(Supplier, payload.supplier_id) if payload.supplier_id else None
     if payload.supplier_id and not supplier:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Supplier does not exist")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Ta'minotchi mavjud emas.")
     offer = SupplierOffer(
         procurement_id=procurement.id,
         **payload.model_dump(exclude={"items"}, exclude_unset=True),
@@ -723,7 +723,7 @@ def create_supplier_offer(procurement_id: int, payload: SupplierOfferCreate, db:
     for item_payload in payload.items:
         procurement_item = procurement_items.get(item_payload.procurement_item_id)
         if not procurement_item:
-            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Offer item must reference this procurement")
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Taklif elementi ushbu xaridga tegishli bo'lishi kerak.")
         offer.items.append(
             SupplierOfferItem(
                 procurement_item=procurement_item,
@@ -744,7 +744,7 @@ def create_supplier_offer(procurement_id: int, payload: SupplierOfferCreate, db:
 def update_offer_item_selection(offer_item_id: int, selected_quantity: Decimal = Query(..., ge=0), db: Session = Depends(get_db)):
     item = db.get(SupplierOfferItem, offer_item_id)
     if not item:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Offer item not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Taklif elementi topilmadi.")
     procurement = load_procurement_detail(db, item.offer.procurement_id)
     item.selected_quantity = selected_quantity
     calculate_offer_item(item)
@@ -759,9 +759,9 @@ def confirm_supplier_offer(procurement_id: int, offer_id: int, db: Session = Dep
     procurement = load_procurement_detail(db, procurement_id)
     offer = next((row for row in procurement.offers if row.id == offer_id), None)
     if not offer:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Supplier offer not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Ta'minotchi taklifi topilmadi.")
     if not any(item.selected_quantity and item.selected_quantity > 0 for item in offer.items):
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Select at least one offer item before confirmation")
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Tasdiqlashdan oldin kamida bitta taklif elementini tanlang.")
     offer.status = SupplierOfferStatus.selected
     procurement.status = ProcurementStatus.supplier_confirmed
     recalculate_procurement(db, procurement)
@@ -777,7 +777,7 @@ def delete_supplier_offer(procurement_id: int, offer_id: int, db: Session = Depe
     procurement = load_procurement_detail(db, procurement_id)
     offer = next((row for row in procurement.offers if row.id == offer_id), None)
     if not offer:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Supplier offer not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Ta'minotchi taklifi topilmadi.")
     db.delete(offer)
     db.flush()
     recalculate_procurement(db, procurement)

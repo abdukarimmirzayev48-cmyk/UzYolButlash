@@ -237,7 +237,7 @@ def ensure_logistics(db: Session, batch: DeliveryBatch, payload: LogisticsCreate
 def get_order_or_400(db: Session, order_id: int) -> Order:
     order = db.scalars(select(Order).where(Order.id == order_id).options(selectinload(Order.items))).first()
     if not order:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Order does not exist")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Buyurtma mavjud emas.")
     return order
 
 
@@ -256,21 +256,21 @@ def load_batch_detail(db: Session, batch_id: int) -> DeliveryBatch:
         )
     ).first()
     if not batch:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Delivery batch not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Partiya topilmadi.")
     return batch
 
 
 def get_batch_or_404(db: Session, batch_id: int) -> DeliveryBatch:
     batch = db.get(DeliveryBatch, batch_id)
     if not batch:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Delivery batch not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Partiya topilmadi.")
     return batch
 
 
 def get_child_or_404(db: Session, model: Any, parent_field: str, parent_id: int, item_id: int):
     item = db.get(model, item_id)
     if not item or getattr(item, parent_field) != parent_id:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Item not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Mahsulot topilmadi.")
     return item
 
 
@@ -335,7 +335,7 @@ def validate_items(db: Session, order: Order, items: list[DeliveryBatchItemCreat
     requested: dict[int, Decimal] = {}
     for item in items:
         if item.order_item_id not in order_items:
-            raise HTTPException(status_code=422, detail="Batch items must be selected from the selected order items")
+            raise HTTPException(status_code=422, detail="Partiya mahsulotlari tanlangan buyurtma mahsulotlari orasidan tanlanishi kerak.")
         requested[item.order_item_id] = requested.get(item.order_item_id, Decimal("0")) + item.planned_quantity
     for order_item_id, planned in requested.items():
         balance = balance_for_order_item(db, order_items[order_item_id], exclude_batch_id)
@@ -611,7 +611,7 @@ def update_batch(batch_id: int, payload: DeliveryBatchUpdate, db: Session = Depe
     order = get_order_or_400(db, payload.order_id or batch.order_id)
     if payload.items is not None:
         if not payload.items:
-            raise HTTPException(status_code=422, detail="Batch must have at least one item")
+            raise HTTPException(status_code=422, detail="Partiyada kamida bitta mahsulot bo'lishi kerak.")
         validate_items(db, order, payload.items, batch.id)
     data = payload.model_dump(exclude_unset=True, exclude={"items", "logistics"})
     if "order_id" in data:
@@ -642,7 +642,7 @@ def delete_batch(batch_id: int, db: Session = Depends(get_db)):
     if db.scalar(select(func.count()).where(CustomerInvoice.delivery_batch_id == batch_id)):
         raise HTTPException(
             status_code=422,
-            detail="Cannot delete a delivery batch that has customer invoices. Remove them first.",
+            detail="Mijoz hisob-fakturalari mavjud partiyani o'chirib bo'lmaydi. Avval ularni olib tashlang.",
         )
     order = batch.order
     db.query(StockAllocation).filter(StockAllocation.delivery_batch_id == batch_id).update(
@@ -702,7 +702,7 @@ def update_batch_item(batch_id: int, item_id: int, payload: DeliveryBatchItemUpd
 def delete_batch_item(batch_id: int, item_id: int, db: Session = Depends(get_db)):
     batch = load_batch_detail(db, batch_id)
     if len(batch.items) <= 1:
-        raise HTTPException(status_code=422, detail="Batch must have at least one item")
+        raise HTTPException(status_code=422, detail="Partiyada kamida bitta mahsulot bo'lishi kerak.")
     item = get_child_or_404(db, DeliveryBatchItem, "delivery_batch_id", batch_id, item_id)
     db.delete(item)
     db.flush()
@@ -832,7 +832,7 @@ def list_logistics(
 def get_logistics_detail(logistics_id: int, db: Session = Depends(get_db)):
     logistics = db.scalars(select(Logistics).where(Logistics.id == logistics_id).options(selectinload(Logistics.batch).selectinload(DeliveryBatch.client), selectinload(Logistics.batch).selectinload(DeliveryBatch.order), selectinload(Logistics.documents), selectinload(Logistics.notes_history))).first()
     if not logistics:
-        raise HTTPException(status_code=404, detail="Logistics not found")
+        raise HTTPException(status_code=404, detail="Logistika topilmadi.")
     base = LogisticsRead.model_validate(logistics).model_dump()
     return LogisticsDetail(
         **base,
@@ -848,7 +848,7 @@ def get_logistics_detail(logistics_id: int, db: Session = Depends(get_db)):
 def update_logistics(logistics_id: int, payload: LogisticsUpdate, db: Session = Depends(get_db)):
     logistics = db.scalars(select(Logistics).where(Logistics.id == logistics_id).options(selectinload(Logistics.batch).selectinload(DeliveryBatch.items), selectinload(Logistics.batch).selectinload(DeliveryBatch.order))).first()
     if not logistics:
-        raise HTTPException(status_code=404, detail="Logistics not found")
+        raise HTTPException(status_code=404, detail="Logistika topilmadi.")
     data = payload.model_dump(exclude_unset=True)
     validate_logistics_dates(data)
     requested_status = data.get("status")
@@ -864,7 +864,7 @@ def update_logistics(logistics_id: int, payload: LogisticsUpdate, db: Session = 
 @logistics_router.post("/{logistics_id}/documents", response_model=LogisticsDocumentRead, status_code=201, dependencies=[Depends(require_edit("yetkazib_berish"))])
 def create_logistics_document(logistics_id: int, payload: LogisticsDocumentCreate, db: Session = Depends(get_db)):
     if not db.get(Logistics, logistics_id):
-        raise HTTPException(status_code=404, detail="Logistics not found")
+        raise HTTPException(status_code=404, detail="Logistika topilmadi.")
     document = LogisticsDocument(logistics_id=logistics_id, **payload.model_dump())
     db.add(document)
     db.commit()
@@ -875,7 +875,7 @@ def create_logistics_document(logistics_id: int, payload: LogisticsDocumentCreat
 @logistics_router.post("/{logistics_id}/notes", response_model=LogisticsNoteRead, status_code=201, dependencies=[Depends(require_edit("yetkazib_berish"))])
 def create_logistics_note(logistics_id: int, payload: LogisticsNoteCreate, db: Session = Depends(get_db)):
     if not db.get(Logistics, logistics_id):
-        raise HTTPException(status_code=404, detail="Logistics not found")
+        raise HTTPException(status_code=404, detail="Logistika topilmadi.")
     note = LogisticsNote(logistics_id=logistics_id, **payload.model_dump())
     db.add(note)
     db.commit()

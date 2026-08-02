@@ -21,14 +21,14 @@ products_router = APIRouter(prefix="/api/products", tags=["products"])
 def get_category_or_404(db: Session, category_id: int) -> ProductCategory:
     category = db.get(ProductCategory, category_id)
     if not category:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Category not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Kategoriya topilmadi.")
     return category
 
 
 def get_product_or_404(db: Session, product_id: int) -> Product:
     product = db.get(Product, product_id)
     if not product:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Product not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Mahsulot topilmadi.")
     return product
 
 
@@ -92,7 +92,7 @@ def create_product(payload: ProductCreate, db: Session = Depends(get_db)):
 def get_product(product_id: int, db: Session = Depends(get_db)):
     product = load_product(db, product_id)
     if not product:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Product not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Mahsulot topilmadi.")
     return product
 
 

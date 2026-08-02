@@ -103,22 +103,22 @@ def recalculate_payment(db: Session, payment: SupplierPayment) -> None:
 
 def validate_invoice_links(db: Session, invoice: SupplierInvoice) -> None:
     if not db.get(Supplier, invoice.supplier_id):
-        raise HTTPException(status_code=400, detail="Supplier does not exist")
+        raise HTTPException(status_code=400, detail="Ta'minotchi mavjud emas.")
     procurement = db.get(Procurement, invoice.procurement_id)
     if not procurement:
-        raise HTTPException(status_code=400, detail="Procurement does not exist")
+        raise HTTPException(status_code=400, detail="Xarid mavjud emas.")
     if invoice.supplier_offer_id:
         offer = db.get(SupplierOffer, invoice.supplier_offer_id)
         if not offer or offer.procurement_id != invoice.procurement_id or offer.supplier_id != invoice.supplier_id:
-            raise HTTPException(status_code=422, detail="Supplier offer must match supplier and procurement")
+            raise HTTPException(status_code=422, detail="Ta'minotchi taklifi ta'minotchi va xaridga mos kelishi kerak.")
     if invoice.delivery_batch_id:
         batch = db.get(DeliveryBatch, invoice.delivery_batch_id)
         if not batch or batch.order_id != procurement.order_id:
-            raise HTTPException(status_code=422, detail="Delivery batch must belong to the procurement order")
+            raise HTTPException(status_code=422, detail="Yetkazib berish partiyasi xarid buyurtmasiga tegishli bo'lishi kerak.")
     if invoice.logistics_id:
         logistics = db.get(Logistics, invoice.logistics_id)
         if not logistics or (invoice.delivery_batch_id and logistics.delivery_batch_id != invoice.delivery_batch_id):
-            raise HTTPException(status_code=422, detail="Logistics must match the delivery batch")
+            raise HTTPException(status_code=422, detail="Logistika yetkazib berish partiyasiga mos kelishi kerak.")
 
 
 def load_invoice(db: Session, invoice_id: int) -> SupplierInvoice:
@@ -138,7 +138,7 @@ def load_invoice(db: Session, invoice_id: int) -> SupplierInvoice:
         )
     ).first()
     if not invoice:
-        raise HTTPException(status_code=404, detail="Supplier invoice not found")
+        raise HTTPException(status_code=404, detail="Ta'minotchi hisob-fakturasi topilmadi.")
     return invoice
 
 
@@ -154,7 +154,7 @@ def load_payment(db: Session, payment_id: int) -> SupplierPayment:
         )
     ).first()
     if not payment:
-        raise HTTPException(status_code=404, detail="Supplier payment not found")
+        raise HTTPException(status_code=404, detail="Ta'minotchi to'lovi topilmadi.")
     return payment
 
 
@@ -183,15 +183,15 @@ def payment_summary(payment: SupplierPayment) -> SupplierPaymentSummary:
 def validate_allocations(db: Session, payment: SupplierPayment, allocations: list[SupplierPaymentAllocationCreate], exclude_payment_id: int | None = None) -> None:
     total = money(sum((item.allocated_amount for item in allocations), Decimal("0")))
     if total > payment.amount:
-        raise HTTPException(status_code=422, detail="Allocated amount cannot exceed payment amount")
+        raise HTTPException(status_code=422, detail="Taqsimlangan summa to'lov summasidan oshmasligi kerak.")
     for item in allocations:
         invoice = load_invoice(db, item.supplier_invoice_id)
         if invoice.supplier_id != payment.supplier_id:
-            raise HTTPException(status_code=422, detail="Payment and invoice must belong to the same supplier")
+            raise HTTPException(status_code=422, detail="To'lov va hisob-faktura bir xil ta'minotchiga tegishli bo'lishi kerak.")
         current_from_payment = sum((a.allocated_amount for a in invoice.allocations if exclude_payment_id and a.supplier_payment_id == exclude_payment_id), Decimal("0"))
         available = money(invoice.remaining_amount + current_from_payment)
         if item.allocated_amount > available:
-            raise HTTPException(status_code=422, detail="Allocated amount cannot exceed invoice remaining amount")
+            raise HTTPException(status_code=422, detail="Taqsimlangan summa hisob-fakturaning qolgan summasidan oshmasligi kerak.")
 
 
 def sync_orders_for_supplier_invoices(db: Session, invoices: list[SupplierInvoice]) -> None:
@@ -297,7 +297,7 @@ def update_invoice(invoice_id: int, payload: SupplierInvoiceUpdate, db: Session 
     validate_invoice_links(db, invoice)
     if payload.items is not None:
         if not payload.items:
-            raise HTTPException(status_code=422, detail="Invoice must have at least one item")
+            raise HTTPException(status_code=422, detail="Hisob-fakturada kamida bitta band bo'lishi kerak.")
         invoice.items.clear()
         db.flush()
         for item_payload in payload.items:
@@ -362,7 +362,7 @@ def create_payment(payload: SupplierPaymentCreate, db: Session = Depends(get_db)
     data = payload.model_dump(exclude={"allocations", "documents", "initial_note"})
     payment = SupplierPayment(**data)
     if not db.get(Supplier, payment.supplier_id):
-        raise HTTPException(status_code=400, detail="Supplier does not exist")
+        raise HTTPException(status_code=400, detail="Ta'minotchi mavjud emas.")
     db.add(payment)
     db.flush()
     validate_allocations(db, payment, payload.allocations)
@@ -401,7 +401,7 @@ def update_payment(payment_id: int, payload: SupplierPaymentUpdate, db: Session 
     data = payload.model_dump(exclude_unset=True, exclude={"allocations"})
     update_model(payment, data)
     if payload.supplier_id and not db.get(Supplier, payload.supplier_id):
-        raise HTTPException(status_code=400, detail="Supplier does not exist")
+        raise HTTPException(status_code=400, detail="Ta'minotchi mavjud emas.")
     affected = []
     if payload.allocations is not None:
         validate_allocations(db, payment, payload.allocations, exclude_payment_id=payment.id)
@@ -452,7 +452,7 @@ def create_allocation(payment_id: int, payload: SupplierPaymentAllocationCreate,
 @finance_router.get("/suppliers/{supplier_id}/balance", response_model=SupplierBalanceSummary)
 def supplier_balance(supplier_id: int, db: Session = Depends(get_db)):
     if not db.get(Supplier, supplier_id):
-        raise HTTPException(status_code=404, detail="Supplier not found")
+        raise HTTPException(status_code=404, detail="Ta'minotchi topilmadi.")
     total_invoiced = money(
         db.scalar(
             select(func.coalesce(func.sum(SupplierInvoice.total_amount), 0)).where(
@@ -484,7 +484,7 @@ def generate_invoices_from_procurement(procurement_id: int, payload: GenerateSup
         .options(selectinload(Procurement.offers).selectinload(SupplierOffer.items))
     ).first()
     if not procurement:
-        raise HTTPException(status_code=404, detail="Procurement not found")
+        raise HTTPException(status_code=404, detail="Xarid topilmadi.")
 
     selected: dict[int, list[tuple[SupplierOffer, SupplierOfferItem]]] = {}
     for offer in procurement.offers:
@@ -494,7 +494,7 @@ def generate_invoices_from_procurement(procurement_id: int, payload: GenerateSup
             if item.selected_quantity and item.selected_quantity > 0:
                 selected.setdefault(offer.supplier_id, []).append((offer, item))
     if not selected:
-        raise HTTPException(status_code=422, detail="No selected supplier offer items found")
+        raise HTTPException(status_code=422, detail="Tanlangan ta'minotchi taklifi bandlari topilmadi.")
 
     created = []
     invoice_date = payload.invoice_date or date.today()
@@ -512,7 +512,7 @@ def generate_invoices_from_procurement(procurement_id: int, payload: GenerateSup
             )
         ).first()
         if duplicate:
-            raise HTTPException(status_code=422, detail="Selected supplier offer items already have a supplier invoice")
+            raise HTTPException(status_code=422, detail="Tanlangan ta'minotchi taklifi bandlari uchun hisob-faktura allaqachon mavjud.")
         invoice = SupplierInvoice(
             supplier_id=supplier_id,
             procurement_id=procurement.id,
@@ -557,7 +557,7 @@ def create_document(payload: SupplierFinanceDocumentCreate, db: Session = Depend
         data["supplier_id"] = invoice.supplier_id if invoice else payment.supplier_id if payment else None
         data["procurement_id"] = data.get("procurement_id") or (invoice.procurement_id if invoice else None)
     if not data.get("supplier_id"):
-        raise HTTPException(status_code=422, detail="supplier_id is required")
+        raise HTTPException(status_code=422, detail="supplier_id majburiy.")
     document = SupplierFinanceDocument(**data)
     db.add(document)
     db.commit()
@@ -574,7 +574,7 @@ def create_note(payload: SupplierFinanceNoteCreate, db: Session = Depends(get_db
         data["supplier_id"] = invoice.supplier_id if invoice else payment.supplier_id if payment else None
         data["procurement_id"] = data.get("procurement_id") or (invoice.procurement_id if invoice else None)
     if not data.get("supplier_id"):
-        raise HTTPException(status_code=422, detail="supplier_id is required")
+        raise HTTPException(status_code=422, detail="supplier_id majburiy.")
     note = SupplierFinanceNote(**data)
     db.add(note)
     db.commit()
