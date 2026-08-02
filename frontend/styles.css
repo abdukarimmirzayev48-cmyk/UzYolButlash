@@ -194,6 +194,10 @@ body.top-nav-closed .top-nav-menu {
   flex-direction: column;
 }
 
+.top-user-menu[hidden] {
+  display: none;
+}
+
 .top-user-menu a,
 .top-user-menu button {
   display: block;
@@ -206,6 +210,11 @@ body.top-nav-closed .top-nav-menu {
   border-radius: 6px;
   font-size: 13px;
   cursor: pointer;
+}
+
+.top-user-menu a[hidden],
+.top-user-menu button[hidden] {
+  display: none;
 }
 
 .top-user-menu a:hover,
