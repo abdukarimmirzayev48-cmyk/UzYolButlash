@@ -114,6 +114,8 @@ async function render() {
       await renderTransportMonitoring();
     } else if (/^\/transports\/\d+\/edit$/.test(location.pathname)) {
       await renderEditTransport(getTransportIdFromPath());
+    } else if (/^\/transports\/\d+\/fuel$/.test(location.pathname)) {
+      await renderTransportFuelLog(getTransportIdFromPath());
     } else if (location.pathname === "/transports") {
       await renderTransportsList();
     } else if (location.pathname === "/tasks/new") {

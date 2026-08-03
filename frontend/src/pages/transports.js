@@ -4,6 +4,11 @@ const transportStatuses = [
   ["maintenance", "Ta'mirda"],
 ];
 
+const fuelEntryTypes = [
+  ["added", "Quyildi"],
+  ["consumed", "Sarflandi"],
+];
+
 const transportWorkStatusLabels = {
   moving_with_cargo: "Yuk bilan harakatda",
   moving_without_cargo: "Yuksiz harakatda",
@@ -15,7 +20,10 @@ function transportFormHtml(item = {}) {
   return `<div class="page">
     <div class="page-header">
       <div class="page-title"><h1>${title}</h1><p>Tashuvchi, haydovchi va transport ma'lumotlari.</p></div>
-      <div class="actions"><button class="btn" data-nav="/transports">Orqaga</button></div>
+      <div class="actions">
+        <button class="btn" data-nav="/transports">Orqaga</button>
+        ${item.id ? `<button class="btn" data-nav="/transports/${item.id}/fuel">Yoqilg'i nazorati</button>` : ""}
+      </div>
     </div>
     <form id="transport-form">
       ${section("Transport ma'lumotlari", `<div class="grid">
@@ -82,7 +90,7 @@ async function renderTransportsList() {
     formId: "transport-search-form",
     filters: `<input name="search" placeholder="Tashuvchi, haydovchi, transport raqami" value="${esc(params.get("search") || "")}" /><select name="status"><option value="">Status</option>${transportStatuses.map(([key, label]) => `<option value="${key}" ${params.get("status") === key ? "selected" : ""}>${label}</option>`).join("")}</select>`,
     headers: ["Tashuvchi", "Haydovchi", "Telefon", "Transport", "Tirkama", "Turi", "Sig'im", "Status", ""],
-    rows: data.items.map((item) => `<tr><td>${editable ? `<button class="ops-primary-link" data-nav="/transports/${item.id}/edit">${fmt(item.carrier_name)}</button>` : fmt(item.carrier_name)}</td><td>${fmt(item.driver_name)}</td><td>${fmt(item.driver_phone)}</td><td>${fmt(item.vehicle_number)}</td><td>${fmt(item.trailer_number)}</td><td>${fmt(item.vehicle_type)}</td><td>${fmt(item.capacity)}</td><td>${statusBadge(item.status)}</td><td><div class="ops-row-actions">${editable ? `<button class="link-btn" data-nav="/transports/${item.id}/edit">Tahrirlash</button><button class="link-btn" data-delete-transport="${item.id}">O'chirish</button>` : ""}</div></td></tr>`).join(""),
+    rows: data.items.map((item) => `<tr><td>${editable ? `<button class="ops-primary-link" data-nav="/transports/${item.id}/edit">${fmt(item.carrier_name)}</button>` : fmt(item.carrier_name)}</td><td>${fmt(item.driver_name)}</td><td>${fmt(item.driver_phone)}</td><td>${fmt(item.vehicle_number)}</td><td>${fmt(item.trailer_number)}</td><td>${fmt(item.vehicle_type)}</td><td>${fmt(item.capacity)}</td><td>${statusBadge(item.status)}</td><td><div class="ops-row-actions"><button class="link-btn" data-nav="/transports/${item.id}/fuel">Yoqilg'i</button>${editable ? `<button class="link-btn" data-nav="/transports/${item.id}/edit">Tahrirlash</button><button class="link-btn" data-delete-transport="${item.id}">O'chirish</button>` : ""}</div></td></tr>`).join(""),
     emptyText: "Transportlar topilmadi.",
     colspan: 9,
     footer: opsFooter(data, "transport"),
@@ -112,6 +120,120 @@ async function renderEditTransport(id) {
   const item = await api(`/api/transports/${id}`);
   app.innerHTML = transportFormHtml(item);
   bindTransportForm(item);
+}
+
+function fuelLogModal(transportId, log, onSaved) {
+  document.querySelector("#fuel-log-modal-backdrop")?.remove();
+  const backdrop = document.createElement("div");
+  backdrop.id = "fuel-log-modal-backdrop";
+  backdrop.className = "modal-backdrop";
+  backdrop.innerHTML = `
+    <div class="modal-panel" style="max-width:480px">
+      <div class="modal-header">
+        <h2>${log ? "Yozuvni tahrirlash" : "Yoqilg'i yozuvi qo'shish"}</h2>
+        <button class="modal-close" type="button" aria-label="Yopish">&#x2715;</button>
+      </div>
+      <form id="fuel-log-form">
+        <div class="modal-body">
+          ${textField("entry_date", "Sana", log?.entry_date || new Date().toISOString().slice(0, 10), "date", { required: true })}
+          ${selectField("entry_type", "Turi", fuelEntryTypes, log?.entry_type || "added")}
+          ${textField("amount_liters", "Miqdori (litr)", log?.amount_liters ?? "", "number", { required: true, step: "0.01", min: "0.01" })}
+          ${textField("cost_amount", "Narxi (so'm)", log?.cost_amount ?? "", "number", { step: "0.01", min: "0" })}
+          ${textArea("note", "Izoh", log?.note ?? "")}
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn modal-cancel">Bekor qilish</button>
+          <button type="submit" class="btn primary">Saqlash</button>
+        </div>
+      </form>
+    </div>
+  `;
+  document.body.appendChild(backdrop);
+  const close = () => backdrop.remove();
+  backdrop.querySelector(".modal-close").addEventListener("click", close);
+  backdrop.querySelector(".modal-cancel").addEventListener("click", close);
+  backdrop.addEventListener("click", (e) => { if (e.target === backdrop) close(); });
+
+  backdrop.querySelector("#fuel-log-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const form = e.currentTarget;
+    const payload = {
+      entry_date: field(form, "entry_date"),
+      entry_type: field(form, "entry_type"),
+      amount_liters: field(form, "amount_liters"),
+      cost_amount: field(form, "cost_amount") || null,
+      note: field(form, "note"),
+    };
+    if (!payload.entry_date || !payload.amount_liters) { showToast("Sana va miqdor kiritilishi shart.", true); return; }
+    try {
+      if (log) {
+        await api(`/api/transports/${transportId}/fuel-logs/${log.id}`, { method: "PATCH", body: JSON.stringify(payload) });
+        showToast("Yozuv yangilandi.");
+      } else {
+        await api(`/api/transports/${transportId}/fuel-logs`, { method: "POST", body: JSON.stringify(payload) });
+        showToast("Yozuv qo'shildi.");
+      }
+      close();
+      await onSaved();
+    } catch (error) {
+      showToast(error.message, true);
+    }
+  });
+}
+
+async function renderTransportFuelLog(id) {
+  app.innerHTML = `<div class="page"><div class="empty">Yuklanmoqda...</div></div>`;
+  const [transport, summary] = await Promise.all([
+    api(`/api/transports/${id}`),
+    api(`/api/transports/${id}/fuel-logs`),
+  ]);
+  const editable = canEdit("yetkazib_berish");
+
+  app.innerHTML = `<div class="page">
+    ${workflowHeader({
+      title: `${transport.carrier_name} — Yoqilg'i nazorati`,
+      subtitle: `${fmt(transport.vehicle_number)} · ${fmt(transport.driver_name)}`,
+      backPath: `/transports/${id}/edit`,
+      actions: editable ? [{ label: "Yozuv qo'shish", modal: "add-fuel-log", primary: true }] : [],
+    })}
+    ${summaryCards([
+      ["Jami quyilgan", `${fmtQty(summary.total_added_liters)} litr`],
+      ["Jami sarflangan", `${fmtQty(summary.total_consumed_liters)} litr`],
+      ["Qoldiq", `${fmtQty(summary.balance_liters)} litr`, numberValue(summary.balance_liters) < 0 ? "danger" : ""],
+      ["Jami xarajat", fmtMoney(summary.total_cost_amount)],
+    ])}
+    ${section("Yoqilg'i yozuvlari", opsTableOrEmpty(
+      summary.logs,
+      ["Sana", "Turi", "Miqdori (litr)", "Narxi", "Izoh", editable ? "Amallar" : ""],
+      (log) => `<tr>
+        <td>${fmt(log.entry_date)}</td>
+        <td>${statusChip({ label: optionLabel(fuelEntryTypes, log.entry_type), tone: log.entry_type === "added" ? "success" : "warning" })}</td>
+        <td>${fmtQty(log.amount_liters)}</td>
+        <td>${log.cost_amount != null ? fmtMoney(log.cost_amount) : dash}</td>
+        <td>${fmt(log.note)}</td>
+        <td>${editable ? `<div class="table-actions"><button class="link-btn" data-edit-fuel-log="${log.id}">Tahrirlash</button><button class="link-btn" data-delete-fuel-log="${log.id}">O'chirish</button></div>` : ""}</td>
+      </tr>`,
+      "Yoqilg'i yozuvlari hali yo'q."
+    ))}
+  </div>`;
+
+  const rerender = () => renderTransportFuelLog(id);
+
+  document.querySelector("[data-add-fuel-log]")?.addEventListener("click", () => fuelLogModal(id, null, rerender));
+  document.querySelectorAll("[data-edit-fuel-log]").forEach((button) => button.addEventListener("click", () => {
+    const log = summary.logs.find((item) => item.id === Number(button.dataset.editFuelLog));
+    fuelLogModal(id, log, rerender);
+  }));
+  document.querySelectorAll("[data-delete-fuel-log]").forEach((button) => button.addEventListener("click", async () => {
+    if (!confirm("Ushbu yoqilg'i yozuvini o'chirishni tasdiqlaysizmi?")) return;
+    try {
+      await api(`/api/transports/${id}/fuel-logs/${button.dataset.deleteFuelLog}`, { method: "DELETE" });
+      showToast("Yozuv o'chirildi.");
+      rerender();
+    } catch (error) {
+      showToast(error.message, true);
+    }
+  }));
 }
 
 async function renderTransportMonitoring() {

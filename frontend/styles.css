@@ -557,6 +557,10 @@ body.sidebar-collapsed .app-shell {
   overflow-wrap: anywhere;
 }
 
+.summary-card.danger strong {
+  color: var(--danger);
+}
+
 .workflow-header {
   display: flex;
   align-items: flex-start;

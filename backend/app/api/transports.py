@@ -8,10 +8,18 @@ from sqlalchemy.orm import Session, selectinload
 
 from backend.app.db.session import get_db
 from backend.app.models.delivery import DeliveryBatch, Logistics, LogisticsStatus
-from backend.app.models.transport import Transport, TransportStatus
+from backend.app.models.transport import FuelEntryType, Transport, TransportFuelLog, TransportStatus
 from backend.app.schemas.client import Page
 from backend.app.services.auth import require_edit
-from backend.app.schemas.transport import TransportCreate, TransportRead, TransportUpdate
+from backend.app.schemas.transport import (
+    FuelLogCreate,
+    FuelLogRead,
+    FuelLogSummary,
+    FuelLogUpdate,
+    TransportCreate,
+    TransportRead,
+    TransportUpdate,
+)
 
 TERMINAL_LOGISTICS_STATUSES = {LogisticsStatus.delivered, LogisticsStatus.completed, LogisticsStatus.cancelled, LogisticsStatus.issue}
 CARGO_LOGISTICS_STATUSES = {LogisticsStatus.loaded, LogisticsStatus.in_transit, LogisticsStatus.arrived, LogisticsStatus.unloading}
@@ -197,5 +205,59 @@ def update_transport(transport_id: int, payload: TransportUpdate, db: Session = 
 def delete_transport(transport_id: int, db: Session = Depends(get_db)):
     transport = get_transport_or_404(db, transport_id)
     db.delete(transport)
+    db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+def get_fuel_log_or_404(db: Session, transport_id: int, log_id: int) -> TransportFuelLog:
+    log = db.get(TransportFuelLog, log_id)
+    if not log or log.transport_id != transport_id:
+        raise HTTPException(status_code=404, detail="Yoqilg'i yozuvi topilmadi.")
+    return log
+
+
+@router.get("/{transport_id}/fuel-logs", response_model=FuelLogSummary)
+def list_fuel_logs(transport_id: int, db: Session = Depends(get_db)):
+    get_transport_or_404(db, transport_id)
+    logs = db.scalars(
+        select(TransportFuelLog)
+        .where(TransportFuelLog.transport_id == transport_id)
+        .order_by(TransportFuelLog.entry_date.desc(), TransportFuelLog.id.desc())
+    ).all()
+    total_added = sum((log.amount_liters for log in logs if log.entry_type == FuelEntryType.added), Decimal("0"))
+    total_consumed = sum((log.amount_liters for log in logs if log.entry_type == FuelEntryType.consumed), Decimal("0"))
+    total_cost = sum((log.cost_amount or Decimal("0") for log in logs), Decimal("0"))
+    return FuelLogSummary(
+        total_added_liters=total_added,
+        total_consumed_liters=total_consumed,
+        balance_liters=total_added - total_consumed,
+        total_cost_amount=total_cost,
+        logs=logs,
+    )
+
+
+@router.post("/{transport_id}/fuel-logs", response_model=FuelLogRead, status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_edit("yetkazib_berish"))])
+def create_fuel_log(transport_id: int, payload: FuelLogCreate, db: Session = Depends(get_db)):
+    get_transport_or_404(db, transport_id)
+    log = TransportFuelLog(transport_id=transport_id, **payload.model_dump())
+    db.add(log)
+    db.commit()
+    db.refresh(log)
+    return log
+
+
+@router.patch("/{transport_id}/fuel-logs/{log_id}", response_model=FuelLogRead, dependencies=[Depends(require_edit("yetkazib_berish"))])
+def update_fuel_log(transport_id: int, log_id: int, payload: FuelLogUpdate, db: Session = Depends(get_db)):
+    log = get_fuel_log_or_404(db, transport_id, log_id)
+    update_model(log, payload.model_dump(exclude_unset=True))
+    db.commit()
+    db.refresh(log)
+    return log
+
+
+@router.delete("/{transport_id}/fuel-logs/{log_id}", status_code=status.HTTP_204_NO_CONTENT, dependencies=[Depends(require_edit("yetkazib_berish"))])
+def delete_fuel_log(transport_id: int, log_id: int, db: Session = Depends(get_db)):
+    log = get_fuel_log_or_404(db, transport_id, log_id)
+    db.delete(log)
     db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
