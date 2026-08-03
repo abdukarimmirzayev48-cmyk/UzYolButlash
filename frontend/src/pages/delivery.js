@@ -136,14 +136,13 @@ async function fetchBatchesForSelect(selectedId = null, filters = {}) {
 
 async function fetchTransportsForSelect(selectedId = null) {
   const data = await api("/api/transports?status=active&page_size=200").catch(() => ({ items: [] }));
-  return data.items.map((item) => `<option value="${item.id}" data-carrier="${esc(item.carrier_name)}" data-driver="${esc(item.driver_name || "")}" data-phone="${esc(item.driver_phone || "")}" data-vehicle="${esc(item.vehicle_number)}" data-trailer="${esc(item.trailer_number || "")}" ${Number(selectedId) === item.id ? "selected" : ""}>${esc(item.vehicle_number)} · ${esc(item.carrier_name)}${item.driver_name ? ` · ${esc(item.driver_name)}` : ""}</option>`).join("");
+  return data.items.map((item) => `<option value="${item.id}" data-driver="${esc(item.driver_name || "")}" data-phone="${esc(item.driver_phone || "")}" data-vehicle="${esc(item.vehicle_number)}" data-trailer="${esc(item.trailer_number || "")}" ${Number(selectedId) === item.id ? "selected" : ""}>${esc(item.vehicle_number)}${item.driver_name ? ` · ${esc(item.driver_name)}` : ""}</option>`).join("");
 }
 
 function applySelectedTransport(form) {
   const selected = form.elements.transport_id?.selectedOptions?.[0];
   if (!selected?.value) return;
   form.elements.carrier_id.value = selected.value;
-  form.elements.carrier_name.value = selected.dataset.carrier || "";
   form.elements.driver_name.value = selected.dataset.driver || "";
   form.elements.driver_phone.value = selected.dataset.phone || "";
   form.elements.vehicle_number.value = selected.dataset.vehicle || "";

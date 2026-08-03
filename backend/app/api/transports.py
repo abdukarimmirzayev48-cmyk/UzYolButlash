@@ -7,6 +7,7 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session, selectinload
 
 from backend.app.db.session import get_db
+from backend.app.models.attendance import Employee
 from backend.app.models.delivery import DeliveryBatch, Logistics, LogisticsStatus
 from backend.app.models.transport import FuelEntryType, Transport, TransportFuelLog, TransportStatus
 from backend.app.schemas.client import Page
@@ -41,6 +42,16 @@ def get_transport_or_404(db: Session, transport_id: int) -> Transport:
     return transport
 
 
+def sync_transport_driver_name(transport: Transport, db: Session) -> None:
+    if transport.driver_employee_id is None:
+        transport.driver_name = None
+        return
+    employee = db.get(Employee, transport.driver_employee_id)
+    if not employee:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Tanlangan xodim topilmadi.")
+    transport.driver_name = employee.full_name
+
+
 @router.get("", response_model=Page[TransportRead])
 def list_transports(
     db: Session = Depends(get_db),
@@ -55,7 +66,6 @@ def list_transports(
         value = f"%{search}%"
         filters.append(
             or_(
-                Transport.carrier_name.ilike(value),
                 Transport.driver_name.ilike(value),
                 Transport.driver_phone.ilike(value),
                 Transport.vehicle_number.ilike(value),
@@ -181,6 +191,7 @@ def transport_monitoring(db: Session = Depends(get_db)):
 @router.post("", response_model=TransportRead, status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_edit("yetkazib_berish"))])
 def create_transport(payload: TransportCreate, db: Session = Depends(get_db)):
     transport = Transport(**payload.model_dump())
+    sync_transport_driver_name(transport, db)
     db.add(transport)
     db.commit()
     db.refresh(transport)
@@ -195,7 +206,10 @@ def get_transport(transport_id: int, db: Session = Depends(get_db)):
 @router.patch("/{transport_id}", response_model=TransportRead, dependencies=[Depends(require_edit("yetkazib_berish"))])
 def update_transport(transport_id: int, payload: TransportUpdate, db: Session = Depends(get_db)):
     transport = get_transport_or_404(db, transport_id)
-    update_model(transport, payload.model_dump(exclude_unset=True))
+    data = payload.model_dump(exclude_unset=True)
+    update_model(transport, data)
+    if "driver_employee_id" in data:
+        sync_transport_driver_name(transport, db)
     db.commit()
     db.refresh(transport)
     return transport

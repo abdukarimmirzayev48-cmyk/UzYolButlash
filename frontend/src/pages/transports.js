@@ -15,11 +15,12 @@ const transportWorkStatusLabels = {
   waiting: "Kutishda",
 };
 
-function transportFormHtml(item = {}) {
+function transportFormHtml(item = {}, employees = []) {
   const title = item.id ? "Transportni tahrirlash" : "Yangi transport";
+  const employeeOptions = [["", "Tanlanmagan"], ...employees.map((e) => [String(e.id), e.full_name])];
   return `<div class="page">
     <div class="page-header">
-      <div class="page-title"><h1>${title}</h1><p>Tashuvchi, haydovchi va transport ma'lumotlari.</p></div>
+      <div class="page-title"><h1>${title}</h1><p>Transport va haydovchi ma'lumotlari.</p></div>
       <div class="actions">
         <button class="btn" data-nav="/transports">Orqaga</button>
         ${item.id ? `<button class="btn" data-nav="/transports/${item.id}/fuel">Yoqilg'i nazorati</button>` : ""}
@@ -27,15 +28,13 @@ function transportFormHtml(item = {}) {
     </div>
     <form id="transport-form">
       ${section("Transport ma'lumotlari", `<div class="grid">
-        ${textField("carrier_name", "Tashuvchi", item.carrier_name || "", "text", { required: true })}
-        ${textField("driver_name", "Haydovchi", item.driver_name || "")}
+        ${selectField("driver_employee_id", "Haydovchi", employeeOptions, item.driver_employee_id != null ? String(item.driver_employee_id) : "")}
         ${textField("driver_phone", "Haydovchi telefoni", item.driver_phone || "")}
         ${textField("vehicle_number", "Transport raqami", item.vehicle_number || "", "text", { required: true })}
         ${textField("trailer_number", "Tirkama raqami", item.trailer_number || "")}
         ${textField("vehicle_type", "Transport turi", item.vehicle_type || "")}
         ${textField("capacity", "Sig'imi", item.capacity || "")}
         ${selectField("status", "Status", transportStatuses, item.status || "active")}
-        ${checkField("is_own", "O'z transportimiz", Boolean(item.is_own))}
         ${textField("current_location", "Hozirgi joylashuvi", item.current_location || "")}
         ${textArea("notes", "Izoh", item.notes || "")}
       </div>`)}
@@ -45,16 +44,15 @@ function transportFormHtml(item = {}) {
 }
 
 function collectTransportPayload(form) {
+  const driverEmployeeId = field(form, "driver_employee_id");
   return {
-    carrier_name: field(form, "carrier_name"),
-    driver_name: field(form, "driver_name"),
+    driver_employee_id: driverEmployeeId ? Number(driverEmployeeId) : null,
     driver_phone: field(form, "driver_phone"),
     vehicle_number: field(form, "vehicle_number"),
     trailer_number: field(form, "trailer_number"),
     vehicle_type: field(form, "vehicle_type"),
     capacity: field(form, "capacity"),
     status: field(form, "status") || "active",
-    is_own: field(form, "is_own"),
     current_location: field(form, "current_location"),
     notes: field(form, "notes"),
   };
@@ -88,11 +86,11 @@ async function renderTransportsList() {
     clearPath: "/transports",
     counter: `${fmt(data.total)} ta transport · ${fmt(activeCount)} ta faol`,
     formId: "transport-search-form",
-    filters: `<input name="search" placeholder="Tashuvchi, haydovchi, transport raqami" value="${esc(params.get("search") || "")}" /><select name="status"><option value="">Status</option>${transportStatuses.map(([key, label]) => `<option value="${key}" ${params.get("status") === key ? "selected" : ""}>${label}</option>`).join("")}</select>`,
-    headers: ["Tashuvchi", "Haydovchi", "Telefon", "Transport", "Tirkama", "Turi", "Sig'im", "Status", ""],
-    rows: data.items.map((item) => `<tr><td>${editable ? `<button class="ops-primary-link" data-nav="/transports/${item.id}/edit">${fmt(item.carrier_name)}</button>` : fmt(item.carrier_name)}</td><td>${fmt(item.driver_name)}</td><td>${fmt(item.driver_phone)}</td><td>${fmt(item.vehicle_number)}</td><td>${fmt(item.trailer_number)}</td><td>${fmt(item.vehicle_type)}</td><td>${fmt(item.capacity)}</td><td>${statusBadge(item.status)}</td><td><div class="ops-row-actions"><button class="link-btn" data-nav="/transports/${item.id}/fuel">Yoqilg'i</button>${editable ? `<button class="link-btn" data-nav="/transports/${item.id}/edit">Tahrirlash</button><button class="link-btn" data-delete-transport="${item.id}">O'chirish</button>` : ""}</div></td></tr>`).join(""),
+    filters: `<input name="search" placeholder="Haydovchi, transport raqami" value="${esc(params.get("search") || "")}" /><select name="status"><option value="">Status</option>${transportStatuses.map(([key, label]) => `<option value="${key}" ${params.get("status") === key ? "selected" : ""}>${label}</option>`).join("")}</select>`,
+    headers: ["Transport", "Haydovchi", "Telefon", "Tirkama", "Turi", "Sig'im", "Status", ""],
+    rows: data.items.map((item) => `<tr><td>${editable ? `<button class="ops-primary-link" data-nav="/transports/${item.id}/edit">${fmt(item.vehicle_number)}</button>` : fmt(item.vehicle_number)}</td><td>${fmt(item.driver_name)}</td><td>${fmt(item.driver_phone)}</td><td>${fmt(item.trailer_number)}</td><td>${fmt(item.vehicle_type)}</td><td>${fmt(item.capacity)}</td><td>${statusBadge(item.status)}</td><td><div class="ops-row-actions"><button class="link-btn" data-nav="/transports/${item.id}/fuel">Yoqilg'i</button>${editable ? `<button class="link-btn" data-nav="/transports/${item.id}/edit">Tahrirlash</button><button class="link-btn" data-delete-transport="${item.id}">O'chirish</button>` : ""}</div></td></tr>`).join(""),
     emptyText: "Transportlar topilmadi.",
-    colspan: 9,
+    colspan: 8,
     footer: opsFooter(data, "transport"),
     createPath: editable ? "/transports/new" : undefined,
     createLabel: "Transport qo'shish",
@@ -111,14 +109,23 @@ async function renderTransportsList() {
   }));
 }
 
+async function activeEmployeesForDriverSelect() {
+  const employees = await api("/api/attendance/employees");
+  return employees.filter((e) => e.is_active);
+}
+
 async function renderNewTransport() {
-  app.innerHTML = transportFormHtml();
+  const employees = await activeEmployeesForDriverSelect();
+  app.innerHTML = transportFormHtml({}, employees);
   bindTransportForm();
 }
 
 async function renderEditTransport(id) {
-  const item = await api(`/api/transports/${id}`);
-  app.innerHTML = transportFormHtml(item);
+  const [item, employees] = await Promise.all([
+    api(`/api/transports/${id}`),
+    activeEmployeesForDriverSelect(),
+  ]);
+  app.innerHTML = transportFormHtml(item, employees);
   bindTransportForm(item);
 }
 
@@ -191,8 +198,8 @@ async function renderTransportFuelLog(id) {
 
   app.innerHTML = `<div class="page">
     ${workflowHeader({
-      title: `${transport.carrier_name} — Yoqilg'i nazorati`,
-      subtitle: `${fmt(transport.vehicle_number)} · ${fmt(transport.driver_name)}`,
+      title: `${transport.vehicle_number} — Yoqilg'i nazorati`,
+      subtitle: fmt(transport.driver_name),
       backPath: `/transports/${id}/edit`,
       actions: editable ? [{ label: "Yozuv qo'shish", modal: "add-fuel-log", primary: true }] : [],
     })}

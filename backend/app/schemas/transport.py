@@ -7,15 +7,13 @@ from backend.app.models.transport import FuelEntryType, TransportStatus
 
 
 class TransportBase(BaseModel):
-    carrier_name: str = Field(min_length=1, max_length=255)
-    driver_name: str | None = None
+    driver_employee_id: int | None = None
     driver_phone: str | None = None
     vehicle_number: str = Field(min_length=1, max_length=64)
     trailer_number: str | None = None
     vehicle_type: str | None = None
     capacity: str | None = None
     status: TransportStatus = TransportStatus.active
-    is_own: bool = False
     current_location: str | None = None
     notes: str | None = None
 
@@ -25,15 +23,13 @@ class TransportCreate(TransportBase):
 
 
 class TransportUpdate(BaseModel):
-    carrier_name: str | None = Field(default=None, min_length=1, max_length=255)
-    driver_name: str | None = None
+    driver_employee_id: int | None = None
     driver_phone: str | None = None
     vehicle_number: str | None = Field(default=None, min_length=1, max_length=64)
     trailer_number: str | None = None
     vehicle_type: str | None = None
     capacity: str | None = None
     status: TransportStatus | None = None
-    is_own: bool | None = None
     current_location: str | None = None
     notes: str | None = None
 
@@ -42,6 +38,7 @@ class TransportRead(TransportBase):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
+    driver_name: str | None = None
     created_at: datetime
     updated_at: datetime
 
