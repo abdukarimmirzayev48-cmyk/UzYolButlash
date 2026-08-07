@@ -1,13 +1,14 @@
-from datetime import date, time
+from datetime import date, datetime, time
 from decimal import Decimal
 from enum import Enum
 
-from sqlalchemy import Boolean, Date, ForeignKey, Numeric, String, Text, Time, UniqueConstraint
+from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Numeric, String, Text, Time, UniqueConstraint
 from sqlalchemy import Enum as SAEnum
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from backend.app.db.session import Base
 from backend.app.models.client import TimestampMixin
+from backend.app.models.user import User
 
 
 class AttendanceStatus(str, Enum):
@@ -40,8 +41,13 @@ class Employee(Base, TimestampMixin):
     badge_number: Mapped[str | None] = mapped_column(String(64), index=True, unique=True)
     scheduled_check_in: Mapped[time] = mapped_column(Time, default=time(9, 0), nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), unique=True, index=True)
+    telegram_chat_id: Mapped[str | None] = mapped_column(String(64), unique=True, index=True)
+    telegram_pairing_code: Mapped[str | None] = mapped_column(String(32), unique=True, index=True)
+    telegram_pairing_code_expires_at: Mapped[datetime | None] = mapped_column(DateTime)
 
     department_ref: Mapped[Department | None] = relationship(back_populates="employees")
+    user: Mapped[User | None] = relationship()
     records: Mapped[list["AttendanceRecord"]] = relationship(
         back_populates="employee", cascade="all, delete-orphan", order_by="AttendanceRecord.work_date"
     )

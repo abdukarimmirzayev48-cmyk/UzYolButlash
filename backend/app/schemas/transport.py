@@ -3,7 +3,7 @@ from decimal import Decimal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from backend.app.models.transport import FuelEntryType, TransportStatus
+from backend.app.models.transport import FuelEntryType, TransportCheckInKind, TransportStatus
 
 
 class TransportBase(BaseModel):
@@ -80,3 +80,26 @@ class FuelLogSummary(BaseModel):
     balance_liters: Decimal
     total_cost_amount: Decimal
     logs: list[FuelLogRead]
+
+
+class TransportCheckInEmployeeSummary(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    full_name: str
+
+
+class TransportCheckInRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    transport_id: int
+    logistics_id: int | None = None
+    kind: TransportCheckInKind
+    odometer_km: Decimal | None = None
+    odometer_photo_url: str | None = None
+    fuel_liters: Decimal | None = None
+    fuel_photo_url: str | None = None
+    note: str | None = None
+    employee: TransportCheckInEmployeeSummary
+    created_at: datetime

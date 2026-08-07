@@ -301,10 +301,30 @@ async function renderAttendanceList() {
   });
 }
 
+function telegramPairingSectionHtml(employee) {
+  if (!employee) return "";
+  if (employee.telegram_chat_id) {
+    return `<div class="field-group">
+      <span class="field-label-text">Telegram (haydovchilar boti)</span>
+      <p>✅ Ulangan</p>
+      <button type="button" class="btn" id="telegram-unpair-btn">Bog'lanishni bekor qilish</button>
+    </div>`;
+  }
+  return `<div class="field-group">
+    <span class="field-label-text">Telegram (haydovchilar boti)</span>
+    <div id="telegram-pairing-result"></div>
+    <button type="button" class="btn" id="telegram-pair-btn">Bog'lash havolasini olish</button>
+  </div>`;
+}
+
 async function attendanceEmployeeModal(employee, onSaved) {
   document.querySelector("#attendance-modal-backdrop")?.remove();
-  const departments = await api("/api/departments").catch(() => []);
+  const [departments, users] = await Promise.all([
+    api("/api/departments").catch(() => []),
+    api("/api/users").catch(() => []),
+  ]);
   const departmentOptions = [["", "Bo'lim tanlanmagan"], ...departments.map((d) => [String(d.id), d.name])];
+  const userOptions = [["", "Tizim foydalanuvchisi bog'lanmagan"], ...users.map((u) => [String(u.id), `${u.full_name} (${u.username})`])];
   const backdrop = document.createElement("div");
   backdrop.id = "attendance-modal-backdrop";
   backdrop.className = "modal-backdrop";
@@ -321,6 +341,8 @@ async function attendanceEmployeeModal(employee, onSaved) {
           ${selectField("department_id", "Bo'lim", departmentOptions, employee?.department_id ? String(employee.department_id) : "")}
           ${textField("badge_number", "Tabel raqami", employee?.badge_number ?? "")}
           ${textField("scheduled_check_in", "Ishga kelish vaqti", attendanceTimeShort(employee?.scheduled_check_in) || "09:00", "time", { required: true })}
+          ${users.length ? selectField("user_id", "Tizim foydalanuvchisi (Ijro uchun)", userOptions, employee?.user_id ? String(employee.user_id) : "") : ""}
+          ${telegramPairingSectionHtml(employee)}
           ${checkField("is_active", "Faol", employee?.is_active ?? true)}
         </div>
         <div class="modal-footer">
@@ -336,6 +358,29 @@ async function attendanceEmployeeModal(employee, onSaved) {
   backdrop.querySelector(".modal-cancel").addEventListener("click", close);
   backdrop.addEventListener("click", (e) => { if (e.target === backdrop) close(); });
 
+  backdrop.querySelector("#telegram-pair-btn")?.addEventListener("click", async () => {
+    try {
+      const result = await api(`/api/attendance/employees/${employee.id}/telegram-pairing-code`, { method: "POST" });
+      const resultEl = backdrop.querySelector("#telegram-pairing-result");
+      if (resultEl) {
+        resultEl.innerHTML = `<p>Haydovchiga quyidagi havolani yuboring (15 daqiqa amal qiladi):</p><input type="text" readonly value="${esc(result.deep_link)}" onclick="this.select()" />`;
+      }
+    } catch (error) {
+      showToast(error.message, true);
+    }
+  });
+  backdrop.querySelector("#telegram-unpair-btn")?.addEventListener("click", async () => {
+    if (!confirm("Telegram bog'lanishini bekor qilasizmi?")) return;
+    try {
+      await api(`/api/attendance/employees/${employee.id}/telegram-unpair`, { method: "POST" });
+      showToast("Telegram bog'lanishi bekor qilindi.");
+      close();
+      await onSaved();
+    } catch (error) {
+      showToast(error.message, true);
+    }
+  });
+
   backdrop.querySelector("#attendance-employee-form").addEventListener("submit", async (e) => {
     e.preventDefault();
     const form = e.currentTarget;
@@ -348,6 +393,10 @@ async function attendanceEmployeeModal(employee, onSaved) {
       scheduled_check_in: field(form, "scheduled_check_in") ? `${field(form, "scheduled_check_in")}:00` : "09:00:00",
       is_active: form.elements.is_active.checked,
     };
+    if (form.elements.user_id) {
+      const userId = field(form, "user_id");
+      payload.user_id = userId ? Number(userId) : null;
+    }
     if (!payload.full_name) { showToast("F.I.Sh. kiritilishi shart.", true); return; }
     try {
       if (employee) {

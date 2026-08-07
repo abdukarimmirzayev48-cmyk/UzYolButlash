@@ -1,8 +1,8 @@
-from datetime import date as date_cls
+from datetime import date as date_cls, datetime
 from decimal import Decimal
 from enum import Enum
 
-from sqlalchemy import Date, Enum as SAEnum, ForeignKey, Numeric, String, Text
+from sqlalchemy import Date, DateTime, Enum as SAEnum, ForeignKey, Numeric, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from backend.app.db.session import Base
@@ -19,6 +19,12 @@ class TransportStatus(str, Enum):
 class FuelEntryType(str, Enum):
     added = "added"
     consumed = "consumed"
+
+
+class TransportCheckInKind(str, Enum):
+    report = "report"
+    stopped = "stopped"
+    resumed = "resumed"
 
 
 class Transport(Base, TimestampMixin):
@@ -38,6 +44,7 @@ class Transport(Base, TimestampMixin):
 
     driver: Mapped[Employee | None] = relationship()
     fuel_logs: Mapped[list["TransportFuelLog"]] = relationship(back_populates="transport", cascade="all, delete-orphan", order_by="TransportFuelLog.entry_date.desc(), TransportFuelLog.id.desc()")
+    check_ins: Mapped[list["TransportCheckIn"]] = relationship(back_populates="transport", cascade="all, delete-orphan", order_by="TransportCheckIn.created_at.desc()")
 
 
 class TransportFuelLog(Base, TimestampMixin):
@@ -53,3 +60,22 @@ class TransportFuelLog(Base, TimestampMixin):
     created_by: Mapped[str | None] = mapped_column(String(255))
 
     transport: Mapped[Transport] = relationship(back_populates="fuel_logs")
+
+
+class TransportCheckIn(Base):
+    __tablename__ = "transport_checkins"
+
+    id: Mapped[int] = mapped_column(primary_key=True, index=True)
+    transport_id: Mapped[int] = mapped_column(ForeignKey("transports.id", ondelete="CASCADE"), nullable=False, index=True)
+    employee_id: Mapped[int] = mapped_column(ForeignKey("attendance_employees.id"), nullable=False, index=True)
+    logistics_id: Mapped[int | None] = mapped_column(ForeignKey("logistics.id"), index=True)
+    kind: Mapped[TransportCheckInKind] = mapped_column(SAEnum(TransportCheckInKind), nullable=False, index=True)
+    odometer_km: Mapped[Decimal | None] = mapped_column(Numeric(10, 1))
+    odometer_photo_url: Mapped[str | None] = mapped_column(String(500))
+    fuel_liters: Mapped[Decimal | None] = mapped_column(Numeric(10, 2))
+    fuel_photo_url: Mapped[str | None] = mapped_column(String(500))
+    note: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now, nullable=False, index=True)
+
+    transport: Mapped[Transport] = relationship(back_populates="check_ins")
+    employee: Mapped[Employee] = relationship()

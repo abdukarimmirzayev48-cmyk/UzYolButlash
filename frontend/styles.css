@@ -169,6 +169,122 @@ body.top-nav-closed .top-nav-menu {
   cursor: pointer;
 }
 
+.top-notif {
+  position: relative;
+}
+
+.top-notif .top-icon-btn {
+  position: relative;
+}
+
+.top-notif-badge {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 3px;
+  border-radius: 999px;
+  background: var(--danger);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 16px;
+  text-align: center;
+}
+
+.top-notif-badge[hidden] {
+  display: none;
+}
+
+.top-notif-menu {
+  position: absolute;
+  top: calc(100% + 10px);
+  right: 0;
+  width: 320px;
+  max-width: min(320px, 90vw);
+  background: #ffffff;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+  z-index: 20;
+}
+
+.top-notif-menu[hidden] {
+  display: none;
+}
+
+.top-notif-menu-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--line);
+}
+
+.top-notif-menu-header strong {
+  color: var(--text);
+  font-size: 13px;
+}
+
+.top-notif-menu-header button {
+  border: 0;
+  background: transparent;
+  color: var(--accent);
+  font-size: 12px;
+  cursor: pointer;
+  padding: 0;
+}
+
+.top-notif-list {
+  max-height: 360px;
+  overflow-y: auto;
+}
+
+.top-notif-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  text-align: left;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  background: transparent;
+  padding: 10px 12px;
+  cursor: pointer;
+}
+
+.top-notif-item:last-child {
+  border-bottom: 0;
+}
+
+.top-notif-item:hover {
+  background: var(--surface-soft);
+}
+
+.top-notif-item strong {
+  font-size: 13px;
+  color: var(--text);
+}
+
+.top-notif-item span {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.top-notif-item small {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.top-notif-empty {
+  padding: 18px 12px;
+  text-align: center;
+  color: var(--muted);
+  font-size: 13px;
+}
+
 .top-user {
   position: relative;
   display: flex;
@@ -681,6 +797,12 @@ body.sidebar-collapsed .app-shell {
   color: var(--text);
 }
 
+.task-action-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 .next-action-panel span {
   display: block;
   margin-bottom: 4px;
@@ -1186,6 +1308,11 @@ textarea:focus {
 
 .field-group .check-row {
   min-height: 30px;
+}
+
+.field-group-scroll {
+  max-height: 260px;
+  overflow-y: auto;
 }
 
 .auth-page {
@@ -1726,6 +1853,31 @@ tr:last-child td {
   color: var(--danger);
 }
 
+.status-badge.priority-urgent {
+  background: var(--danger);
+  color: #fff;
+}
+
+.status-badge.new {
+  background: #eef2f7;
+  color: #556274;
+}
+
+.status-badge.accepted {
+  background: #e8f6f1;
+  color: #176b5b;
+}
+
+.status-badge.verified {
+  background: #e8f7ef;
+  color: #176b45;
+}
+
+.status-badge.rejected {
+  background: #fff1f0;
+  color: var(--danger);
+}
+
 .tasks-ops-page .ops-commandbar {
   flex-wrap: wrap;
   min-height: auto;
@@ -1945,6 +2097,11 @@ tr:last-child td {
 
 .task-board-card.task-priority-medium {
   border-left: 3px solid #d99a1f;
+}
+
+.task-board-card.task-priority-urgent {
+  border-left: 3px solid var(--danger);
+  box-shadow: 0 4px 10px rgba(220, 38, 38, 0.12);
 }
 
 .task-board-card-title {

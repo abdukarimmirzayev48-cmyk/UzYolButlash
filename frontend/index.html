@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>UzYolButlash ERP</title>
-    <link rel="stylesheet" href="/static/styles.css?v=20260803-fuel-control" />
+    <link rel="stylesheet" href="/static/styles.css?v=20260806-ijro-workflow" />
   </head>
   <body>
     <header class="app-topbar">
@@ -70,9 +70,19 @@
         </div>
       </nav>
       <div class="top-actions">
-        <button class="top-icon-btn" type="button" aria-label="Bildirishnomalar" title="Bildirishnomalar">
-          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>
-        </button>
+        <div class="top-notif" id="top-notif">
+          <button class="top-icon-btn" type="button" id="top-notif-toggle" aria-label="Bildirishnomalar" title="Bildirishnomalar">
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>
+            <span class="top-notif-badge" id="top-notif-badge" hidden>0</span>
+          </button>
+          <div class="top-notif-menu" id="top-notif-menu" hidden>
+            <div class="top-notif-menu-header">
+              <strong>Bildirishnomalar</strong>
+              <button type="button" id="top-notif-read-all">Barchasini o'qilgan deb belgilash</button>
+            </div>
+            <div class="top-notif-list" id="top-notif-list"></div>
+          </div>
+        </div>
         <button class="top-icon-btn" type="button" aria-label="Yordam" title="Yordam">
           <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 2-3 4"/><path d="M12 17h.01"/></svg>
         </button>
@@ -181,14 +191,14 @@
     <script src="/static/src/pages/contracts.js?v=20260802-sotuv-gate2" defer></script>
     <script src="/static/src/pages/orders.js?v=20260802-design-unify" defer></script>
     <script src="/static/src/pages/delivery.js?v=20260803-own-fleet" defer></script>
-    <script src="/static/src/pages/transports.js?v=20260803-own-fleet" defer></script>
+    <script src="/static/src/pages/transports.js?v=20260807-telegram-bot" defer></script>
     <script src="/static/src/pages/customerFinance.js?v=20260802-design-unify" defer></script>
     <script src="/static/src/pages/supply.js?v=20260802-taminot-moliya-gate2" defer></script>
     <script src="/static/src/pages/dashboard.js?v=20260629-frontend-modules" defer></script>
     <script src="/static/src/pages/products.js?v=20260802-sotuv-gate" defer></script>
-    <script src="/static/src/pages/attendance.js?v=20260802-xodimlar-gate" defer></script>
-    <script src="/static/src/pages/tasks.js?v=20260801-auth" defer></script>
-    <script src="/static/src/pages/auth.js?v=20260801-auth" defer></script>
-    <script src="/static/src/router.js?v=20260803-fuel-control" defer></script>
+    <script src="/static/src/pages/attendance.js?v=20260807-telegram-bot" defer></script>
+    <script src="/static/src/pages/tasks.js?v=20260806-ijro-workflow" defer></script>
+    <script src="/static/src/pages/auth.js?v=20260807-telegram-bot" defer></script>
+    <script src="/static/src/router.js?v=20260806-ijro-workflow" defer></script>
   </body>
 </html>

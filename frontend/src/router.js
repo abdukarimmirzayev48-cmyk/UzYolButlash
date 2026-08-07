@@ -122,6 +122,8 @@ async function render() {
       await renderNewTask();
     } else if (/^\/tasks\/\d+\/edit$/.test(location.pathname)) {
       await renderEditTask(getTaskIdFromPath());
+    } else if (/^\/tasks\/\d+$/.test(location.pathname)) {
+      await renderTaskDetail(getTaskIdFromPath());
     } else if (location.pathname === "/tasks") {
       await renderTasksList();
     } else if (location.pathname === "/orders/new") {

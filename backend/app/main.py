@@ -4,6 +4,8 @@ from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
 
+from apscheduler.schedulers.background import BackgroundScheduler
+
 from backend.app.api.attendance import attendance_router, departments_router, employees_router as attendance_employees_router
 from backend.app.api.auth import auth_router, users_router
 from backend.app.api.clients import router as clients_router
@@ -14,6 +16,7 @@ from backend.app.api.dashboard import router as dashboard_router
 from backend.app.api.delivery import logistics_router, router as delivery_router
 from backend.app.api.finance import finance_router, invoice_router, payment_router
 from backend.app.api.inventory import router as inventory_router
+from backend.app.api.notifications import router as notifications_router
 from backend.app.api.orders import router as orders_router
 from backend.app.api.procurement import procurement_router, supplier_router
 from backend.app.api.supplier_finance import finance_router as supplier_finance_router
@@ -25,7 +28,10 @@ from backend.app.api.products import categories_router as product_categories_rou
 from backend.app.api.products import products_router
 from backend.app.core.config import CORS_ORIGINS, SESSION_SECRET_KEY
 from backend.app.core.paths import FRONTEND_DIR, UPLOADS_DIR
+from backend.app.db.session import SessionLocal
 from backend.app.services.auth import get_current_user
+from backend.app.services.notifications import run_reminder_sweep
+from backend.app.services.telegram_bot import start_bot, stop_bot
 
 
 app = FastAPI(title="Bitum ERP", version="0.1.0")
@@ -69,10 +75,36 @@ app.include_router(attendance_employees_router, dependencies=authenticated)
 app.include_router(departments_router, dependencies=authenticated)
 app.include_router(attendance_router, dependencies=authenticated)
 app.include_router(tasks_router, dependencies=authenticated)
+app.include_router(notifications_router, dependencies=authenticated)
 app.include_router(users_router, dependencies=authenticated)  # also self-gates to admin-only
 
 app.mount("/static/uploads", StaticFiles(directory=UPLOADS_DIR), name="uploads")
 app.mount("/static", StaticFiles(directory=FRONTEND_DIR), name="static")
+
+
+def _run_reminder_sweep_job() -> None:
+    db = SessionLocal()
+    try:
+        run_reminder_sweep(db)
+    finally:
+        db.close()
+
+
+@app.on_event("startup")
+def start_scheduler() -> None:
+    scheduler = BackgroundScheduler()
+    scheduler.add_job(_run_reminder_sweep_job, "interval", minutes=15, id="task_reminder_sweep")
+    scheduler.start()
+
+
+@app.on_event("startup")
+def start_telegram_bot() -> None:
+    start_bot()
+
+
+@app.on_event("shutdown")
+def stop_telegram_bot() -> None:
+    stop_bot()
 
 
 @app.get("/")

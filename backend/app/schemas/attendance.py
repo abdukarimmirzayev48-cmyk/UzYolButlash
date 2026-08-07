@@ -39,6 +39,7 @@ class EmployeeBase(BaseModel):
     badge_number: str | None = None
     scheduled_check_in: time = time(9, 0)
     is_active: bool = True
+    user_id: int | None = None
 
 
 class EmployeeCreate(EmployeeBase):
@@ -53,14 +54,22 @@ class EmployeeUpdate(BaseModel):
     badge_number: str | None = None
     scheduled_check_in: time | None = None
     is_active: bool | None = None
+    user_id: int | None = None
 
 
 class EmployeeRead(EmployeeBase):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
+    telegram_chat_id: str | None = None
     created_at: datetime
     updated_at: datetime
+
+
+class TelegramPairingResponse(BaseModel):
+    code: str
+    deep_link: str
+    expires_at: datetime
 
 
 class AttendanceRecordUpsert(BaseModel):

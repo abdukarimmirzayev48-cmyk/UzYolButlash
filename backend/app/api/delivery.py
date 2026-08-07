@@ -31,6 +31,7 @@ from backend.app.models.order import Order, OrderItem
 from backend.app.models.procurement import SupplierAddress, SupplierAddressType
 from backend.app.services.auth import require_edit
 from backend.app.services.order_status import sync_order_status
+from backend.app.services.telegram_bot import notify_driver_of_trip
 from backend.app.schemas.client import Page
 from backend.app.schemas.delivery import (
     DeliveryBatchCreate,
@@ -471,10 +472,12 @@ def create_batch(payload: DeliveryBatchCreate, db: Session = Depends(get_db)):
     db.expire(batch, ["items"])
     db.refresh(batch)
     update_batch_status_from_items(batch)
-    ensure_logistics(db, batch, payload.logistics)
+    logistics = ensure_logistics(db, batch, payload.logistics)
     link_stock_allocation_to_batch(db, batch)
     sync_order_status(order, db=db)
     db.commit()
+    if logistics.vehicle_number:
+        notify_driver_of_trip(db, logistics)
     return get_batch_detail(batch.id, db)
 
 
@@ -608,6 +611,7 @@ def complete_batch(batch_id: int, payload: DeliveryBatchCompletionConfirm, db: S
 @router.patch("/{batch_id}", response_model=DeliveryBatchDetail, dependencies=[Depends(require_edit("yetkazib_berish"))])
 def update_batch(batch_id: int, payload: DeliveryBatchUpdate, db: Session = Depends(get_db)):
     batch = load_batch_detail(db, batch_id)
+    old_vehicle_number = batch.logistics.vehicle_number if batch.logistics else None
     order = get_order_or_400(db, payload.order_id or batch.order_id)
     if payload.items is not None:
         if not payload.items:
@@ -630,9 +634,11 @@ def update_batch(batch_id: int, payload: DeliveryBatchUpdate, db: Session = Depe
         db.flush()
         db.expire(batch, ["items"])
     update_batch_status_from_items(batch)
-    ensure_logistics(db, batch, payload.logistics)
+    logistics = ensure_logistics(db, batch, payload.logistics)
     sync_order_status(batch.order, db=db)
     db.commit()
+    if logistics.vehicle_number and logistics.vehicle_number != old_vehicle_number:
+        notify_driver_of_trip(db, logistics)
     return get_batch_detail(batch.id, db)
 
 
@@ -849,6 +855,7 @@ def update_logistics(logistics_id: int, payload: LogisticsUpdate, db: Session = 
     logistics = db.scalars(select(Logistics).where(Logistics.id == logistics_id).options(selectinload(Logistics.batch).selectinload(DeliveryBatch.items), selectinload(Logistics.batch).selectinload(DeliveryBatch.order))).first()
     if not logistics:
         raise HTTPException(status_code=404, detail="Logistika topilmadi.")
+    old_vehicle_number = logistics.vehicle_number
     data = payload.model_dump(exclude_unset=True)
     validate_logistics_dates(data)
     requested_status = data.get("status")
@@ -858,6 +865,8 @@ def update_logistics(logistics_id: int, payload: LogisticsUpdate, db: Session = 
     sync_order_status(logistics.batch.order, db=db)
     db.commit()
     db.refresh(logistics)
+    if logistics.vehicle_number and logistics.vehicle_number != old_vehicle_number:
+        notify_driver_of_trip(db, logistics)
     return logistics
 
 

@@ -9,14 +9,16 @@ from sqlalchemy.orm import Session, selectinload
 from backend.app.db.session import get_db
 from backend.app.models.attendance import Employee
 from backend.app.models.delivery import DeliveryBatch, Logistics, LogisticsStatus
-from backend.app.models.transport import FuelEntryType, Transport, TransportFuelLog, TransportStatus
+from backend.app.models.transport import FuelEntryType, Transport, TransportCheckIn, TransportFuelLog, TransportStatus
 from backend.app.schemas.client import Page
 from backend.app.services.auth import require_edit
+from backend.app.services.telegram_bot import request_checkin
 from backend.app.schemas.transport import (
     FuelLogCreate,
     FuelLogRead,
     FuelLogSummary,
     FuelLogUpdate,
+    TransportCheckInRead,
     TransportCreate,
     TransportRead,
     TransportUpdate,
@@ -275,3 +277,23 @@ def delete_fuel_log(transport_id: int, log_id: int, db: Session = Depends(get_db
     db.delete(log)
     db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.get("/{transport_id}/checkins", response_model=Page[TransportCheckInRead])
+def list_transport_checkins(transport_id: int, db: Session = Depends(get_db), page: int = Query(1, ge=1), page_size: int = Query(20, ge=1, le=100)):
+    get_transport_or_404(db, transport_id)
+    stmt = select(TransportCheckIn).where(TransportCheckIn.transport_id == transport_id)
+    total = db.scalar(select(func.count()).select_from(stmt.subquery())) or 0
+    rows = db.scalars(
+        stmt.options(selectinload(TransportCheckIn.employee)).order_by(TransportCheckIn.created_at.desc()).offset((page - 1) * page_size).limit(page_size)
+    ).all()
+    return Page(items=rows, total=total, page=page, page_size=page_size)
+
+
+@router.post("/{transport_id}/checkin-request", dependencies=[Depends(require_edit("yetkazib_berish"))])
+def request_transport_checkin(transport_id: int, db: Session = Depends(get_db)):
+    transport = get_transport_or_404(db, transport_id)
+    sent = request_checkin(db, transport)
+    if not sent:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Haydovchi Telegram botga ulanmagan yoki biriktirilmagan.")
+    return {"sent": True}

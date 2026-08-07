@@ -9,6 +9,12 @@ const fuelEntryTypes = [
   ["consumed", "Sarflandi"],
 ];
 
+const transportCheckInKinds = [
+  ["report", "Hisobot"],
+  ["stopped", "To'xtadi"],
+  ["resumed", "Davom etdi"],
+];
+
 const transportWorkStatusLabels = {
   moving_with_cargo: "Yuk bilan harakatda",
   moving_without_cargo: "Yuksiz harakatda",
@@ -188,20 +194,41 @@ function fuelLogModal(transportId, log, onSaved) {
   });
 }
 
+function transportCheckInRowHtml(checkin) {
+  const kindLabel = optionLabel(transportCheckInKinds, checkin.kind);
+  const kindTone = checkin.kind === "stopped" ? "warning" : checkin.kind === "resumed" ? "success" : "muted";
+  const photos = [
+    checkin.odometer_photo_url ? `<a href="${esc(checkin.odometer_photo_url)}" target="_blank" rel="noopener">Spidometr rasmi</a>` : "",
+    checkin.fuel_photo_url ? `<a href="${esc(checkin.fuel_photo_url)}" target="_blank" rel="noopener">Yoqilg'i rasmi</a>` : "",
+  ].filter(Boolean).join(", ") || dash;
+  return `<tr>
+    <td>${fmtDate(checkin.created_at)}</td>
+    <td>${statusChip({ label: kindLabel, tone: kindTone })}</td>
+    <td>${fmt(checkin.employee?.full_name)}</td>
+    <td>${checkin.odometer_km != null ? `${fmtQty(checkin.odometer_km)} km` : dash}</td>
+    <td>${checkin.fuel_liters != null ? `${fmtQty(checkin.fuel_liters)} L` : dash}</td>
+    <td>${photos}</td>
+    <td>${fmt(checkin.note)}</td>
+  </tr>`;
+}
+
 async function renderTransportFuelLog(id) {
   app.innerHTML = `<div class="page"><div class="empty">Yuklanmoqda...</div></div>`;
-  const [transport, summary] = await Promise.all([
+  const [transport, summary, checkins] = await Promise.all([
     api(`/api/transports/${id}`),
     api(`/api/transports/${id}/fuel-logs`),
+    api(`/api/transports/${id}/checkins?page_size=50`),
   ]);
   const editable = canEdit("yetkazib_berish");
+  const headerActions = editable ? [{ label: "Yozuv qo'shish", modal: "add-fuel-log", primary: true }] : [];
+  if (editable && transport.driver_employee_id) headerActions.push({ label: "Hisobot so'rash", modal: "request-checkin" });
 
   app.innerHTML = `<div class="page">
     ${workflowHeader({
       title: `${transport.vehicle_number} — Yoqilg'i nazorati`,
       subtitle: fmt(transport.driver_name),
       backPath: `/transports/${id}/edit`,
-      actions: editable ? [{ label: "Yozuv qo'shish", modal: "add-fuel-log", primary: true }] : [],
+      actions: headerActions,
     })}
     ${summaryCards([
       ["Jami quyilgan", `${fmtQty(summary.total_added_liters)} litr`],
@@ -222,11 +249,25 @@ async function renderTransportFuelLog(id) {
       </tr>`,
       "Yoqilg'i yozuvlari hali yo'q."
     ))}
+    ${section("Telegram hisobotlari (haydovchi)", opsTableOrEmpty(
+      checkins.items,
+      ["Sana", "Turi", "Haydovchi", "Spidometr", "Yoqilg'i", "Fayllar", "Izoh"],
+      transportCheckInRowHtml,
+      "Haydovchidan hisobotlar hali yo'q."
+    ))}
   </div>`;
 
   const rerender = () => renderTransportFuelLog(id);
 
   document.querySelector("[data-add-fuel-log]")?.addEventListener("click", () => fuelLogModal(id, null, rerender));
+  document.querySelector("[data-request-checkin]")?.addEventListener("click", async () => {
+    try {
+      await api(`/api/transports/${id}/checkin-request`, { method: "POST" });
+      showToast("So'rov haydovchiga yuborildi.");
+    } catch (error) {
+      showToast(error.message, true);
+    }
+  });
   document.querySelectorAll("[data-edit-fuel-log]").forEach((button) => button.addEventListener("click", () => {
     const log = summary.logs.find((item) => item.id === Number(button.dataset.editFuelLog));
     fuelLogModal(id, log, rerender);

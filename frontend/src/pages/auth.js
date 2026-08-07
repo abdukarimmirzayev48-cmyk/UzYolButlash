@@ -49,6 +49,76 @@ function renderCurrentUserBadge() {
       if (!toggle.contains(event.target)) menu.hidden = true;
     });
   }
+
+  bindNotificationBell();
+  refreshNotifications();
+}
+
+let notifUnreadCount = 0;
+
+function bindNotificationBell() {
+  const container = document.querySelector("#top-notif");
+  const toggle = document.querySelector("#top-notif-toggle");
+  const menu = document.querySelector("#top-notif-menu");
+  if (!container || !toggle || !menu || container.dataset.bound) return;
+  container.dataset.bound = "true";
+  toggle.addEventListener("click", (event) => {
+    event.stopPropagation();
+    menu.hidden = !menu.hidden;
+  });
+  document.addEventListener("click", (event) => {
+    if (!container.contains(event.target)) menu.hidden = true;
+  });
+  document.querySelector("#top-notif-read-all")?.addEventListener("click", async (event) => {
+    event.stopPropagation();
+    try {
+      await api("/api/notifications/read-all", { method: "POST" });
+      await refreshNotifications();
+    } catch (error) {
+      showToast(error.message, true);
+    }
+  });
+}
+
+async function refreshNotifications() {
+  try {
+    const data = await api("/api/notifications?unread_only=true&page_size=20");
+    notifUnreadCount = data.total;
+    renderNotificationList(data.items);
+  } catch (error) {
+    // notifications are not critical to page function -- fail silently
+  }
+}
+
+function renderNotificationList(items) {
+  const badge = document.querySelector("#top-notif-badge");
+  if (badge) {
+    badge.hidden = notifUnreadCount === 0;
+    badge.textContent = notifUnreadCount > 99 ? "99+" : String(notifUnreadCount);
+  }
+  const list = document.querySelector("#top-notif-list");
+  if (!list) return;
+  list.innerHTML = items.length
+    ? items.map((n) => `<button type="button" class="top-notif-item" data-notif-id="${n.id}" data-notif-task="${n.task_id ?? ""}" data-notif-link="${esc(n.link_path || "")}">
+        <strong>${esc(n.title)}</strong>
+        ${n.body ? `<span>${esc(n.body)}</span>` : ""}
+        <small>${fmtDate(n.created_at)}</small>
+      </button>`).join("")
+    : `<div class="top-notif-empty">Yangi bildirishnomalar yo'q.</div>`;
+  list.querySelectorAll("[data-notif-id]").forEach((button) => button.addEventListener("click", async () => {
+    const taskId = button.dataset.notifTask;
+    const linkPath = button.dataset.notifLink;
+    try {
+      await api(`/api/notifications/${button.dataset.notifId}`, { method: "PATCH", body: JSON.stringify({ is_read: true }) });
+    } catch (error) {
+      // ignore -- still navigate even if marking-read failed
+    }
+    const menu = document.querySelector("#top-notif-menu");
+    if (menu) menu.hidden = true;
+    await refreshNotifications();
+    if (linkPath) navigate(linkPath);
+    else if (taskId) navigate(`/tasks/${taskId}`);
+  }));
 }
 
 function canEdit(moduleKey) {
@@ -104,8 +174,23 @@ function userModuleCheckboxes(user) {
   ).join("");
 }
 
-function userModal(user, onSaved) {
+async function syncUserEmployeeLink(userId, selectedEmployeeIdStr, previouslyLinkedEmployee) {
+  const selectedId = selectedEmployeeIdStr ? Number(selectedEmployeeIdStr) : null;
+  const previousId = previouslyLinkedEmployee ? previouslyLinkedEmployee.id : null;
+  if (selectedId === previousId) return;
+  if (previousId && previousId !== selectedId) {
+    await api(`/api/attendance/employees/${previousId}`, { method: "PATCH", body: JSON.stringify({ user_id: null }) });
+  }
+  if (selectedId) {
+    await api(`/api/attendance/employees/${selectedId}`, { method: "PATCH", body: JSON.stringify({ user_id: userId }) });
+  }
+}
+
+async function userModal(user, onSaved) {
   document.querySelector("#attendance-modal-backdrop")?.remove();
+  const employees = await api("/api/attendance/employees").catch(() => []);
+  const linkedEmployee = user ? employees.find((e) => e.user_id === user.id) : null;
+  const employeeOptions = [["", "Xodim tanlanmagan"], ...employees.map((e) => [String(e.id), `${e.full_name}${e.department ? ` — ${e.department}` : ""}`])];
   const backdrop = document.createElement("div");
   backdrop.id = "attendance-modal-backdrop";
   backdrop.className = "modal-backdrop";
@@ -119,6 +204,7 @@ function userModal(user, onSaved) {
         <div class="modal-body">
           ${textField("username", "Login", user?.username ?? "", "text", { required: true })}
           ${textField("full_name", "F.I.Sh.", user?.full_name ?? "", "text", { required: true })}
+          ${selectField("employee_id", "Bog'langan xodim (Ijro uchun)", employeeOptions, linkedEmployee ? String(linkedEmployee.id) : "")}
           ${textField("password", user ? "Yangi parol (o'zgartirmasangiz bo'sh qoldiring)" : "Parol", "", "password", user ? {} : { required: true })}
           ${checkField("is_admin", "Administrator (hammasini tahrirlay oladi)", user?.is_admin ?? false)}
           <div class="field-group"><span class="field-label-text">Tahrirlash huquqi (bo'limlar)</span>${userModuleCheckboxes(user)}</div>
@@ -152,13 +238,15 @@ function userModal(user, onSaved) {
     if (password) payload.password = password;
     if (!payload.username || !payload.full_name) { showToast("Login va F.I.Sh. kiritilishi shart.", true); return; }
     try {
+      let savedUser;
       if (user) {
-        await api(`/api/users/${user.id}`, { method: "PATCH", body: JSON.stringify(payload) });
+        savedUser = await api(`/api/users/${user.id}`, { method: "PATCH", body: JSON.stringify(payload) });
         showToast("Foydalanuvchi yangilandi.");
       } else {
-        await api("/api/users", { method: "POST", body: JSON.stringify(payload) });
+        savedUser = await api("/api/users", { method: "POST", body: JSON.stringify(payload) });
         showToast("Foydalanuvchi qo'shildi.");
       }
+      await syncUserEmployeeLink(savedUser.id, field(form, "employee_id"), linkedEmployee);
       close();
       await onSaved();
     } catch (error) {

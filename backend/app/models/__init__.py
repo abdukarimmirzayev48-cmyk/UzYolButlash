@@ -67,7 +67,7 @@ from backend.app.models.inventory import (
     StockLot,
     StockMovement,
 )
-from backend.app.models.transport import Transport
+from backend.app.models.transport import Transport, TransportCheckIn, TransportFuelLog
 from backend.app.models.product import Product, ProductCategory
 from backend.app.models.customer_request import (
     CompanyRegistry,
@@ -75,7 +75,9 @@ from backend.app.models.customer_request import (
     CustomerRequestSchedule,
     CustomerRequestStatusHistory,
 )
-from backend.app.models.attendance import AttendanceRecord, Employee
+from backend.app.models.attendance import AttendanceRecord, Department, Employee
+from backend.app.models.task import Notification, Task, TaskAssignee, TaskComment, TaskHistory
+from backend.app.models.user import User
 
 __all__ = [
     "Client",
@@ -132,6 +134,8 @@ __all__ = [
     "StockLot",
     "StockMovement",
     "Transport",
+    "TransportCheckIn",
+    "TransportFuelLog",
     "Product",
     "ProductCategory",
     "CompanyRegistry",
@@ -139,5 +143,12 @@ __all__ = [
     "CustomerRequestSchedule",
     "CustomerRequestStatusHistory",
     "AttendanceRecord",
+    "Department",
     "Employee",
+    "Task",
+    "TaskAssignee",
+    "TaskComment",
+    "TaskHistory",
+    "Notification",
+    "User",
 ]

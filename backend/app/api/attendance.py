@@ -8,9 +8,10 @@ from fastapi import APIRouter, Depends, File, HTTPException, Query, Response, Up
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from backend.app.core.config import TELEGRAM_BOT_USERNAME
 from backend.app.db.session import get_db
 from backend.app.models.attendance import AttendanceRecord, AttendanceStatus, Department, Employee
-from backend.app.models.task import Task
+from backend.app.models.task import TaskAssignee
 from backend.app.schemas.attendance import (
     AttendanceAnalysisEntry,
     AttendanceDayCell,
@@ -32,6 +33,7 @@ from backend.app.schemas.attendance import (
     HikvisionEmployeeSyncResult,
     HikvisionEventSyncResult,
     HikvisionStatus,
+    TelegramPairingResponse,
 )
 from backend.app.services.attendance_scoring import compute_late_minutes, lateness_band, score_employee_month
 from backend.app.services.auth import require_edit
@@ -42,6 +44,7 @@ from backend.app.services.hikvision_client import (
     is_configured,
     parse_device_time,
 )
+from backend.app.services.telegram_bot import generate_pairing_code
 
 employees_router = APIRouter(prefix="/api/attendance/employees", tags=["attendance"])
 departments_router = APIRouter(prefix="/api/departments", tags=["departments"])
@@ -143,8 +146,19 @@ def list_employees(db: Session = Depends(get_db), department: str | None = None,
     return db.scalars(stmt.order_by(Employee.department, Employee.full_name)).all()
 
 
+def validate_employee_user_id(db: Session, user_id: int | None, exclude_employee_id: int | None = None) -> None:
+    if user_id is None:
+        return
+    stmt = select(Employee.id).where(Employee.user_id == user_id)
+    if exclude_employee_id is not None:
+        stmt = stmt.where(Employee.id != exclude_employee_id)
+    if db.scalar(stmt) is not None:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Bu foydalanuvchi allaqachon boshqa xodimga bog'langan.")
+
+
 @employees_router.post("", response_model=EmployeeRead, status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_edit("xodimlar"))])
 def create_employee(payload: EmployeeCreate, db: Session = Depends(get_db)):
+    validate_employee_user_id(db, payload.user_id)
     employee = Employee(**payload.model_dump())
     sync_employee_department_name(employee, db)
     db.add(employee)
@@ -156,6 +170,8 @@ def create_employee(payload: EmployeeCreate, db: Session = Depends(get_db)):
 @employees_router.patch("/{employee_id}", response_model=EmployeeRead, dependencies=[Depends(require_edit("xodimlar"))])
 def update_employee(employee_id: int, payload: EmployeeUpdate, db: Session = Depends(get_db)):
     employee = get_employee_or_404(db, employee_id)
+    if "user_id" in payload.model_dump(exclude_unset=True):
+        validate_employee_user_id(db, payload.user_id, exclude_employee_id=employee_id)
     for key, value in payload.model_dump(exclude_unset=True).items():
         setattr(employee, key, value)
     sync_employee_department_name(employee, db)
@@ -167,7 +183,7 @@ def update_employee(employee_id: int, payload: EmployeeUpdate, db: Session = Dep
 @employees_router.delete("/{employee_id}", status_code=status.HTTP_204_NO_CONTENT, dependencies=[Depends(require_edit("xodimlar"))])
 def delete_employee(employee_id: int, db: Session = Depends(get_db)):
     employee = get_employee_or_404(db, employee_id)
-    task_count = db.scalar(select(func.count()).select_from(Task).where(Task.assigned_employee_id == employee_id)) or 0
+    task_count = db.scalar(select(func.count()).select_from(TaskAssignee).where(TaskAssignee.employee_id == employee_id)) or 0
     if task_count:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -176,6 +192,26 @@ def delete_employee(employee_id: int, db: Session = Depends(get_db)):
     db.delete(employee)
     db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@employees_router.post("/{employee_id}/telegram-pairing-code", response_model=TelegramPairingResponse, dependencies=[Depends(require_edit("xodimlar"))])
+def create_telegram_pairing_code(employee_id: int, db: Session = Depends(get_db)):
+    employee = get_employee_or_404(db, employee_id)
+    if not TELEGRAM_BOT_USERNAME:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Telegram bot sozlanmagan. Administrator .env faylida TELEGRAM_BOT_TOKEN/TELEGRAM_BOT_USERNAME qiymatlarini kiritishi kerak.")
+    code, expires_at = generate_pairing_code(db, employee)
+    return TelegramPairingResponse(code=code, deep_link=f"https://t.me/{TELEGRAM_BOT_USERNAME}?start={code}", expires_at=expires_at)
+
+
+@employees_router.post("/{employee_id}/telegram-unpair", response_model=EmployeeRead, dependencies=[Depends(require_edit("xodimlar"))])
+def unpair_telegram(employee_id: int, db: Session = Depends(get_db)):
+    employee = get_employee_or_404(db, employee_id)
+    employee.telegram_chat_id = None
+    employee.telegram_pairing_code = None
+    employee.telegram_pairing_code_expires_at = None
+    db.commit()
+    db.refresh(employee)
+    return employee
 
 
 def _apply_record_fields(

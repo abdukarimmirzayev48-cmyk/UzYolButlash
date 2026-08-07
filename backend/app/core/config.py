@@ -46,3 +46,9 @@ HIKVISION_PASSWORD = os.getenv("HIKVISION_PASSWORD", "")
 # Signs the login session cookie. Set SESSION_SECRET_KEY in .env for real
 # deployments — this fallback is stable across dev restarts but is not secret.
 SESSION_SECRET_KEY = os.getenv("SESSION_SECRET_KEY", "uzyolbutlash-dev-session-secret-change-me")
+
+# Telegram bot for drivers (trip notifications, fuel/odometer check-ins, stop
+# alerts). Set TELEGRAM_BOT_TOKEN in .env to enable it — the bot simply does
+# not start if it's unset, same tolerant pattern as HIKVISION_* above.
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
+TELEGRAM_BOT_USERNAME = os.getenv("TELEGRAM_BOT_USERNAME", "")
