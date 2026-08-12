@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from backend.app.core.config import TELEGRAM_BOT_USERNAME
 from backend.app.db.session import get_db
-from backend.app.models.attendance import AttendanceRecord, AttendanceStatus, Department, Employee
+from backend.app.models.attendance import AttendanceRecord, AttendanceStatus, Department, Employee, HikvisionSyncLog
 from backend.app.models.task import TaskAssignee
 from backend.app.schemas.attendance import (
     AttendanceAnalysisEntry,
@@ -35,15 +35,15 @@ from backend.app.schemas.attendance import (
     HikvisionStatus,
     TelegramPairingResponse,
 )
-from backend.app.services.attendance_scoring import compute_late_minutes, lateness_band, score_employee_month
+from backend.app.services.attendance_scoring import apply_record_fields, compute_late_minutes, lateness_band, score_employee_month
 from backend.app.services.auth import require_edit
 from backend.app.services.hikvision_client import (
     HikvisionClient,
     HikvisionError,
     configured_hosts,
     is_configured,
-    parse_device_time,
 )
+from backend.app.services.hikvision_sync import apply_events_to_attendance, merge_and_create_employees
 from backend.app.services.telegram_bot import generate_pairing_code
 
 employees_router = APIRouter(prefix="/api/attendance/employees", tags=["attendance"])
@@ -214,39 +214,6 @@ def unpair_telegram(employee_id: int, db: Session = Depends(get_db)):
     return employee
 
 
-def _apply_record_fields(
-    record: AttendanceRecord,
-    employee: Employee,
-    check_in_time: time_cls | None,
-    status_override: AttendanceStatus | None = None,
-    early_leave: bool = False,
-    disciplinary_violation: bool = False,
-    absence_hours: Decimal = Decimal("0"),
-    note: str | None = None,
-    check_out_time: time_cls | None = None,
-) -> None:
-    record.check_in_time = check_in_time
-    record.check_out_time = check_out_time
-    record.early_leave = early_leave
-    record.disciplinary_violation = disciplinary_violation
-    record.absence_hours = absence_hours
-    record.note = note
-    if status_override is not None:
-        record.status = status_override
-        record.late_minutes = (
-            compute_late_minutes(employee.scheduled_check_in, check_in_time)
-            if status_override == AttendanceStatus.late and check_in_time
-            else 0
-        )
-    elif check_in_time is not None:
-        late_minutes = compute_late_minutes(employee.scheduled_check_in, check_in_time)
-        record.late_minutes = late_minutes
-        record.status = AttendanceStatus.late if late_minutes > 0 else AttendanceStatus.on_time
-    else:
-        record.late_minutes = 0
-        record.status = AttendanceStatus.absent
-
-
 @attendance_router.put("/records", response_model=AttendanceRecordRead, dependencies=[Depends(require_edit("davomat"))])
 def upsert_record(payload: AttendanceRecordUpsert, db: Session = Depends(get_db)):
     employee = get_employee_or_404(db, payload.employee_id)
@@ -259,7 +226,7 @@ def upsert_record(payload: AttendanceRecordUpsert, db: Session = Depends(get_db)
     if not record:
         record = AttendanceRecord(employee_id=payload.employee_id, work_date=payload.work_date)
         db.add(record)
-    _apply_record_fields(
+    apply_record_fields(
         record,
         employee,
         payload.check_in_time,
@@ -480,7 +447,7 @@ def import_attendance(file: UploadFile = File(...), db: Session = Depends(get_db
         if not record:
             record = AttendanceRecord(employee_id=employee_id, work_date=work_date)
             db.add(record)
-        _apply_record_fields(record, employee, min(times), check_out_time=max(times) if len(times) > 1 else None)
+        apply_record_fields(record, employee, min(times), check_out_time=max(times) if len(times) > 1 else None)
 
     db.commit()
     return AttendanceImportResult(
@@ -492,10 +459,12 @@ def import_attendance(file: UploadFile = File(...), db: Session = Depends(get_db
 
 
 @attendance_router.get("/hikvision/status", response_model=HikvisionStatus)
-def hikvision_status():
+def hikvision_status(db: Session = Depends(get_db)):
+    last_sync = db.scalars(select(HikvisionSyncLog).order_by(HikvisionSyncLog.synced_at.desc())).first()
+
     hosts = configured_hosts()
     if not is_configured():
-        return HikvisionStatus(configured=False, devices=[])
+        return HikvisionStatus(configured=False, devices=[], last_sync=last_sync)
 
     devices: list[HikvisionDeviceStatus] = []
     for host in hosts:
@@ -505,7 +474,7 @@ def hikvision_status():
             devices.append(HikvisionDeviceStatus(host=host, reachable=True, device_user_count=result["totalUsers"]))
         except HikvisionError as exc:
             devices.append(HikvisionDeviceStatus(host=host, reachable=False, error=str(exc)))
-    return HikvisionStatus(configured=True, devices=devices)
+    return HikvisionStatus(configured=True, devices=devices, last_sync=last_sync)
 
 
 @attendance_router.post("/hikvision/sync-employees", response_model=HikvisionEmployeeSyncResult, dependencies=[Depends(require_edit("davomat"))])
@@ -514,42 +483,21 @@ def hikvision_sync_employees(db: Session = Depends(get_db)):
     if not hosts:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Hikvision qurilmasi sozlanmagan (.env faylida HIKVISION_HOSTS ni kiriting).")
 
-    # Multiple doors/readers commonly share the same enrolled employee roster,
-    # so merge users from every device by badge number (employeeNo) — a
-    # person present on more than one device just gets matched once.
-    device_users_by_badge: dict[str, dict] = {}
+    device_users: list[dict] = []
     errors: list[str] = []
     for host in hosts:
         try:
             client = HikvisionClient(host=host)
-            for user in client.list_users():
-                badge_number = str(user.get("employeeNo") or "").strip()
-                if badge_number:
-                    device_users_by_badge.setdefault(badge_number, user)
+            device_users.extend(client.list_users())
         except HikvisionError as exc:
             errors.append(str(exc))
 
-    if errors and not device_users_by_badge:
+    if errors and not device_users:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="; ".join(errors))
 
-    existing_badges = {e.badge_number for e in db.scalars(select(Employee)).all() if e.badge_number}
-    created_names: list[str] = []
-    for badge_number, user in device_users_by_badge.items():
-        name = str(user.get("name") or "").strip()
-        if not name or badge_number in existing_badges:
-            continue
-        db.add(Employee(full_name=name, badge_number=badge_number, department="Boshqa"))
-        existing_badges.add(badge_number)
-        created_names.append(name)
-    db.commit()
-
-    return HikvisionEmployeeSyncResult(
-        device_users=len(device_users_by_badge),
-        created=len(created_names),
-        already_existing=len(device_users_by_badge) - len(created_names),
-        created_names=created_names,
-        warnings=errors,
-    )
+    result = merge_and_create_employees(db, device_users)
+    result.warnings = errors + result.warnings
+    return result
 
 
 @attendance_router.post("/hikvision/sync-events", response_model=HikvisionEventSyncResult, dependencies=[Depends(require_edit("davomat"))])
@@ -579,47 +527,6 @@ def hikvision_sync_events(
     if errors and not events:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="; ".join(errors))
 
-    employees = db.scalars(select(Employee)).all()
-    by_badge = {e.badge_number: e for e in employees if e.badge_number}
-
-    warnings: list[str] = list(errors)
-    unmatched_badges: set[str] = set()
-    times_by_key: dict[tuple[int, date_cls], list[time_cls]] = {}
-    employee_by_key: dict[tuple[int, date_cls], Employee] = {}
-
-    for event in events:
-        badge_number = str(event.get("employeeNoString") or "").strip()
-        employee = by_badge.get(badge_number)
-        if not employee:
-            unmatched_badges.add(badge_number)
-            continue
-        moment = parse_device_time(event["time"])
-        key = (employee.id, moment.date())
-        employee_by_key[key] = employee
-        times_by_key.setdefault(key, []).append(moment.time())
-
-    for badge_number in sorted(unmatched_badges):
-        warnings.append(f"Tabel raqami {badge_number} bo'yicha xodim topilmadi. Avval xodimlarni sinxronlang.")
-
-    matched_employee_ids: set[int] = set()
-    for (employee_id, work_date), times in times_by_key.items():
-        employee = employee_by_key[(employee_id, work_date)]
-        matched_employee_ids.add(employee_id)
-        record = db.scalars(
-            select(AttendanceRecord).where(
-                AttendanceRecord.employee_id == employee_id,
-                AttendanceRecord.work_date == work_date,
-            )
-        ).first()
-        if not record:
-            record = AttendanceRecord(employee_id=employee_id, work_date=work_date)
-            db.add(record)
-        _apply_record_fields(record, employee, min(times), check_out_time=max(times) if len(times) > 1 else None)
-
-    db.commit()
-    return HikvisionEventSyncResult(
-        events_fetched=len(events),
-        days_updated=len(times_by_key),
-        matched_employees=len(matched_employee_ids),
-        warnings=warnings[:50],
-    )
+    result = apply_events_to_attendance(db, events)
+    result.warnings = (errors + result.warnings)[:50]
+    return result

@@ -7,3 +7,5 @@ hikvison.py
 scan_hikvision.py
 users.json
 *.pptx
+scripts/hikvision_sync_state.json
+agent_run.log

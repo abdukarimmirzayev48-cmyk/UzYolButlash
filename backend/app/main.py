@@ -15,6 +15,7 @@ from backend.app.api.customer_requests import router as customer_requests_router
 from backend.app.api.dashboard import router as dashboard_router
 from backend.app.api.delivery import logistics_router, router as delivery_router
 from backend.app.api.finance import finance_router, invoice_router, payment_router
+from backend.app.api.hikvision_agent import router as hikvision_agent_router
 from backend.app.api.inventory import router as inventory_router
 from backend.app.api.notifications import router as notifications_router
 from backend.app.api.orders import router as orders_router
@@ -44,9 +45,12 @@ app.add_middleware(
 )
 app.add_middleware(SessionMiddleware, secret_key=SESSION_SECRET_KEY, same_site="lax")
 
-# Public — no login required (customer-facing request form, and the login endpoint itself).
+# Public — no login required (customer-facing request form, the login endpoint
+# itself, and the LAN sync agent, which authenticates with its own shared
+# token via require_sync_agent_token instead of a browser session).
 app.include_router(customer_requests_public_router)
 app.include_router(auth_router)
+app.include_router(hikvision_agent_router)
 
 # Everything else requires a logged-in session. Individual write endpoints
 # (e.g. Ijro, Davomat) additionally require edit permission for that module

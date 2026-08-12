@@ -175,9 +175,23 @@ class HikvisionDeviceStatus(BaseModel):
     error: str | None = None
 
 
+class HikvisionSyncLogRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    source: str
+    synced_at: datetime
+    device_users_seen: int
+    employees_created: int
+    events_fetched: int
+    days_updated: int
+    warnings_count: int
+
+
 class HikvisionStatus(BaseModel):
     configured: bool
     devices: list[HikvisionDeviceStatus] = []
+    last_sync: HikvisionSyncLogRead | None = None
 
 
 class HikvisionEmployeeSyncResult(BaseModel):
@@ -193,3 +207,13 @@ class HikvisionEventSyncResult(BaseModel):
     days_updated: int
     matched_employees: int
     warnings: list[str]
+
+
+class HikvisionAgentSyncRequest(BaseModel):
+    device_users: list[dict] = []
+    events: list[dict] = []
+
+
+class HikvisionAgentSyncResult(BaseModel):
+    employees: HikvisionEmployeeSyncResult
+    events: HikvisionEventSyncResult

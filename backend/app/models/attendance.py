@@ -72,3 +72,20 @@ class AttendanceRecord(Base, TimestampMixin):
     note: Mapped[str | None] = mapped_column(Text)
 
     employee: Mapped[Employee] = relationship(back_populates="records")
+
+
+class HikvisionSyncLog(Base):
+    """One row per completed sync run (currently: the unattended LAN agent),
+    so office staff can see whether/when the last automatic sync happened
+    without needing server/log access."""
+
+    __tablename__ = "hikvision_sync_logs"
+
+    id: Mapped[int] = mapped_column(primary_key=True, index=True)
+    source: Mapped[str] = mapped_column(String(32), nullable=False, default="agent")
+    synced_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now, nullable=False, index=True)
+    device_users_seen: Mapped[int] = mapped_column(default=0, nullable=False)
+    employees_created: Mapped[int] = mapped_column(default=0, nullable=False)
+    events_fetched: Mapped[int] = mapped_column(default=0, nullable=False)
+    days_updated: Mapped[int] = mapped_column(default=0, nullable=False)
+    warnings_count: Mapped[int] = mapped_column(default=0, nullable=False)

@@ -52,3 +52,14 @@ SESSION_SECRET_KEY = os.getenv("SESSION_SECRET_KEY", "uzyolbutlash-dev-session-s
 # not start if it's unset, same tolerant pattern as HIKVISION_* above.
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
 TELEGRAM_BOT_USERNAME = os.getenv("TELEGRAM_BOT_USERNAME", "")
+
+# Unattended Hikvision sync agent (scripts/hikvision_sync_agent.py), which
+# runs on a machine on the same LAN as the turnstiles (the HIKVISION_HOSTS
+# above are a private network the server itself usually can't reach) and
+# pushes results to /api/attendance/hikvision/agent/sync. A single shared
+# secret, same tolerant-if-unset pattern as TELEGRAM_BOT_TOKEN — the agent
+# endpoint just rejects requests until it's set. SYNC_TARGET_URL is only
+# read by the agent script itself (the base URL of this server, e.g.
+# "https://uzyolbutlash.uz"), kept here so it shares the same .env loader.
+HIKVISION_SYNC_AGENT_TOKEN = os.getenv("HIKVISION_SYNC_AGENT_TOKEN", "")
+SYNC_TARGET_URL = os.getenv("SYNC_TARGET_URL", "")

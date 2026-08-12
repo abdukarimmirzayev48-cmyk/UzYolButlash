@@ -1,7 +1,10 @@
-from fastapi import Depends, HTTPException, Request, status
+import secrets
+
+from fastapi import Depends, Header, HTTPException, Request, status
 from passlib.context import CryptContext
 from sqlalchemy.orm import Session
 
+from backend.app.core.config import HIKVISION_SYNC_AGENT_TOKEN
 from backend.app.db.session import get_db
 from backend.app.models.user import User
 
@@ -52,3 +55,11 @@ def require_edit(module_key: str):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Sizda bu amalni bajarish huquqi yo'q.")
 
     return dependency
+
+
+def require_sync_agent_token(x_sync_token: str = Header(default="")) -> None:
+    """Gate for the unattended LAN sync agent (no browser session — a shared
+    secret in a request header instead). Not wired into any router's
+    app-level `dependencies=authenticated` list; used directly per-route."""
+    if not HIKVISION_SYNC_AGENT_TOKEN or not secrets.compare_digest(x_sync_token, HIKVISION_SYNC_AGENT_TOKEN):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Noto'g'ri sinxronlash tokeni.")

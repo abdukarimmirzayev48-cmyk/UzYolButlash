@@ -502,6 +502,10 @@ async function attendanceHikvisionModal(state, onSynced) {
             : `<div class="empty compact error">Qurilma <strong>${esc(d.host)}</strong>ga ulanib bo'lmadi: ${esc(d.error || "")}</div>`
         )
         .join("");
+  const lastSync = statusInfo.last_sync;
+  const lastSyncLine = lastSync
+    ? `<div class="empty compact">Oxirgi avtomatik sinxronlash (LAN agenti): <strong>${fmtDate(lastSync.synced_at)}</strong> — ${fmt(lastSync.employees_created)} ta yangi xodim, ${fmt(lastSync.events_fetched)} ta hodisa, ${fmt(lastSync.days_updated)} ta kun yangilandi.</div>`
+    : `<div class="empty compact">Avtomatik sinxronlash agenti hali ishlamagan. Qarang: scripts/HIKVISION_AGENT_SETUP.md</div>`;
 
   backdrop.innerHTML = `
     <div class="modal-panel" style="max-width:560px">
@@ -512,6 +516,7 @@ async function attendanceHikvisionModal(state, onSynced) {
       <form id="attendance-hikvision-form">
         <div class="modal-body">
           ${statusLine}
+          ${lastSyncLine}
           <div class="actions" style="margin:10px 0">
             <button type="button" class="btn" data-hikvision-sync-employees ${anyReachable ? "" : "disabled"}>Xodimlarni qurilmadan sinxronlash</button>
           </div>

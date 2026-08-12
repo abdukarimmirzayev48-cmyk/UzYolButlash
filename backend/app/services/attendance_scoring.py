@@ -1,7 +1,7 @@
 from datetime import time
 from decimal import Decimal
 
-from backend.app.models.attendance import AttendanceRecord, AttendanceStatus
+from backend.app.models.attendance import AttendanceRecord, AttendanceStatus, Employee
 
 MINOR_LATE_MINUTES = 15
 MODERATE_LATE_MINUTES = 30
@@ -18,6 +18,39 @@ def compute_late_minutes(scheduled: time, actual: time) -> int:
     scheduled_minutes = scheduled.hour * 60 + scheduled.minute
     actual_minutes = actual.hour * 60 + actual.minute
     return max(0, actual_minutes - scheduled_minutes)
+
+
+def apply_record_fields(
+    record: AttendanceRecord,
+    employee: Employee,
+    check_in_time: time | None,
+    status_override: AttendanceStatus | None = None,
+    early_leave: bool = False,
+    disciplinary_violation: bool = False,
+    absence_hours: Decimal = Decimal("0"),
+    note: str | None = None,
+    check_out_time: time | None = None,
+) -> None:
+    record.check_in_time = check_in_time
+    record.check_out_time = check_out_time
+    record.early_leave = early_leave
+    record.disciplinary_violation = disciplinary_violation
+    record.absence_hours = absence_hours
+    record.note = note
+    if status_override is not None:
+        record.status = status_override
+        record.late_minutes = (
+            compute_late_minutes(employee.scheduled_check_in, check_in_time)
+            if status_override == AttendanceStatus.late and check_in_time
+            else 0
+        )
+    elif check_in_time is not None:
+        late_minutes = compute_late_minutes(employee.scheduled_check_in, check_in_time)
+        record.late_minutes = late_minutes
+        record.status = AttendanceStatus.late if late_minutes > 0 else AttendanceStatus.on_time
+    else:
+        record.late_minutes = 0
+        record.status = AttendanceStatus.absent
 
 
 def lateness_band(late_minutes: int) -> str:
