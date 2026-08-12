@@ -3401,6 +3401,46 @@ body.public-layout.sidebar-collapsed .app-shell {
   color: var(--muted);
 }
 
+/* Excused / leave statuses. Deliberately outside the yellow-orange-red
+   lateness ramp above so an excused day never reads as a problem. */
+.attendance-day-cell.late_excused {
+  background: #eaf3ff;
+  color: #1f5fae;
+}
+
+.attendance-day-cell.study_leave {
+  background: #f0ecfb;
+  color: #5b3ec8;
+}
+
+.attendance-day-cell.labor_leave {
+  background: #e6f7f5;
+  color: #14706a;
+}
+
+.attendance-day-cell.unpaid_leave {
+  background: #eef2f7;
+  color: #44566b;
+}
+
+.attendance-day-cell.sick_leave {
+  background: #fdeef6;
+  color: #a03071;
+}
+
+.attendance-day-cell.business_trip {
+  background: #e8eaf6;
+  color: #37419e;
+}
+
+/* Letter codes (Ўқув, Меҳнат, Бс...) are wider than an HH:MM stamp — shrink
+   them so a leave day can't stretch the whole day column. */
+.attendance-day-cell.attendance-day-code {
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: -0.2px;
+}
+
 .attendance-grade {
   display: inline-flex;
   align-items: center;

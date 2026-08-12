@@ -5,13 +5,41 @@ const attendanceMonthNames = [
   "Iyul", "Avgust", "Sentyabr", "Oktyabr", "Noyabr", "Dekabr",
 ];
 
+// Labels follow the company's paper timesheet (Cyrillic), same as the НБ
+// abbreviation and the Душ/Сеш weekday headers already used on this page.
 const attendanceStatusOptions = [
-  ["on_time", "Vaqtida"],
-  ["late", "Kechikkan"],
-  ["absent", "Ishda bo'lmagan (НБ)"],
-  ["day_off", "Dam olish kuni"],
-  ["no_data", "Ma'lumot yo'q"],
+  ["on_time", "Вақтида келган"],
+  ["late", "Сабабсиз ишга кеч келган"],
+  ["late_excused", "Узрли сабабга кўра кеч келган"],
+  ["absent", "Сабабсиз келмаган (НБ)"],
+  ["study_leave", "Ўқув таътили"],
+  ["labor_leave", "Меҳнат таътилида"],
+  ["unpaid_leave", "Таътил"],
+  ["sick_leave", "Касаллик варақасида"],
+  ["business_trip", "Хизмат сафарида"],
+  ["day_off", "Дам олиш куни"],
+  ["no_data", "Маълумот йўқ"],
 ];
+
+// Short code painted into the day cell for whole-day statuses (the person
+// wasn't at work, so there's no check-in time to show instead).
+const attendanceCellCodes = {
+  absent: "НБ",
+  study_leave: "Ўқув",
+  labor_leave: "Меҳнат",
+  unpaid_leave: "Бс",
+  sick_leave: "Бл",
+  business_trip: "Хс",
+};
+
+function attendanceStatusLabel(status) {
+  return attendanceStatusOptions.find(([key]) => key === status)?.[1] || status;
+}
+
+// Non-day columns in the grid: name, position, scheduled time + the 6 summary
+// columns and the actions cell. Kept as a constant so the two colspans below
+// can't drift out of sync with the header again.
+const ATTENDANCE_STATIC_COLS = 10;
 
 function attendancePad2(value) {
   return String(value).padStart(2, "0");
@@ -22,9 +50,18 @@ function attendanceTimeShort(value) {
 }
 
 function attendanceCellLabel(cell) {
-  if (cell.status === "absent") return "НБ";
+  const code = attendanceCellCodes[cell.status];
+  if (code) return code;
   if (cell.check_in_time) return attendanceTimeShort(cell.check_in_time);
   return dash;
+}
+
+function attendanceCellTitle(cell) {
+  const parts = [attendanceStatusLabel(cell.status)];
+  if (cell.check_in_time) parts.push(`келди: ${attendanceTimeShort(cell.check_in_time)}`);
+  if (cell.late_minutes) parts.push(`кечикиш: ${cell.late_minutes} дақ.`);
+  if (cell.note) parts.push(cell.note);
+  return parts.join(" · ");
 }
 
 function attendanceQueryState() {
@@ -88,11 +125,12 @@ function attendanceToolbar(state, employees) {
 function attendanceTable(grid) {
   const headerDays = grid.days.map((day, idx) => `<th>${day}<br><small>${grid.day_labels[idx]}</small></th>`).join("");
   const rows = grid.departments.map((dept) => {
-    const deptRow = `<tr class="attendance-dept-row"><td colspan="${5 + grid.days.length}">${esc(dept.name)}</td></tr>`;
+    const deptRow = `<tr class="attendance-dept-row"><td colspan="${ATTENDANCE_STATIC_COLS + grid.days.length}">${esc(dept.name)}</td></tr>`;
     const employeeRows = dept.employees.map((employee) => {
       const dayCells = grid.days.map((day) => {
         const cell = employee.days[String(day)];
-        return `<td class="attendance-day-cell ${cell.band}" data-attendance-cell data-employee-id="${employee.id}" data-day="${day}" data-employee-name="${esc(employee.full_name)}">${attendanceCellLabel(cell)}</td>`;
+        const codeClass = attendanceCellCodes[cell.status] ? " attendance-day-code" : "";
+        return `<td class="attendance-day-cell ${cell.band}${codeClass}" title="${esc(attendanceCellTitle(cell))}" data-attendance-cell data-employee-id="${employee.id}" data-day="${day}" data-employee-name="${esc(employee.full_name)}">${attendanceCellLabel(cell)}</td>`;
       }).join("");
       const summary = employee.summary;
       return `<tr>
@@ -103,6 +141,7 @@ function attendanceTable(grid) {
         <td>${fmt(summary.late_days)}</td>
         <td>${fmt(summary.total_late_minutes)}</td>
         <td>${fmt(summary.absence_days)}</td>
+        <td>${fmt(summary.leave_days)}</td>
         <td>${summary.score}</td>
         <td><span class="attendance-grade grade-${summary.grade}">${summary.grade}</span></td>
         <td>
@@ -126,13 +165,14 @@ function attendanceTable(grid) {
             <th>Kechikish (marta)</th>
             <th>Kechikish (daq.)</th>
             <th>Sababsiz kun</th>
+            <th>Ta'til kunlari</th>
             <th>Ball</th>
             <th>Baho</th>
             <th></th>
           </tr>
         </thead>
         <tbody>
-          ${rows || `<tr><td colspan="${8 + grid.days.length}"><div class="empty">Xodimlar topilmadi. Avval xodim qo'shing.</div></td></tr>`}
+          ${rows || `<tr><td colspan="${ATTENDANCE_STATIC_COLS + grid.days.length}"><div class="empty">Xodimlar topilmadi. Avval xodim qo'shing.</div></td></tr>`}
         </tbody>
       </table>
     </div>
@@ -144,12 +184,18 @@ function attendanceLegendPanel() {
     <div class="attendance-panel">
       <h3>Shartli belgilar</h3>
       <ul>
-        <li><span class="attendance-legend-dot" style="background:#e8f7ef"></span>09:00 — vaqtida kelgan</li>
-        <li><span class="attendance-legend-dot" style="background:#fff8e1"></span>09:01–09:15 — kichik kechikish</li>
-        <li><span class="attendance-legend-dot" style="background:#ffe9d1"></span>09:16–09:30 — o'rtacha kechikish</li>
-        <li><span class="attendance-legend-dot" style="background:#fdeceb"></span>09:31 dan ortiq — katta kechikish</li>
-        <li><strong>НБ</strong> — ishda bo'lmagan (sababsiz)</li>
-        <li><strong>—</strong> — ma'lumot yo'q</li>
+        <li><span class="attendance-legend-dot" style="background:#e8f7ef"></span>09:00 — вақтида келган</li>
+        <li><span class="attendance-legend-dot" style="background:#fff8e1"></span>09:01–09:15 — сабабсиз кичик кечикиш</li>
+        <li><span class="attendance-legend-dot" style="background:#ffe9d1"></span>09:16–09:30 — сабабсиз ўртача кечикиш</li>
+        <li><span class="attendance-legend-dot" style="background:#fdeceb"></span>09:31 дан ортиқ — сабабсиз катта кечикиш</li>
+        <li><span class="attendance-legend-dot" style="background:#eaf3ff"></span>Узрли сабабга кўра кеч келган (баллга таъсир қилмайди)</li>
+        <li><span class="attendance-legend-dot" style="background:#fdeceb"></span><strong>НБ</strong> — сабабсиз келмаган</li>
+        <li><span class="attendance-legend-dot" style="background:#f0ecfb"></span><strong>Ўқув</strong> — ўқув таътили</li>
+        <li><span class="attendance-legend-dot" style="background:#e6f7f5"></span><strong>Меҳнат</strong> — меҳнат таътилида</li>
+        <li><span class="attendance-legend-dot" style="background:#eef2f7"></span><strong>Бс</strong> — таътил</li>
+        <li><span class="attendance-legend-dot" style="background:#fdeef6"></span><strong>Бл</strong> — касаллик варақасида</li>
+        <li><span class="attendance-legend-dot" style="background:#e8eaf6"></span><strong>Хс</strong> — хизмат сафарида</li>
+        <li><strong>—</strong> — маълумот йўқ</li>
       </ul>
     </div>
   `;

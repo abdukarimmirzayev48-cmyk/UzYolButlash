@@ -1,7 +1,9 @@
 from datetime import time
 from decimal import Decimal
 
-from backend.app.models.attendance import AttendanceRecord, AttendanceStatus, Employee
+from backend.app.models.attendance import LEAVE_STATUSES, AttendanceRecord, AttendanceStatus, Employee
+
+LATE_STATUSES = (AttendanceStatus.late, AttendanceStatus.late_excused)
 
 MINOR_LATE_MINUTES = 15
 MODERATE_LATE_MINUTES = 30
@@ -39,9 +41,11 @@ def apply_record_fields(
     record.note = note
     if status_override is not None:
         record.status = status_override
+        # Excused lateness still records how late the person was (useful on the
+        # timesheet); score_employee_month() is what decides not to charge for it.
         record.late_minutes = (
             compute_late_minutes(employee.scheduled_check_in, check_in_time)
-            if status_override == AttendanceStatus.late and check_in_time
+            if status_override in LATE_STATUSES and check_in_time
             else 0
         )
     elif check_in_time is not None:
@@ -76,11 +80,19 @@ def grade_for_score(score: Decimal) -> str:
 
 
 def score_employee_month(records: list[AttendanceRecord]) -> dict:
-    late_days = sum(1 for r in records if r.late_minutes > 0)
-    total_late_minutes = sum(r.late_minutes for r in records)
+    # Only unexcused lateness (сабабсиз) is charged for. Excused lateness keeps
+    # its recorded minutes for the timesheet but is deliberately excluded here.
+    late_days = sum(1 for r in records if r.status == AttendanceStatus.late and r.late_minutes > 0)
+    total_late_minutes = sum(r.late_minutes for r in records if r.status == AttendanceStatus.late)
     absence_days = sum(1 for r in records if r.status == AttendanceStatus.absent)
+    leave_days = sum(1 for r in records if r.status in LEAVE_STATUSES)
     absence_hours = sum(
-        (Decimal(r.absence_hours or 0) for r in records if r.status != AttendanceStatus.absent), Decimal("0")
+        (
+            Decimal(r.absence_hours or 0)
+            for r in records
+            if r.status != AttendanceStatus.absent and r.status not in LEAVE_STATUSES
+        ),
+        Decimal("0"),
     )
     early_leave_count = sum(1 for r in records if r.early_leave)
     disciplinary_count = sum(1 for r in records if r.disciplinary_violation)
@@ -98,6 +110,7 @@ def score_employee_month(records: list[AttendanceRecord]) -> dict:
         "late_days": late_days,
         "total_late_minutes": total_late_minutes,
         "absence_days": absence_days,
+        "leave_days": leave_days,
         "absence_hours": absence_hours,
         "early_leave_count": early_leave_count,
         "disciplinary_count": disciplinary_count,

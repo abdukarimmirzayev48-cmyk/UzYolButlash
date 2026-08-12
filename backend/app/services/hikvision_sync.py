@@ -3,7 +3,7 @@ from datetime import date as date_cls, time as time_cls
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from backend.app.models.attendance import AttendanceRecord, Employee
+from backend.app.models.attendance import MANUAL_STATUSES, AttendanceRecord, Employee
 from backend.app.schemas.attendance import HikvisionEmployeeSyncResult, HikvisionEventSyncResult
 from backend.app.services.attendance_scoring import apply_record_fields
 from backend.app.services.hikvision_client import parse_device_time
@@ -77,6 +77,8 @@ def apply_events_to_attendance(db: Session, events: list[dict]) -> HikvisionEven
         warnings.append(f"Tabel raqami {badge_number} bo'yicha xodim topilmadi. Avval xodimlarni sinxronlang.")
 
     matched_employee_ids: set[int] = set()
+    days_updated = 0
+    skipped_manual = 0
     for (employee_id, work_date), times in times_by_key.items():
         employee = employee_by_key[(employee_id, work_date)]
         matched_employee_ids.add(employee_id)
@@ -86,15 +88,26 @@ def apply_events_to_attendance(db: Session, events: list[dict]) -> HikvisionEven
                 AttendanceRecord.work_date == work_date,
             )
         ).first()
+        # A day someone marked by hand (vacation, sick leave, business trip,
+        # excused lateness...) wins over whatever the turnstile saw --
+        # apply_record_fields() overwrites status/note/flags wholesale, so
+        # without this a re-sync or backfill would silently erase that decision.
+        if record and record.status in MANUAL_STATUSES:
+            skipped_manual += 1
+            continue
         if not record:
             record = AttendanceRecord(employee_id=employee_id, work_date=work_date)
             db.add(record)
         apply_record_fields(record, employee, min(times), check_out_time=max(times) if len(times) > 1 else None)
+        days_updated += 1
+
+    if skipped_manual:
+        warnings.append(f"{skipped_manual} ta kun qo'lda belgilangani uchun o'zgartirilmadi (ta'til, kasallik va h.k.).")
 
     db.commit()
     return HikvisionEventSyncResult(
         events_fetched=len(events),
-        days_updated=len(times_by_key),
+        days_updated=days_updated,
         matched_employees=len(matched_employee_ids),
         warnings=warnings[:50],
     )

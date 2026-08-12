@@ -13,10 +13,36 @@ from backend.app.models.user import User
 
 class AttendanceStatus(str, Enum):
     on_time = "on_time"
-    late = "late"
-    absent = "absent"
+    late = "late"  # Сабабсиз — late without a valid reason (the penalized variant)
+    late_excused = "late_excused"  # Сабабли — late for a valid reason
+    absent = "absent"  # НБ
+    study_leave = "study_leave"  # Ўқув таътили
+    labor_leave = "labor_leave"  # Меҳнат таътилида
+    unpaid_leave = "unpaid_leave"  # Бс — таътил
+    sick_leave = "sick_leave"  # Бл — касаллик варақасида
+    business_trip = "business_trip"  # Хс — хизмат сафарида
     day_off = "day_off"
     no_data = "no_data"
+
+
+# Excused whole-day absences: the person is legitimately away, so these never
+# count as absence and never reduce the discipline score.
+LEAVE_STATUSES = frozenset({
+    AttendanceStatus.study_leave,
+    AttendanceStatus.labor_leave,
+    AttendanceStatus.unpaid_leave,
+    AttendanceStatus.sick_leave,
+    AttendanceStatus.business_trip,
+})
+
+# Statuses only a human ever sets. The Hikvision sync must not overwrite these:
+# otherwise a re-sync/backfill would silently wipe a manually marked vacation or
+# sick day as soon as that person has any badge event on that date.
+MANUAL_STATUSES = LEAVE_STATUSES | frozenset({
+    AttendanceStatus.late_excused,
+    AttendanceStatus.day_off,
+    AttendanceStatus.absent,
+})
 
 
 class Department(Base, TimestampMixin):

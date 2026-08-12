@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 
 from backend.app.core.config import TELEGRAM_BOT_USERNAME
 from backend.app.db.session import get_db
-from backend.app.models.attendance import AttendanceRecord, AttendanceStatus, Department, Employee, HikvisionSyncLog
+from backend.app.models.attendance import LEAVE_STATUSES, AttendanceRecord, AttendanceStatus, Department, Employee, HikvisionSyncLog
 from backend.app.models.task import TaskAssignee
 from backend.app.schemas.attendance import (
     AttendanceAnalysisEntry,
@@ -243,6 +243,22 @@ def upsert_record(payload: AttendanceRecordUpsert, db: Session = Depends(get_db)
     return record
 
 
+def _cell_band(record: AttendanceRecord) -> str:
+    """CSS class the frontend paints the day cell with.
+
+    Unexcused lateness keeps its graduated minor/moderate/major ramp; every
+    excused/leave status gets its own band named after the status so it can be
+    coloured (and legended) distinctly.
+    """
+    if record.status == AttendanceStatus.late:
+        return lateness_band(record.late_minutes)
+    if record.status == AttendanceStatus.absent:
+        return "absent"
+    if record.status in LEAVE_STATUSES or record.status == AttendanceStatus.late_excused:
+        return record.status.value
+    return "on_time"
+
+
 @attendance_router.get("/grid", response_model=AttendanceGrid)
 def get_attendance_grid(
     year: int = Query(..., ge=2000, le=2100),
@@ -297,9 +313,7 @@ def get_attendance_grid(
                     disciplinary_violation=record.disciplinary_violation,
                     absence_hours=record.absence_hours,
                     note=record.note,
-                    band=lateness_band(record.late_minutes) if record.status == AttendanceStatus.late else (
-                        "absent" if record.status == AttendanceStatus.absent else "on_time"
-                    ),
+                    band=_cell_band(record),
                 )
             else:
                 day_cells[str(day)] = AttendanceDayCell(status=AttendanceStatus.no_data, band="no_data")

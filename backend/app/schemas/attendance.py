@@ -116,6 +116,7 @@ class AttendanceMonthlySummary(BaseModel):
     late_days: int
     total_late_minutes: int
     absence_days: int
+    leave_days: int = 0
     absence_hours: Decimal
     early_leave_count: int
     disciplinary_count: int
