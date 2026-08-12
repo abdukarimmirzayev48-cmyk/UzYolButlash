@@ -27,10 +27,11 @@ def configured_hosts() -> list[str]:
 
 
 class HikvisionClient:
-    def __init__(self, host: str | None = None, username: str | None = None, password: str | None = None):
+    def __init__(self, host: str | None = None, username: str | None = None, password: str | None = None, timeout: int = REQUEST_TIMEOUT):
         self.host = host or (HIKVISION_HOSTS[0] if HIKVISION_HOSTS else "")
         self.username = username or HIKVISION_USERNAME
         self.password = password or HIKVISION_PASSWORD
+        self.timeout = timeout
         if not (self.host and self.username and self.password):
             raise HikvisionError("Hikvision qurilmasi sozlanmagan (.env faylida HIKVISION_* o'zgaruvchilarini kiriting).")
         self.session = requests.Session()
@@ -39,7 +40,7 @@ class HikvisionClient:
     def _post(self, path: str, payload: dict) -> dict:
         url = f"http://{self.host}{path}"
         try:
-            response = self.session.post(url, json=payload, timeout=REQUEST_TIMEOUT)
+            response = self.session.post(url, json=payload, timeout=self.timeout)
         except requests.RequestException as exc:
             raise HikvisionError(f"Qurilmaga ulanib bo'lmadi ({self.host}): {exc}") from exc
         if response.status_code != 200:

@@ -493,15 +493,21 @@ async function attendanceHikvisionModal(state, onSynced) {
   }
 
   const anyReachable = statusInfo.devices?.some((d) => d.reachable);
+  // When NO device is reachable, this is almost always the server simply not
+  // being on the office LAN (the normal production setup — the LAN agent
+  // syncs instead). Explain that calmly instead of dumping three raw
+  // connection-error stack traces that look like something is broken.
   const statusLine = !statusInfo.configured
     ? `<div class="empty compact error">Qurilma sozlanmagan. Loyiha ildizida .env faylida HIKVISION_HOSTS, HIKVISION_USERNAME, HIKVISION_PASSWORD ni kiriting.</div>`
-    : (statusInfo.devices || [])
-        .map((d) =>
-          d.reachable
-            ? `<div class="empty compact">Qurilma: <strong>${esc(d.host)}</strong> — ulanish bor, ${fmt(d.device_user_count)} ta xodim ro'yxatda.</div>`
-            : `<div class="empty compact error">Qurilma <strong>${esc(d.host)}</strong>ga ulanib bo'lmadi: ${esc(d.error || "")}</div>`
-        )
-        .join("");
+    : !anyReachable
+      ? `<div class="empty compact">Server turniketlarga bevosita ulana olmaydi — ular ofis ichki tarmog'ida (bu xatolik emas, odatiy holat). Davomat ofisdagi kompyuterda ishlaydigan avtomatik agent orqali sinxronlanadi (qarang: scripts/HIKVISION_AGENT_SETUP.md). Quyidagi qo'lda sinxronlash tugmalari faqat server turniketlar bilan bitta tarmoqda bo'lganda ishlaydi.</div>`
+      : (statusInfo.devices || [])
+          .map((d) =>
+            d.reachable
+              ? `<div class="empty compact">Qurilma: <strong>${esc(d.host)}</strong> — ulanish bor, ${fmt(d.device_user_count)} ta xodim ro'yxatda.</div>`
+              : `<div class="empty compact error">Qurilma <strong>${esc(d.host)}</strong> — ulanish yo'q.</div>`
+          )
+          .join("");
   const lastSync = statusInfo.last_sync;
   const lastSyncLine = lastSync
     ? `<div class="empty compact">Oxirgi avtomatik sinxronlash (LAN agenti): <strong>${fmtDate(lastSync.synced_at)}</strong> — ${fmt(lastSync.employees_created)} ta yangi xodim, ${fmt(lastSync.events_fetched)} ta hodisa, ${fmt(lastSync.days_updated)} ta kun yangilandi.</div>`

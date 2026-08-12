@@ -1,6 +1,7 @@
 import calendar
 import csv
 import io
+from concurrent.futures import ThreadPoolExecutor
 from datetime import date as date_cls, datetime, time as time_cls
 from decimal import Decimal
 
@@ -458,6 +459,18 @@ def import_attendance(file: UploadFile = File(...), db: Session = Depends(get_db
     )
 
 
+def _ping_device(host: str) -> HikvisionDeviceStatus:
+    try:
+        # Short timeout on purpose: when the server can't reach the office LAN
+        # at all (the normal production case — the LAN agent syncs instead),
+        # a long timeout would just make the status modal hang.
+        client = HikvisionClient(host=host, timeout=4)
+        result = client.ping()
+        return HikvisionDeviceStatus(host=host, reachable=True, device_user_count=result["totalUsers"])
+    except HikvisionError as exc:
+        return HikvisionDeviceStatus(host=host, reachable=False, error=str(exc))
+
+
 @attendance_router.get("/hikvision/status", response_model=HikvisionStatus)
 def hikvision_status(db: Session = Depends(get_db)):
     last_sync = db.scalars(select(HikvisionSyncLog).order_by(HikvisionSyncLog.synced_at.desc())).first()
@@ -466,14 +479,8 @@ def hikvision_status(db: Session = Depends(get_db)):
     if not is_configured():
         return HikvisionStatus(configured=False, devices=[], last_sync=last_sync)
 
-    devices: list[HikvisionDeviceStatus] = []
-    for host in hosts:
-        try:
-            client = HikvisionClient(host=host)
-            result = client.ping()
-            devices.append(HikvisionDeviceStatus(host=host, reachable=True, device_user_count=result["totalUsers"]))
-        except HikvisionError as exc:
-            devices.append(HikvisionDeviceStatus(host=host, reachable=False, error=str(exc)))
+    with ThreadPoolExecutor(max_workers=len(hosts)) as pool:
+        devices = list(pool.map(_ping_device, hosts))
     return HikvisionStatus(configured=True, devices=devices, last_sync=last_sync)
 
 
