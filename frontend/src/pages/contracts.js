@@ -1405,7 +1405,7 @@ async function openContractInvoiceModal(contract) {
       if (!state.dueDate) return showToast("To'lov muddati majburiy.", true);
       if (numberValue(state.amount) <= 0) return showToast("Summa 0 dan katta bo'lishi kerak.", true);
       if (["batch_payment", "transport"].includes(state.invoiceType) && !state.deliveryBatchId) return showToast("Ushbu hisob turi uchun partiyani tanlang.", true);
-      if (state.invoiceType === "advance" && state.hasAdvanceInvoice && !confirm("Ushbu shartnoma uchun avans hisob-fakturasi allaqachon mavjud. Davom etasizmi?")) return;
+      if (state.invoiceType === "advance" && state.hasAdvanceInvoice && !confirmMsg("Ushbu shartnoma uchun avans hisob-fakturasi allaqachon mavjud. Davom etasizmi?")) return;
       if (state.deliveryBatchId && !state.batchDetail) await hydrateSelectedBatch();
       const batch = state.batchDetail || null;
       const invoiceNumber = generatedInvoiceNumber(contract.contract_number, batch?.batch_number || "");
@@ -1472,7 +1472,7 @@ async function renderContractDetail(id) {
   });
   document.querySelectorAll("[data-contract-link-client]").forEach((button) => {
     button.addEventListener("click", async () => {
-      if (!confirm("Shartnomani mos mijoz bilan bog'laymizmi? STIR bo'yicha mos mijoz yoki reestrdagi tashkilot topilsa shu ishlatiladi, aks holda yangi mijoz yaratiladi.")) return;
+      if (!confirmMsg("Shartnomani mos mijoz bilan bog'laymizmi? STIR bo'yicha mos mijoz yoki reestrdagi tashkilot topilsa shu ishlatiladi, aks holda yangi mijoz yaratiladi.")) return;
       try {
         await api(`/api/contracts/${id}/link-new-client`, { method: "POST" });
         showToast("Mijoz bog'landi.");
@@ -1492,7 +1492,7 @@ async function renderContractDetail(id) {
   });
   document.querySelectorAll("[data-contract-delete]").forEach((button) => {
     button.addEventListener("click", async () => {
-      if (!confirm(localizeText("Delete this item?"))) return;
+      if (!confirmMsg(localizeText("Delete this item?"))) return;
       const kind = button.dataset.contractDelete;
       try {
         await api(`/api/contracts/${id}/${kind}/${button.dataset.id}`, { method: "DELETE" });

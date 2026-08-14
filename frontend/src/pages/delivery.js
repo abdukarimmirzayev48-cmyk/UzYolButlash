@@ -1073,7 +1073,7 @@ function openLoadingConfirmationModal(batch) {
     if (!field(form, "loaded_quantity") || loaded <= 0) return showToast("Yuklangan miqdor 0 dan katta bo'lishi kerak.", true);
     let allowOverPlanned = false;
     if (planned && loaded > planned) {
-      allowOverPlanned = confirm("Yuklangan miqdor reja miqdoridan oshgan. Davom etasizmi?");
+      allowOverPlanned = confirmMsg("Yuklangan miqdor reja miqdoridan oshgan. Davom etasizmi?");
       if (!allowOverPlanned) return;
     }
     try {
@@ -1270,8 +1270,8 @@ async function openCompletionConfirmationModal(batch) {
     const missingDocs = validation.warnings.some((warning) => warning.includes("hujjat"));
     const quantityDiff = validation.warnings.some((warning) => warning.includes("farq"));
     if (!field(form, "completed_date")) return showToast("Yakunlash sanasi majburiy.", true);
-    if (missingDocs && !confirm("Hujjatlar to'liq emas. Baribir yakunlashni xohlaysizmi?")) return;
-    if (quantityDiff && !confirm("Yuklangan va qabul qilingan miqdor farq qiladi. Baribir yakunlashni xohlaysizmi?")) return;
+    if (missingDocs && !confirmMsg("Hujjatlar to'liq emas. Baribir yakunlashni xohlaysizmi?")) return;
+    if (quantityDiff && !confirmMsg("Yuklangan va qabul qilingan miqdor farq qiladi. Baribir yakunlashni xohlaysizmi?")) return;
     try {
       await api(`/api/delivery-batches/${batch.id}/complete`, {
         method: "POST",

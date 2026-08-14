@@ -1076,7 +1076,7 @@ function openOrderSupplierSelectModal(order) {
       renderOrderDetail(order.id);
     }));
     document.querySelectorAll("[data-modal-supplier-reject]").forEach((button) => button.addEventListener("click", async () => {
-      if (!confirm("Taklif rad etilsinmi?")) return;
+      if (!confirmMsg("Taklif rad etilsinmi?")) return;
       await api(`/api/orders/${order.id}/supplier-options/${button.dataset.modalSupplierReject}`, { method: "DELETE" });
       showToast("Taklif rad etildi.");
       close();
@@ -1369,7 +1369,7 @@ async function renderOrderDetail(id) {
     openOrderChildForm(order, kind, collection.find((row) => row.id === Number(button.dataset.id)));
   }));
   document.querySelectorAll("[data-order-delete]").forEach((button) => button.addEventListener("click", async () => {
-    if (!confirm(localizeText("Delete this item?"))) return;
+    if (!confirmMsg(localizeText("Delete this item?"))) return;
     try {
       await api(`/api/orders/${id}/${button.dataset.orderDelete}/${button.dataset.id}`, { method: "DELETE" });
       showToast("Deleted.");

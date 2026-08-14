@@ -414,7 +414,7 @@ async function renderDetail(id) {
 
   document.querySelectorAll("[data-delete]").forEach((button) => {
     button.addEventListener("click", async () => {
-      if (!confirm("Ushbu yozuvni o'chirishni tasdiqlaysizmi?")) return;
+      if (!confirmMsg("Ushbu yozuvni o'chirishni tasdiqlaysizmi?")) return;
       const kind = button.dataset.delete;
       const pathKind = kind === "bank" ? "bank-accounts" : kind;
       try {

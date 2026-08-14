@@ -276,7 +276,7 @@ function bindTaskBoardEvents(items, onChanged) {
 function bindTaskDeleteButtons(items, onChanged) {
   document.querySelectorAll("[data-delete-task]").forEach((button) => button.addEventListener("click", async () => {
     const item = items.find((t) => t.id === Number(button.dataset.deleteTask));
-    if (!confirm(`Ushbu topshiriqni butunlay o'chirasizmi: "${item?.title || ""}"? Bu amalni bekor qilib bo'lmaydi.`)) return;
+    if (!confirmMsg(`Ushbu topshiriqni butunlay o'chirasizmi: "${item?.title || ""}"? Bu amalni bekor qilib bo'lmaydi.`)) return;
     try {
       await api(`/api/tasks/${button.dataset.deleteTask}`, { method: "DELETE" });
       showToast("Topshiriq o'chirildi.");
@@ -505,7 +505,7 @@ async function renderTaskDetail(id) {
       }
     });
     document.querySelectorAll("[data-delete-comment]").forEach((button) => button.addEventListener("click", async () => {
-      if (!confirm("Ushbu izohni o'chirasizmi?")) return;
+      if (!confirmMsg("Ushbu izohni o'chirasizmi?")) return;
       try {
         await api(`/api/tasks/${id}/comments/${button.dataset.deleteComment}`, { method: "DELETE" });
         showToast("Izoh o'chirildi.");

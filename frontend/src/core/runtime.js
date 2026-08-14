@@ -1,3 +1,41 @@
+// ---- Language (Latin source of truth, Cyrillic rendered on top) ----
+
+const LANG_KEY = "bitum.lang";
+
+function currentLang() {
+  return localStorage.getItem(LANG_KEY) === "lat" ? "lat" : "cyr";
+}
+
+function setLang(lang) {
+  localStorage.setItem(LANG_KEY, lang === "lat" ? "lat" : "cyr");
+  // Full reload rather than a live re-render: the MutationObserver only
+  // localizes *added* nodes, so switching in place would strand text that has
+  // already been translated.
+  location.reload();
+}
+
+function toCyrillic(text) {
+  if (typeof uzCyrillic !== "object") return undefined;
+  const exact = uzCyrillic[text];
+  if (exact) return exact;
+  // Templates carrying live values ("267 ta mijoz", "Ko'rsatilmoqda: 1-20 / 267"):
+  // blank the numbers, look the shape up, then put the same numbers back in
+  // order. Still dictionary-driven — a shape we didn't ship never matches, so
+  // API data can't be caught by this.
+  if (typeof uzCyrillicPatterns !== "object" || !/\d/.test(text)) return undefined;
+  const values = [];
+  // Digit groups may contain thousand separators ("1 250 000") but must not
+  // swallow the trailing space, or the shape stops matching the template.
+  const shape = text.replace(/\d+(?:[.,\s]\d+)*/g, (hit) => {
+    values.push(hit);
+    return "{n}";
+  });
+  const template = uzCyrillicPatterns[shape];
+  if (!template) return undefined;
+  let i = 0;
+  return template.replace(/\{n\}/g, () => (i < values.length ? values[i++] : "{n}"));
+}
+
 function localizeText(value) {
   const text = String(value ?? "");
   const trimmed = text.trim();
@@ -6,7 +44,23 @@ function localizeText(value) {
   translated = translated.replace(/^Showing (\d+) of (\d+) clients\.$/, "$1 ta mijozdan $2 tasi ko'rsatilmoqda.");
   translated = translated.replace(/^Showing (\d+) of (\d+) contracts\.$/, "$1 ta shartnomadan $2 tasi ko'rsatilmoqda.");
   translated = translated.replace(/^(.+) module will be added in a future stage\.$/, "$1 moduli keyingi bosqichda qo'shiladi.");
+  if (currentLang() === "cyr") {
+    // Dictionary lookup ONLY. This runs across the whole DOM, so anything not
+    // recognised as UI text — client names, addresses, notes, emails, plate
+    // numbers — must pass through untouched.
+    translated = toCyrillic(translated) || translated;
+  }
   return text.replace(trimmed, translated);
+}
+
+// For system messages (toasts, API errors) rather than page content. Falls back
+// to live transliteration so interpolated backend messages like
+// "Bu bo'limga 5 ta xodim biriktirilgan..." still get translated. Safe here
+// because these strings are always our own copy, never raw table data.
+function localizeMessage(value) {
+  const text = localizeText(value);
+  if (currentLang() !== "cyr" || /[Ѐ-ӿ]/.test(text)) return text;
+  return transliterateToCyrillic(text);
 }
 
 function localizeDom(root = document.body) {
@@ -14,16 +68,23 @@ function localizeDom(root = document.body) {
   const nodes = [];
   while (walker.nextNode()) nodes.push(walker.currentNode);
   nodes.forEach((node) => {
+    // [data-noloc] opts an element out — e.g. the language switcher, whose
+    // label deliberately shows the language you'd switch *to*.
+    if (node.parentElement?.closest("[data-noloc]")) return;
     const translated = localizeText(node.nodeValue);
     if (translated !== node.nodeValue) node.nodeValue = translated;
   });
-  root.querySelectorAll?.("[placeholder], [title], [aria-label]").forEach((element) => {
-    ["placeholder", "title", "aria-label"].forEach((attr) => {
+  root.querySelectorAll?.("[placeholder], [title], [aria-label], [data-short]").forEach((element) => {
+    ["placeholder", "title", "aria-label", "data-short"].forEach((attr) => {
       if (!element.hasAttribute(attr)) return;
       const translated = localizeText(element.getAttribute(attr));
       if (translated !== element.getAttribute(attr)) element.setAttribute(attr, translated);
     });
   });
+}
+
+function confirmMsg(message) {
+  return confirm(localizeMessage(message));
 }
 
 function esc(value) {
@@ -47,7 +108,7 @@ function fmtDate(value) {
 }
 
 function showToast(message, isError = false) {
-  toast.textContent = localizeText(message);
+  toast.textContent = localizeMessage(message);
   toast.className = `toast${isError ? " error" : ""}`;
   toast.hidden = false;
   window.setTimeout(() => {
@@ -170,7 +231,15 @@ function initSidebar() {
     group.addEventListener("mouseenter", () => document.body.classList.remove("top-nav-closed"));
   });
 
+  const langButton = document.querySelector("#top-lang-toggle");
+  if (langButton) {
+    langButton.textContent = currentLang() === "cyr" ? "Lotin" : "Кирилл";
+    langButton.title = currentLang() === "cyr" ? "Lotin alifbosiga o'tish" : "Кирилл алифбосига ўтиш";
+    langButton.addEventListener("click", () => setLang(currentLang() === "cyr" ? "lat" : "cyr"));
+  }
+
   localizeDom(document.body);
+  document.title = localizeText(document.title);
   const observer = new MutationObserver((mutations) => {
     mutations.forEach((mutation) => {
       mutation.addedNodes.forEach((node) => {

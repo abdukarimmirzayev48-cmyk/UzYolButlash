@@ -5,31 +5,32 @@ const attendanceMonthNames = [
   "Iyul", "Avgust", "Sentyabr", "Oktyabr", "Noyabr", "Dekabr",
 ];
 
-// Labels follow the company's paper timesheet (Cyrillic), same as the НБ
-// abbreviation and the Душ/Сеш weekday headers already used on this page.
+// Labels follow the company's paper timesheet. Written in Latin like the rest
+// of the source; the Cyrillic dictionary renders them as Вақтида/Сабабсиз/… —
+// see scripts/generate_cyrillic_dict.py.
 const attendanceStatusOptions = [
-  ["on_time", "Вақтида келган"],
-  ["late", "Сабабсиз ишга кеч келган"],
-  ["late_excused", "Узрли сабабга кўра кеч келган"],
-  ["absent", "Сабабсиз келмаган (НБ)"],
-  ["study_leave", "Ўқув таътили"],
-  ["labor_leave", "Меҳнат таътилида"],
-  ["unpaid_leave", "Таътил"],
-  ["sick_leave", "Касаллик варақасида"],
-  ["business_trip", "Хизмат сафарида"],
-  ["day_off", "Дам олиш куни"],
-  ["no_data", "Маълумот йўқ"],
+  ["on_time", "Vaqtida kelgan"],
+  ["late", "Sababsiz ishga kech kelgan"],
+  ["late_excused", "Uzrli sababga ko'ra kech kelgan"],
+  ["absent", "Sababsiz kelmagan (NB)"],
+  ["study_leave", "O'quv ta'tili"],
+  ["labor_leave", "Mehnat ta'tilida"],
+  ["unpaid_leave", "Ta'til"],
+  ["sick_leave", "Kasallik varaqasida"],
+  ["business_trip", "Xizmat safarida"],
+  ["day_off", "Dam olish kuni"],
+  ["no_data", "Ma'lumot yo'q"],
 ];
 
 // Short code painted into the day cell for whole-day statuses (the person
 // wasn't at work, so there's no check-in time to show instead).
 const attendanceCellCodes = {
-  absent: "НБ",
-  study_leave: "Ўқув",
-  labor_leave: "Меҳнат",
-  unpaid_leave: "Бс",
-  sick_leave: "Бл",
-  business_trip: "Хс",
+  absent: "NB",
+  study_leave: "O'quv",
+  labor_leave: "Mehnat",
+  unpaid_leave: "Bs",
+  sick_leave: "Bl",
+  business_trip: "Xs",
 };
 
 function attendanceStatusLabel(status) {
@@ -58,8 +59,8 @@ function attendanceCellLabel(cell) {
 
 function attendanceCellTitle(cell) {
   const parts = [attendanceStatusLabel(cell.status)];
-  if (cell.check_in_time) parts.push(`келди: ${attendanceTimeShort(cell.check_in_time)}`);
-  if (cell.late_minutes) parts.push(`кечикиш: ${cell.late_minutes} дақ.`);
+  if (cell.check_in_time) parts.push(`keldi: ${attendanceTimeShort(cell.check_in_time)}`);
+  if (cell.late_minutes) parts.push(`kechikish: ${cell.late_minutes} daq.`);
   if (cell.note) parts.push(cell.note);
   return parts.join(" · ");
 }
@@ -158,7 +159,7 @@ function attendanceTable(grid) {
       <table class="attendance-table">
         <thead>
           <tr>
-            <th class="attendance-col-name">Ф.И.Ш.</th>
+            <th class="attendance-col-name">F.I.Sh.</th>
             <th class="attendance-col-position">Lavozimi</th>
             <th>Ishga kelish vaqti</th>
             ${headerDays}
@@ -184,18 +185,18 @@ function attendanceLegendPanel() {
     <div class="attendance-panel">
       <h3>Shartli belgilar</h3>
       <ul>
-        <li><span class="attendance-legend-dot" style="background:#e8f7ef"></span>09:00 — вақтида келган</li>
-        <li><span class="attendance-legend-dot" style="background:#fff8e1"></span>09:01–09:15 — сабабсиз кичик кечикиш</li>
-        <li><span class="attendance-legend-dot" style="background:#ffe9d1"></span>09:16–09:30 — сабабсиз ўртача кечикиш</li>
-        <li><span class="attendance-legend-dot" style="background:#fdeceb"></span>09:31 дан ортиқ — сабабсиз катта кечикиш</li>
-        <li><span class="attendance-legend-dot" style="background:#eaf3ff"></span>Узрли сабабга кўра кеч келган (баллга таъсир қилмайди)</li>
-        <li><span class="attendance-legend-dot" style="background:#fdeceb"></span><strong>НБ</strong> — сабабсиз келмаган</li>
-        <li><span class="attendance-legend-dot" style="background:#f0ecfb"></span><strong>Ўқув</strong> — ўқув таътили</li>
-        <li><span class="attendance-legend-dot" style="background:#e6f7f5"></span><strong>Меҳнат</strong> — меҳнат таътилида</li>
-        <li><span class="attendance-legend-dot" style="background:#eef2f7"></span><strong>Бс</strong> — таътил</li>
-        <li><span class="attendance-legend-dot" style="background:#fdeef6"></span><strong>Бл</strong> — касаллик варақасида</li>
-        <li><span class="attendance-legend-dot" style="background:#e8eaf6"></span><strong>Хс</strong> — хизмат сафарида</li>
-        <li><strong>—</strong> — маълумот йўқ</li>
+        <li><span class="attendance-legend-dot" style="background:#e8f7ef"></span>09:00 — vaqtida kelgan</li>
+        <li><span class="attendance-legend-dot" style="background:#fff8e1"></span>09:01–09:15 — sababsiz kichik kechikish</li>
+        <li><span class="attendance-legend-dot" style="background:#ffe9d1"></span>09:16–09:30 — sababsiz o'rtacha kechikish</li>
+        <li><span class="attendance-legend-dot" style="background:#fdeceb"></span>09:31 dan ortiq — sababsiz katta kechikish</li>
+        <li><span class="attendance-legend-dot" style="background:#eaf3ff"></span>Uzrli sababga ko'ra kech kelgan (ballga ta'sir qilmaydi)</li>
+        <li><span class="attendance-legend-dot" style="background:#fdeceb"></span><strong>NB</strong> — sababsiz kelmagan</li>
+        <li><span class="attendance-legend-dot" style="background:#f0ecfb"></span><strong>O'quv</strong> — o'quv ta'tili</li>
+        <li><span class="attendance-legend-dot" style="background:#e6f7f5"></span><strong>Mehnat</strong> — mehnat ta'tilida</li>
+        <li><span class="attendance-legend-dot" style="background:#eef2f7"></span><strong>Bs</strong> — ta'til</li>
+        <li><span class="attendance-legend-dot" style="background:#fdeef6"></span><strong>Bl</strong> — kasallik varaqasida</li>
+        <li><span class="attendance-legend-dot" style="background:#e8eaf6"></span><strong>Xs</strong> — xizmat safarida</li>
+        <li><strong>—</strong> — ma'lumot yo'q</li>
       </ul>
     </div>
   `;
@@ -219,12 +220,15 @@ function attendanceFormulaPanel() {
 }
 
 function attendanceScalePanel() {
+  // Parentheses live inside the label so the rendered text node is exactly the
+  // string that appears in the source — otherwise the translation dictionary,
+  // which matches whole text nodes, could never match it.
   const rows = [
-    ["95–100", "A", "A'lo", "Intizomli, namunali xodim"],
-    ["85–94", "B", "Yaxshi", "Yaxshi, mayda kamchiliklar bor"],
-    ["70–84", "C", "Qoniqarli", "E'tibor talab, o'rtacha"],
-    ["50–69", "D", "Past", "Intizom past, ko'p kamchiliklar"],
-    ["0–49", "E", "Juda past", "Intizom juda past, chora ko'rish lozim"],
+    ["95–100", "A", "(A'lo)", "Intizomli, namunali xodim"],
+    ["85–94", "B", "(Yaxshi)", "Yaxshi, mayda kamchiliklar bor"],
+    ["70–84", "C", "(Qoniqarli)", "E'tibor talab, o'rtacha"],
+    ["50–69", "D", "(Past)", "Intizom past, ko'p kamchiliklar"],
+    ["0–49", "E", "(Juda past)", "Intizom juda past, chora ko'rish lozim"],
   ];
   return `
     <div class="attendance-panel">
@@ -232,7 +236,7 @@ function attendanceScalePanel() {
       <table>
         <thead><tr><th>Ball</th><th>Baho</th><th>Tavsif</th></tr></thead>
         <tbody>
-          ${rows.map(([range, grade, label, desc]) => `<tr><td>${range}</td><td><span class="attendance-grade grade-${grade}">${grade}</span> (${label})</td><td>${desc}</td></tr>`).join("")}
+          ${rows.map(([range, grade, label, desc]) => `<tr><td>${range}</td><td><span class="attendance-grade grade-${grade}">${grade}</span> ${label}</td><td>${desc}</td></tr>`).join("")}
         </tbody>
       </table>
     </div>
@@ -312,7 +316,7 @@ async function renderAttendanceList() {
   });
   document.querySelectorAll("[data-attendance-delete-employee]").forEach((btn) => {
     btn.addEventListener("click", async () => {
-      if (!confirm("Bu xodimni va uning barcha davomat yozuvlarini o'chirishni tasdiqlaysizmi?")) return;
+      if (!confirmMsg("Bu xodimni va uning barcha davomat yozuvlarini o'chirishni tasdiqlaysizmi?")) return;
       try {
         await api(`/api/attendance/employees/${btn.dataset.attendanceDeleteEmployee}`, { method: "DELETE" });
         showToast("Xodim o'chirildi.");
@@ -416,7 +420,7 @@ async function attendanceEmployeeModal(employee, onSaved) {
     }
   });
   backdrop.querySelector("#telegram-unpair-btn")?.addEventListener("click", async () => {
-    if (!confirm("Telegram bog'lanishini bekor qilasizmi?")) return;
+    if (!confirmMsg("Telegram bog'lanishini bekor qilasizmi?")) return;
     try {
       await api(`/api/attendance/employees/${employee.id}/telegram-unpair`, { method: "POST" });
       showToast("Telegram bog'lanishi bekor qilindi.");
@@ -757,7 +761,7 @@ async function renderEmployeesList() {
   }));
   document.querySelectorAll("[data-delete-employee]").forEach((btn) => btn.addEventListener("click", async () => {
     const employee = employees.find((e) => e.id === Number(btn.dataset.deleteEmployee));
-    if (!confirm(`"${employee?.full_name || ""}" xodimini va uning barcha davomat yozuvlarini o'chirishni tasdiqlaysizmi?`)) return;
+    if (!confirmMsg(`"${employee?.full_name || ""}" xodimini va uning barcha davomat yozuvlarini o'chirishni tasdiqlaysizmi?`)) return;
     try {
       await api(`/api/attendance/employees/${btn.dataset.deleteEmployee}`, { method: "DELETE" });
       showToast("Xodim o'chirildi.");
@@ -864,7 +868,7 @@ async function renderDepartmentsList() {
   }));
   document.querySelectorAll("[data-delete-department]").forEach((btn) => btn.addEventListener("click", async () => {
     const department = departments.find((d) => d.id === Number(btn.dataset.deleteDepartment));
-    if (!confirm(`"${department?.name || ""}" bo'limini o'chirishni tasdiqlaysizmi?`)) return;
+    if (!confirmMsg(`"${department?.name || ""}" bo'limini o'chirishni tasdiqlaysizmi?`)) return;
     try {
       await api(`/api/departments/${btn.dataset.deleteDepartment}`, { method: "DELETE" });
       showToast("Bo'lim o'chirildi.");

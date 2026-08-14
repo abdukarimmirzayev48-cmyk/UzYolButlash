@@ -46,7 +46,7 @@ async function _renderProductsTab() {
 
   document.querySelectorAll("[data-product-delete]").forEach((btn) => {
     btn.addEventListener("click", async () => {
-      if (!confirm("Bu mahsulotni o'chirishni tasdiqlaysizmi?")) return;
+      if (!confirmMsg("Bu mahsulotni o'chirishni tasdiqlaysizmi?")) return;
       try {
         await api(`/api/products/${btn.dataset.productDelete}`, { method: "DELETE" });
         showToast("Mahsulot o'chirildi.");
@@ -106,7 +106,7 @@ async function _renderCategoriesTab() {
 
   document.querySelectorAll("[data-category-delete]").forEach((btn) => {
     btn.addEventListener("click", async () => {
-      if (!confirm("Bu kategoriyani o'chirishni tasdiqlaysizmi?\nBarcha mahsulotlar ham o'chiriladi.")) return;
+      if (!confirmMsg("Bu kategoriyani o'chirishni tasdiqlaysizmi?\nBarcha mahsulotlar ham o'chiriladi.")) return;
       try {
         await api(`/api/product-categories/${btn.dataset.categoryDelete}`, { method: "DELETE" });
         showToast("Kategoriya o'chirildi.");

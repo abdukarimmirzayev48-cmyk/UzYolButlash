@@ -169,6 +169,22 @@ body.top-nav-closed .top-nav-menu {
   cursor: pointer;
 }
 
+.top-lang-btn {
+  height: 38px;
+  padding: 0 12px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.08);
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.top-lang-btn:hover {
+  background: rgba(255, 255, 255, 0.16);
+}
+
 .top-notif {
   position: relative;
 }

@@ -104,7 +104,7 @@ async function renderTransportsList() {
   bindOpsSearch("transport-search-form", "/transports", ["search", "status"]);
   bindOpsPagination("transport", "/transports");
   document.querySelectorAll("[data-delete-transport]").forEach((button) => button.addEventListener("click", async () => {
-    if (!confirm("Transportni o'chirasizmi?")) return;
+    if (!confirmMsg("Transportni o'chirasizmi?")) return;
     try {
       await api(`/api/transports/${button.dataset.deleteTransport}`, { method: "DELETE" });
       showToast("Transport o'chirildi.");
@@ -273,7 +273,7 @@ async function renderTransportFuelLog(id) {
     fuelLogModal(id, log, rerender);
   }));
   document.querySelectorAll("[data-delete-fuel-log]").forEach((button) => button.addEventListener("click", async () => {
-    if (!confirm("Ushbu yoqilg'i yozuvini o'chirishni tasdiqlaysizmi?")) return;
+    if (!confirmMsg("Ushbu yoqilg'i yozuvini o'chirishni tasdiqlaysizmi?")) return;
     try {
       await api(`/api/transports/${id}/fuel-logs/${button.dataset.deleteFuelLog}`, { method: "DELETE" });
       showToast("Yozuv o'chirildi.");
