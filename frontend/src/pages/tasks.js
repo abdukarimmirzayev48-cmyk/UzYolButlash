@@ -203,6 +203,8 @@ async function taskFormHtml(item = {}) {
   // collectTaskPayload) so a task due today isn't overdue from midnight on.
   const deadlineValue = item.deadline ? item.deadline.slice(0, 10) : "";
   const backPath = item.id ? `/tasks/${item.id}` : "/tasks";
+  // Task-level files only; comment files belong to their comment.
+  const existingFiles = (item.attachments || []).filter((a) => !a.comment_id);
   const deadlineField = isNew
     ? `<label class="form-field"><span class="field-label-text">Muddat <span class="required-mark" aria-hidden="true">*</span></span><input type="date" name="deadline" value="${esc(deadlineValue)}" min="${esc(localDateValue(new Date()))}" required /></label>`
     : textField("deadline", "Muddat", deadlineValue, "date", { required: true });
@@ -222,6 +224,10 @@ async function taskFormHtml(item = {}) {
           ${textArea("description", "Tavsif", item.description || "")}
         </div>
         ${assigneePicker(employees, selectedIds)}
+      `)}
+      ${section("Fayllar", `
+        ${existingFiles.length ? attachmentGrid(existingFiles, "") : ""}
+        ${fileDropZone("files", "Fayl biriktirish (ixtiyoriy)")}
       `)}
       <div class="form-footer"><button type="button" class="btn" data-nav="${backPath}">Bekor qilish</button><button class="btn primary" type="submit">Saqlash</button></div>
     </form>
@@ -244,8 +250,16 @@ function collectTaskPayload(form) {
   };
 }
 
+async function uploadTaskFiles(taskId, files) {
+  const formData = new FormData();
+  files.forEach((file) => formData.append("files", file));
+  await apiForm(`/api/tasks/${taskId}/attachments`, formData);
+}
+
 function bindTaskForm(item = null) {
   bindAssigneePicker();
+  bindFileDropZone(document);
+  if (item) bindAttachmentActions(item.id, () => renderEditTask(item.id));
   document.querySelector("#task-form")?.addEventListener("submit", async (event) => {
     event.preventDefault();
     const form = event.currentTarget;
@@ -258,16 +272,31 @@ function bindTaskForm(item = null) {
       showToast("Muddat o'tgan sana bo'lishi mumkin emas. Kelajakdagi sanani tanlang.", true);
       return;
     }
+    const files = collectFiles(form.elements.files);
+    if (!files) return;
+    let saved;
     try {
-      await api(item ? `/api/tasks/${item.id}` : "/api/tasks", {
+      saved = await api(item ? `/api/tasks/${item.id}` : "/api/tasks", {
         method: item ? "PATCH" : "POST",
         body: JSON.stringify(payload),
       });
-      showToast("Topshiriq saqlandi.");
-      navigate(item ? `/tasks/${item.id}` : "/tasks");
     } catch (error) {
       showToast(error.message, true);
+      return;
     }
+    // Files go up after the task exists, so a failed upload can't lose the task
+    // itself -- the user lands on the Fayllar tab and simply retries there.
+    if (files.length) {
+      try {
+        await uploadTaskFiles(saved.id, files);
+      } catch (error) {
+        showToast(`Topshiriq saqlandi, lekin fayl yuklanmadi: ${error.message}`, true);
+        navigate(`/tasks/${saved.id}?tab=files`);
+        return;
+      }
+    }
+    showToast("Topshiriq saqlandi.");
+    navigate(files.length ? `/tasks/${saved.id}?tab=files` : (item ? `/tasks/${item.id}` : "/tasks"));
   });
 }
 

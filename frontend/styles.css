@@ -3693,6 +3693,10 @@ body.public-layout.sidebar-collapsed .app-shell {
   grid-template-columns: 1fr;
 }
 
+#task-form .attachment-grid {
+  margin-bottom: 14px;
+}
+
 .file-drop-hint {
   font-size: 13px;
   font-weight: 600;

@@ -1888,6 +1888,7 @@ const uzCyrillicPatterns = {
   "STIR {n} · Telefon {n} · Hudud {n}": "СТИР {n} · Телефон {n} · Ҳудуд {n}",
   "Tanlangan zaxira ({n}, {n}) buyurtma mahsulotiga mos emas ({n}, {n}).": "Танланган захира ({n}, {n}) буюртма маҳсулотига мос эмас ({n}, {n}).",
   "Ticket to'lov muddati tugashiga {n} kun qoldi.": "Тиккет тўлов муддати тугашига {n} кун қолди.",
+  "Topshiriq saqlandi, lekin fayl yuklanmadi: {n}": "Топшириқ сақланди, лекин файл юкланмади: {n}",
   "Xodimlar sinxronlandi: {n} ta yangi, {n} ta mavjud edi.{n}": "Ходимлар синхронланди: {n} та янги, {n} та мавжуд эди.{n}",
   "comment_{n}": "коммент_{n}",
   "data-{n}": "дата-{n}",
