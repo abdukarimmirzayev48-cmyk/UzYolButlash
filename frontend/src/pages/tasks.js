@@ -18,6 +18,8 @@ const taskPriorities = [
 
 const TASK_COMMENT_REQUIRED = new Set(["in_progress>done", "done>rejected"]);
 
+const TASK_CLOSED_STATUSES = new Set(["verified", "rejected"]);
+
 const TASK_STATUS_ACTION_LABELS = {
   accepted: "Qabul qilish",
   in_progress: "Boshlash",
@@ -313,25 +315,113 @@ function taskBoardHtml(items) {
   </div>`;
 }
 
-async function promptTaskStatusComment(newStatus) {
-  const message = newStatus === "rejected" ? "Rad etish sababini kiriting:" : "Bajarilishi haqida qisqacha izoh kiriting:";
-  const comment = prompt(message);
-  return comment && comment.trim() ? comment.trim() : null;
+// What the current step means, in the words of the person doing the work.
+const TASK_STATUS_HELP = {
+  new: "Topshiriq sizga yuborildi. Ishni boshlash uchun avval uni qabul qiling.",
+  accepted: "Siz mas'uliyatni o'z zimmangizga oldingiz. Ishga kirishganingizda «Boshlash» tugmasini bosing.",
+  in_progress: "Ish davom etmoqda. Tugagach qisqacha hisobot yozib, «Bajarildi» deb belgilang.",
+  done: "Ish yakunlandi va rahbar tasdig'ini kutmoqda.",
+  verified: "Topshiriq tasdiqlandi va yopildi. Boshqa amal talab qilinmaydi.",
+  rejected: "Topshiriq rad etildi. Sababini «Izohlar» bo'limida o'qing.",
+};
+
+// What each button will actually do -- shown in the dialog before it happens.
+const TASK_ACTION_HELP = {
+  accepted: "Topshiriqni qabul qilasiz va uning mas'uli bo'lasiz. Yaratuvchiga xabar boradi.",
+  in_progress: "Ish boshlanganini belgilaysiz.",
+  done: "Ishni yakunlangan deb belgilaysiz va rahbar tasdig'iga yuborasiz.",
+  verified: "Ishni tasdiqlaysiz va topshiriq yopiladi. Bu amal yakuniy.",
+  rejected: "Ishni qaytarasiz va topshiriq yopiladi. Bu amal yakuniy.",
+};
+
+const TASK_ACTION_COMMENT = {
+  done: { label: "Qisqacha hisobot", placeholder: "Nima bajarildi? Natija qanday?" },
+  rejected: { label: "Rad etish sababi", placeholder: "Nima to'g'ri kelmadi? Nimani tuzatish kerak?" },
+};
+
+// A dialog the app owns, instead of the browser's bare prompt()/confirm(): it
+// can be styled, translated and can explain what is about to happen.
+// Resolves {confirmed, comment}.
+function taskDialog({ title, intro = "", subject = "", confirmLabel = "Tasdiqlash", tone = "primary", comment = null }) {
+  return new Promise((resolve) => {
+    document.querySelector("#task-dialog")?.remove();
+    const backdrop = document.createElement("div");
+    backdrop.id = "task-dialog";
+    backdrop.className = "modal-backdrop";
+    backdrop.innerHTML = `
+      <div class="modal-panel task-dialog-panel">
+        <div class="modal-header">
+          <h2>${esc(title)}</h2>
+          <button class="modal-close" type="button" aria-label="Yopish">&#x2715;</button>
+        </div>
+        <form>
+          <div class="modal-body">
+            ${subject ? `<p class="task-dialog-subject" data-noloc>${esc(subject)}</p>` : ""}
+            ${intro ? `<p class="task-dialog-intro">${esc(intro)}</p>` : ""}
+            ${comment ? `<label class="task-dialog-field">
+              <span class="field-label-text">${esc(comment.label)} <span class="required-mark" aria-hidden="true">*</span></span>
+              <textarea name="comment" rows="4" placeholder="${esc(comment.placeholder || "")}"></textarea>
+              <span class="task-dialog-error" data-dialog-error hidden>Bu maydonni to'ldiring.</span>
+            </label>` : ""}
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn" data-dialog-cancel>Bekor qilish</button>
+            <button type="submit" class="btn ${tone}">${esc(confirmLabel)}</button>
+          </div>
+        </form>
+      </div>`;
+    document.body.appendChild(backdrop);
+    // Modals live outside #app, which is the only thing the language observer
+    // watches -- so translate this subtree by hand.
+    localizeDom(backdrop);
+
+    const field = backdrop.querySelector("textarea");
+    const error = backdrop.querySelector("[data-dialog-error]");
+    const close = (result) => {
+      document.removeEventListener("keydown", onKey);
+      backdrop.remove();
+      resolve(result);
+    };
+    const onKey = (event) => { if (event.key === "Escape") close({ confirmed: false }); };
+    document.addEventListener("keydown", onKey);
+    backdrop.querySelector(".modal-close").addEventListener("click", () => close({ confirmed: false }));
+    backdrop.querySelector("[data-dialog-cancel]").addEventListener("click", () => close({ confirmed: false }));
+    backdrop.addEventListener("click", (event) => { if (event.target === backdrop) close({ confirmed: false }); });
+    field?.addEventListener("input", () => { if (field.value.trim()) error.hidden = true; });
+    backdrop.querySelector("form").addEventListener("submit", (event) => {
+      event.preventDefault();
+      const text = field ? field.value.trim() : "";
+      if (field && !text) {
+        error.hidden = false;
+        field.focus();
+        return;
+      }
+      close({ confirmed: true, comment: text || null });
+    });
+    (field || backdrop.querySelector('button[type="submit"]'))?.focus();
+  });
+}
+
+// subject is live data (a task title), so it is shown as-is and never
+// translated -- only the surrounding explanation goes through the dictionary.
+function taskConfirm(title, intro, subject = "") {
+  return taskDialog({ title, intro, subject, confirmLabel: "O'chirish", tone: "danger" });
 }
 
 async function applyTaskStatusChange(taskId, oldStatus, newStatus, onChanged) {
-  let comment = null;
-  if (TASK_COMMENT_REQUIRED.has(`${oldStatus}>${newStatus}`)) {
-    comment = await promptTaskStatusComment(newStatus);
-    if (!comment) {
-      showToast("Bu amal uchun izoh/sabab kiritilishi shart.", true);
-      return;
-    }
-  }
+  const spec = TASK_COMMENT_REQUIRED.has(`${oldStatus}>${newStatus}`) ? TASK_ACTION_COMMENT[newStatus] : null;
+  const label = TASK_STATUS_ACTION_LABELS[newStatus] || newStatus;
+  const { confirmed, comment } = await taskDialog({
+    title: label,
+    intro: TASK_ACTION_HELP[newStatus] || "",
+    confirmLabel: label,
+    tone: newStatus === "rejected" ? "danger" : "primary",
+    comment: spec,
+  });
+  if (!confirmed) return;
   try {
     await api(`/api/tasks/${taskId}/status`, { method: "POST", body: JSON.stringify({ status: newStatus, comment }) });
-    const label = taskStatuses.find(([key]) => key === newStatus)?.[1] || newStatus;
-    showToast(`Holat yangilandi: ${label}`);
+    showToast(`Holat yangilandi: ${statusLabel(newStatus)}`);
     onChanged();
   } catch (error) {
     showToast(error.message, true);
@@ -373,7 +463,12 @@ function bindTaskBoardEvents(items, onChanged) {
 function bindTaskDeleteButtons(items, onChanged) {
   document.querySelectorAll("[data-delete-task]").forEach((button) => button.addEventListener("click", async () => {
     const item = items.find((t) => t.id === Number(button.dataset.deleteTask));
-    if (!confirmMsg(`Ushbu topshiriqni butunlay o'chirasizmi: "${item?.title || ""}"? Bu amalni bekor qilib bo'lmaydi.`)) return;
+    const { confirmed } = await taskConfirm(
+      "Topshiriqni o'chirish",
+      "Topshiriq barcha izohlari va fayllari bilan butunlay o'chiriladi. Bu amalni bekor qilib bo'lmaydi.",
+      item?.title || "",
+    );
+    if (!confirmed) return;
     try {
       await api(`/api/tasks/${button.dataset.deleteTask}`, { method: "DELETE" });
       showToast("Topshiriq o'chirildi.");
@@ -854,7 +949,8 @@ function bindAttachmentActions(taskId, onChanged) {
     openLightbox(button.dataset.lightbox, button.dataset.lightboxName);
   }));
   document.querySelectorAll("[data-delete-attachment]").forEach((button) => button.addEventListener("click", async () => {
-    if (!confirmMsg("Ushbu faylni o'chirasizmi?")) return;
+    const { confirmed } = await taskConfirm("Faylni o'chirish", "Fayl butunlay o'chiriladi. Bu amalni bekor qilib bo'lmaydi.");
+    if (!confirmed) return;
     try {
       await api(`/api/tasks/${taskId}/attachments/${button.dataset.deleteAttachment}`, { method: "DELETE" });
       showToast("Fayl o'chirildi.");
@@ -897,12 +993,18 @@ function taskStatusPipeline(task) {
 
 function taskActionsPanel(task) {
   const actions = task.available_actions || [];
-  if (!actions.length) return "";
-  return `<section class="next-action-panel">
-    <div><span>Amallar</span><strong><span>Joriy holat</span>: <span>${fmt(statusLabel(task.status))}</span></strong></div>
-    <div class="task-action-buttons">
-      ${actions.map((s) => `<button class="btn ${s === "rejected" ? "" : "primary"}" type="button" data-task-status-action="${s}">${TASK_STATUS_ACTION_LABELS[s] || s}</button>`).join("")}
+  const help = TASK_STATUS_HELP[task.status] || "";
+  const closed = TASK_CLOSED_STATUSES.has(task.status);
+  return `<section class="task-action-panel ${actions.length ? "" : closed ? "closed" : "waiting"}">
+    <div class="task-action-copy">
+      <span class="task-action-eyebrow">Joriy holat</span>
+      <strong>${fmt(statusLabel(task.status))}</strong>
+      ${help ? `<p>${help}</p>` : ""}
+      ${!actions.length && !closed ? `<p class="task-action-note">Hozircha sizdan amal talab qilinmaydi.</p>` : ""}
     </div>
+    ${actions.length ? `<div class="task-action-buttons">
+      ${actions.map((s) => `<button class="btn ${s === "rejected" ? "danger" : "primary"}" type="button" data-task-status-action="${s}" title="${esc(TASK_ACTION_HELP[s] || "")}">${TASK_STATUS_ACTION_LABELS[s] || s}</button>`).join("")}
+    </div>` : ""}
   </section>`;
 }
 
@@ -1051,7 +1153,8 @@ async function renderTaskDetail(id) {
       }
     });
     document.querySelectorAll("[data-delete-comment]").forEach((button) => button.addEventListener("click", async () => {
-      if (!confirmMsg("Ushbu izohni o'chirasizmi?")) return;
+      const { confirmed } = await taskConfirm("Izohni o'chirish", "Izoh va unga biriktirilgan fayllar o'chiriladi.");
+      if (!confirmed) return;
       try {
         await api(`/api/tasks/${id}/comments/${button.dataset.deleteComment}`, { method: "DELETE" });
         showToast("Izoh o'chirildi.");

@@ -4293,3 +4293,125 @@ body.public-layout.sidebar-collapsed .app-shell {
     min-width: 78px;
   }
 }
+
+/* ---- Ijro: holat paneli va amal oynasi ---- */
+
+.task-action-panel {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  flex-wrap: wrap;
+  border: 1px solid #bedbd4;
+  border-radius: 10px;
+  background: #effaf7;
+  padding: 16px 18px;
+  margin-bottom: 16px;
+}
+
+.task-action-panel.waiting {
+  border-color: var(--line);
+  background: var(--surface-soft);
+}
+
+.task-action-panel.closed {
+  border-color: var(--line);
+  background: var(--surface-soft);
+}
+
+.task-action-copy {
+  min-width: 240px;
+  flex: 1;
+}
+
+.task-action-eyebrow {
+  display: block;
+  margin-bottom: 2px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 650;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.task-action-copy strong {
+  display: block;
+  font-size: 19px;
+  color: #133d35;
+}
+
+.task-action-panel.waiting .task-action-copy strong,
+.task-action-panel.closed .task-action-copy strong {
+  color: var(--text);
+}
+
+.task-action-copy p {
+  margin: 6px 0 0;
+  max-width: 62ch;
+  color: #2f5c53;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.task-action-panel.waiting .task-action-copy p,
+.task-action-panel.closed .task-action-copy p {
+  color: var(--muted);
+}
+
+.task-action-copy .task-action-note {
+  font-style: italic;
+}
+
+/* ---- amal oynasi ---- */
+
+.task-dialog-panel {
+  width: min(520px, 100%);
+}
+
+.task-dialog-intro {
+  margin: 0;
+  color: var(--text);
+  font-size: 13.5px;
+  line-height: 1.5;
+}
+
+.task-dialog-field {
+  display: grid;
+  gap: 6px;
+}
+
+.task-dialog-field textarea {
+  width: 100%;
+  min-height: 92px;
+  padding: 9px 11px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 13.5px;
+  font-weight: 400;
+  resize: vertical;
+}
+
+.task-dialog-field textarea:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: -1px;
+}
+
+.task-dialog-error {
+  color: var(--danger);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.task-dialog-subject {
+  margin: 0;
+  padding: 9px 12px;
+  border-left: 3px solid var(--accent);
+  border-radius: 4px;
+  background: var(--surface-soft);
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 650;
+  word-break: break-word;
+}
