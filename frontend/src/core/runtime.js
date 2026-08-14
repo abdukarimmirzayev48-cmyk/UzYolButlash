@@ -102,6 +102,11 @@ function fmt(value) {
   return esc(value);
 }
 
+function fmtDayOnly(value) {
+  if (!value) return dash;
+  return new Intl.DateTimeFormat("uz-UZ", { dateStyle: "medium" }).format(new Date(value));
+}
+
 function fmtDate(value) {
   if (!value) return dash;
   return new Intl.DateTimeFormat("uz-UZ", { dateStyle: "medium", timeStyle: "short" }).format(new Date(value));

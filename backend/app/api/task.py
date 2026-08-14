@@ -113,7 +113,7 @@ def create_task(payload: TaskCreate, db: Session = Depends(get_db), user: User =
     if payload.deadline < datetime.now():
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="Muddat o'tgan sana bo'lishi mumkin emas. Kelajakdagi sana va vaqtni tanlang.",
+            detail="Muddat o'tgan sana bo'lishi mumkin emas. Kelajakdagi sanani tanlang.",
         )
     validate_employee_ids(db, payload.assignee_employee_ids)
 

@@ -868,7 +868,7 @@ const uzCyrillic = {
   "Mos": "Мос",
   "Muammo": "Муаммо",
   "Muddat": "Муддат",
-  "Muddat o'tgan sana bo'lishi mumkin emas. Kelajakdagi sana va vaqtni tanlang.": "Муддат ўтган сана бўлиши мумкин эмас. Келажакдаги сана ва вақтни танланг.",
+  "Muddat o'tgan sana bo'lishi mumkin emas. Kelajakdagi sanani tanlang.": "Муддат ўтган сана бўлиши мумкин эмас. Келажакдаги санани танланг.",
   "Muddat o'zgardi": "Муддат ўзгарди",
   "Muddati": "Муддати",
   "Muddati o'tgan": "Муддати ўтган",

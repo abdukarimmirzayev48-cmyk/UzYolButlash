@@ -58,9 +58,16 @@ function taskHistoryActionLabel(action) {
   return TASK_HISTORY_ACTION_LABELS[action] || action;
 }
 
-function localDateTimeValue(date) {
+function localDateValue(date) {
   const pad = (n) => String(n).padStart(2, "0");
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+}
+
+// "2026-08-20" -> "2026-08-20T23:59:59": deadlines are whole days, and a task
+// due today must not be overdue for the whole of today.
+function endOfDay(value) {
+  if (!value) return value;
+  return `${String(value).slice(0, 10)}T23:59:59`;
 }
 
 async function tasksAggregateStats() {
@@ -113,11 +120,13 @@ async function taskFormHtml(item = {}) {
   const isNew = !item.id;
   const title = item.id ? "Topshiriqni tahrirlash" : "Yangi topshiriq";
   const selectedEmployeeIds = new Set((item.assignees || []).map((a) => a.employee.id));
-  const deadlineValue = item.deadline ? item.deadline.slice(0, 16) : "";
+  // Date only. The stored deadline is the end of that day (see
+  // collectTaskPayload) so a task due today isn't overdue from midnight on.
+  const deadlineValue = item.deadline ? item.deadline.slice(0, 10) : "";
   const backPath = item.id ? `/tasks/${item.id}` : "/tasks";
   const deadlineField = isNew
-    ? `<label class="form-field"><span class="field-label-text">Muddat <span class="required-mark" aria-hidden="true">*</span></span><input type="datetime-local" name="deadline" value="${esc(deadlineValue)}" min="${esc(localDateTimeValue(new Date()))}" required /></label>`
-    : textField("deadline", "Muddat", deadlineValue, "datetime-local", { required: true });
+    ? `<label class="form-field"><span class="field-label-text">Muddat <span class="required-mark" aria-hidden="true">*</span></span><input type="date" name="deadline" value="${esc(deadlineValue)}" min="${esc(localDateValue(new Date()))}" required /></label>`
+    : textField("deadline", "Muddat", deadlineValue, "date", { required: true });
   return `<div class="page">
     <div class="page-header">
       <div class="page-title"><h1>${title}</h1><p>Topshiriqni xodim(lar)ga biriktiring, muddat va muhimlik darajasini belgilang.</p></div>
@@ -151,7 +160,9 @@ function collectTaskPayload(form) {
     assignee_employee_ids: assigneeIds,
     department_id: departmentId ? Number(departmentId) : null,
     priority: field(form, "priority") || "medium",
-    deadline: field(form, "deadline"),
+    // The picker gives a bare date; store the end of that day so the task stays
+    // on time for the whole day rather than going overdue at 00:00.
+    deadline: endOfDay(field(form, "deadline")),
     created_by: field(form, "created_by"),
     description: field(form, "description"),
   };
@@ -167,7 +178,7 @@ function bindTaskForm(item = null) {
       return;
     }
     if (!item && payload.deadline && new Date(payload.deadline) < new Date()) {
-      showToast("Muddat o'tgan sana bo'lishi mumkin emas. Kelajakdagi sana va vaqtni tanlang.", true);
+      showToast("Muddat o'tgan sana bo'lishi mumkin emas. Kelajakdagi sanani tanlang.", true);
       return;
     }
     try {
@@ -190,7 +201,7 @@ function taskBoardCardHtml(item) {
     <div class="task-board-card-meta">${taskAssigneeNames(item)}${item.department ? ` · ${esc(item.department.name)}` : ""}</div>
     <div class="task-board-card-footer">
       ${taskPriorityBadge(item.priority)}
-      <span class="task-board-card-deadline ${item.is_overdue ? "ops-warning" : ""}">${fmtDate(item.deadline)}${item.is_overdue ? " ⚠" : ""}</span>
+      <span class="task-board-card-deadline ${item.is_overdue ? "ops-warning" : ""}">${fmtDayOnly(item.deadline)}${item.is_overdue ? " ⚠" : ""}</span>
     </div>
     <div class="task-board-card-actions">
       <button class="link-btn" data-nav="/tasks/${item.id}">Ko'rish</button>
@@ -310,7 +321,7 @@ async function renderTasksList() {
             <td>${taskAssigneeNames(item)}</td>
             <td>${fmt(item.department?.name)}</td>
             <td>${taskPriorityBadge(item.priority)}</td>
-            <td class="${item.is_overdue ? "ops-warning" : ""}">${fmtDate(item.deadline)}${item.is_overdue ? " ⚠" : ""}</td>
+            <td class="${item.is_overdue ? "ops-warning" : ""}">${fmtDayOnly(item.deadline)}${item.is_overdue ? " ⚠" : ""}</td>
             <td>${statusBadge(item.status)}</td>
             <td>${fmt(item.created_by)}</td>
             <td><div class="ops-row-actions">
@@ -416,7 +427,7 @@ function taskGeneralTab(task) {
       ["Kim tomonidan berilgan", task.created_by],
       ["Yaratuvchi", task.created_by_user?.full_name],
       ["Tavsif", task.description],
-      ["Muddat", fmtDate(task.deadline)],
+      ["Muddat", fmtDayOnly(task.deadline)],
       ["Bajarilgan sana", task.completed_at ? fmtDate(task.completed_at) : dash],
       ["Yopilgan sana", task.closed_at ? fmtDate(task.closed_at) : dash],
     ]))}
