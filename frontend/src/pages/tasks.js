@@ -112,14 +112,89 @@ function taskDepartmentOptions(departments) {
   return [["", "Bo'lim tanlanmagan"], ...departments.map((d) => [String(d.id), d.name])];
 }
 
+// Searchable, department-grouped assignee list. Filtering hides rows rather
+// than re-rendering them, so ticks are never lost while you type.
+function assigneePicker(employees, selectedIds) {
+  const byDept = new Map();
+  employees.forEach((e) => {
+    const dept = e.department || "Bo'limsiz";
+    if (!byDept.has(dept)) byDept.set(dept, []);
+    byDept.get(dept).push(e);
+  });
+  const groups = [...byDept.entries()].map(([dept, list]) => `
+    <div class="assignee-group">
+      <div class="assignee-group-title">${esc(dept)}</div>
+      ${list.map((e) => {
+        const haystack = `${e.full_name} ${e.position || ""} ${dept}`.toLowerCase();
+        return `<label class="check-row assignee-row" data-search="${esc(haystack)}">
+          <input type="checkbox" name="assignee_employee_ids" value="${e.id}" ${selectedIds.has(e.id) ? "checked" : ""} />
+          <span class="assignee-name">${esc(e.full_name)}</span>
+          ${e.position ? `<span class="assignee-position">${esc(e.position)}</span>` : ""}
+        </label>`;
+      }).join("")}
+    </div>`).join("");
+
+  return `
+    <div class="field-group assignee-picker">
+      <div class="assignee-head">
+        <span class="field-label-text">Mas'ul xodimlar <span class="required-mark" aria-hidden="true">*</span></span>
+        <span class="assignee-count" data-assignee-count>0 ta tanlandi</span>
+      </div>
+      <input type="search" class="assignee-search" data-assignee-search placeholder="Ism, lavozim yoki bo'lim bo'yicha qidirish" />
+      <div class="assignee-list">${groups}</div>
+      <div class="empty compact" data-assignee-empty hidden>Xodim topilmadi.</div>
+    </div>`;
+}
+
+function bindAssigneePicker() {
+  const picker = document.querySelector(".assignee-picker");
+  if (!picker) return;
+  const search = picker.querySelector("[data-assignee-search]");
+  const counter = picker.querySelector("[data-assignee-count]");
+  const emptyNote = picker.querySelector("[data-assignee-empty]");
+  const rows = [...picker.querySelectorAll(".assignee-row")];
+
+  const updateCount = () => {
+    const n = rows.filter((r) => r.querySelector("input").checked).length;
+    // Set imperatively, so the MutationObserver won't see it — localize here.
+    counter.textContent = localizeText(`${n} ta tanlandi`);
+    counter.classList.toggle("has-selection", n > 0);
+  };
+
+  const applyFilter = () => {
+    const q = (search.value || "").trim().toLowerCase();
+    let visible = 0;
+    rows.forEach((row) => {
+      // A ticked person always stays visible, so a filter can never hide a
+      // selection you'd then lose track of.
+      const show = !q || row.dataset.search.includes(q) || row.querySelector("input").checked;
+      row.hidden = !show;
+      if (show) visible += 1;
+    });
+    picker.querySelectorAll(".assignee-group").forEach((group) => {
+      group.hidden = ![...group.querySelectorAll(".assignee-row")].some((r) => !r.hidden);
+    });
+    emptyNote.hidden = visible > 0;
+  };
+
+  search.addEventListener("input", applyFilter);
+  picker.addEventListener("change", (e) => {
+    if (e.target.matches('input[name="assignee_employee_ids"]')) updateCount();
+  });
+  updateCount();
+}
+
 async function taskFormHtml(item = {}) {
-  const [employees, departments] = await Promise.all([
+  const [allEmployees, departments] = await Promise.all([
     api("/api/attendance/employees"),
     api("/api/departments").catch(() => []),
   ]);
+  // Deactivated staff can't take on work; keep anyone already assigned though,
+  // so editing an old task doesn't silently drop them.
+  const selectedIds = new Set((item.assignees || []).map((a) => a.employee.id));
+  const employees = allEmployees.filter((e) => e.is_active || selectedIds.has(e.id));
   const isNew = !item.id;
   const title = item.id ? "Topshiriqni tahrirlash" : "Yangi topshiriq";
-  const selectedEmployeeIds = new Set((item.assignees || []).map((a) => a.employee.id));
   // Date only. The stored deadline is the end of that day (see
   // collectTaskPayload) so a task due today isn't overdue from midnight on.
   const deadlineValue = item.deadline ? item.deadline.slice(0, 10) : "";
@@ -142,10 +217,7 @@ async function taskFormHtml(item = {}) {
           ${textField("created_by", "Kim tomonidan berilgan", item.created_by || "")}
           ${textArea("description", "Tavsif", item.description || "")}
         </div>
-        <div class="field-group field-group-scroll">
-          <span class="field-label-text">Mas'ul xodimlar <span class="required-mark" aria-hidden="true">*</span></span>
-          ${employees.map((e) => `<label class="check-row"><input type="checkbox" name="assignee_employee_ids" value="${e.id}" ${selectedEmployeeIds.has(e.id) ? "checked" : ""} /> ${esc(e.full_name)}${e.department ? ` — ${esc(e.department)}` : ""}</label>`).join("")}
-        </div>
+        ${assigneePicker(employees, selectedIds)}
       `)}
       <div class="form-footer"><button type="button" class="btn" data-nav="${backPath}">Bekor qilish</button><button class="btn primary" type="submit">Saqlash</button></div>
     </form>
@@ -169,6 +241,7 @@ function collectTaskPayload(form) {
 }
 
 function bindTaskForm(item = null) {
+  bindAssigneePicker();
   document.querySelector("#task-form")?.addEventListener("submit", async (event) => {
     event.preventDefault();
     const form = event.currentTarget;
