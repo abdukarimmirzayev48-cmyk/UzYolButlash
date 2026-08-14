@@ -11,10 +11,27 @@ from sqlalchemy.orm import Session, selectinload
 from backend.app.core.paths import UPLOADS_DIR
 from backend.app.db.session import get_db
 from backend.app.models.attendance import Employee
-from backend.app.models.task import TASK_TERMINAL_STATUSES, Notification, Task, TaskAssignee, TaskComment, TaskHistory, TaskStatus
+from backend.app.models.task import (
+    TASK_TERMINAL_STATUSES,
+    Notification,
+    Task,
+    TaskAssignee,
+    TaskAttachment,
+    TaskComment,
+    TaskHistory,
+    TaskStatus,
+)
 from backend.app.models.user import User
 from backend.app.schemas.client import Page
-from backend.app.schemas.task import TaskCommentRead, TaskCreate, TaskDetail, TaskRead, TaskStatusUpdate, TaskUpdate
+from backend.app.schemas.task import (
+    TaskAttachmentRead,
+    TaskCommentRead,
+    TaskCreate,
+    TaskDetail,
+    TaskRead,
+    TaskStatusUpdate,
+    TaskUpdate,
+)
 from backend.app.services import task_workflow
 from backend.app.services.auth import get_current_user, require_edit
 
@@ -22,12 +39,16 @@ router = APIRouter(prefix="/api/tasks", tags=["tasks"])
 
 UPLOAD_DIR = UPLOADS_DIR / "tasks"
 
+MAX_UPLOAD_BYTES = 10 * 1024 * 1024
+
 TASK_OPTIONS = (
     selectinload(Task.assignees).selectinload(TaskAssignee.employee),
     selectinload(Task.assignees).selectinload(TaskAssignee.accepted_by_user),
     selectinload(Task.department),
     selectinload(Task.created_by_user),
     selectinload(Task.comments).selectinload(TaskComment.author),
+    selectinload(Task.comments).selectinload(TaskComment.attachments).selectinload(TaskAttachment.uploaded_by),
+    selectinload(Task.attachments).selectinload(TaskAttachment.uploaded_by),
     selectinload(Task.history).selectinload(TaskHistory.user),
 )
 
@@ -58,14 +79,69 @@ def validate_employee_ids(db: Session, employee_ids: list[int]) -> None:
         )
 
 
-def store_task_upload(file: UploadFile) -> str:
+def store_task_upload(file: UploadFile) -> tuple[str, int]:
+    """Save an upload and return its public url plus size, refusing oversized files.
+
+    The size is counted while copying rather than trusted from the request, so a
+    lying Content-Length cannot slip a huge file onto disk.
+    """
     UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
     safe_name = Path(file.filename).name.replace(" ", "_")
     stored_name = f"{uuid4().hex}_{safe_name}"
     destination = UPLOAD_DIR / stored_name
-    with destination.open("wb") as buffer:
-        copyfileobj(file.file, buffer)
-    return f"/static/uploads/tasks/{stored_name}"
+    written = 0
+    try:
+        with destination.open("wb") as buffer:
+            while chunk := file.file.read(1024 * 1024):
+                written += len(chunk)
+                if written > MAX_UPLOAD_BYTES:
+                    raise HTTPException(
+                        status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                        detail=f"Fayl juda katta: {safe_name}. Har bir fayl 10 MB dan oshmasligi kerak.",
+                    )
+                buffer.write(chunk)
+    except Exception:
+        destination.unlink(missing_ok=True)
+        raise
+    return f"/static/uploads/tasks/{stored_name}", written
+
+
+def save_attachments(
+    db: Session,
+    task: Task,
+    files: list[UploadFile],
+    user: User,
+    comment_id: int | None = None,
+) -> list[TaskAttachment]:
+    saved: list[TaskAttachment] = []
+    for upload in files:
+        if not (upload and upload.filename):
+            continue
+        file_url, size = store_task_upload(upload)
+        attachment = TaskAttachment(
+            task_id=task.id,
+            comment_id=comment_id,
+            uploaded_by_user_id=user.id,
+            file_url=file_url,
+            file_name=Path(upload.filename).name,
+            content_type=upload.content_type,
+            size_bytes=size,
+        )
+        db.add(attachment)
+        saved.append(attachment)
+    return saved
+
+
+def remove_stored_file(file_url: str) -> None:
+    """Delete the file behind an attachment, but never outside the uploads dir."""
+    path = (UPLOAD_DIR / Path(file_url).name).resolve()
+    if path.parent == UPLOAD_DIR.resolve():
+        path.unlink(missing_ok=True)
+
+
+def require_task_participant(task: Task, user: User) -> None:
+    if not (task_workflow.is_manager(user) or task_workflow.is_assignee(task, user) or task.created_by_user_id == user.id):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Sizda bu amalni bajarish huquqi yo'q.")
 
 
 @router.get("", response_model=Page[TaskRead])
@@ -175,30 +251,76 @@ def update_task_status(task_id: int, payload: TaskStatusUpdate, db: Session = De
     return get_task_or_404(db, task_id, user)
 
 
-@router.post("/{task_id}/comments", response_model=TaskCommentRead, status_code=status.HTTP_201_CREATED)
-def add_task_comment(
+@router.post("/{task_id}/attachments", response_model=TaskDetail, status_code=status.HTTP_201_CREATED)
+def add_task_attachments(
     task_id: int,
-    text: str | None = Form(None),
-    file: UploadFile | None = File(None),
+    files: list[UploadFile] = File(...),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
     task = get_task_or_404(db, task_id)
-    if not (task_workflow.is_manager(user) or task_workflow.is_assignee(task, user) or task.created_by_user_id == user.id):
+    require_task_participant(task, user)
+
+    saved = save_attachments(db, task, files, user)
+    if not saved:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Fayl tanlanmadi.")
+    db.add(
+        TaskHistory(
+            task_id=task.id,
+            user_id=user.id,
+            action="files_added",
+            old_value=None,
+            new_value=", ".join(a.file_name for a in saved),
+        )
+    )
+    db.commit()
+
+    task = get_task_or_404(db, task_id)
+    task_workflow.notify_task_participants(
+        db,
+        task,
+        title=f"Yangi fayl: {task.title}",
+        body=", ".join(a.file_name for a in saved),
+        kind="file_added",
+        exclude_user_id=user.id,
+    )
+    return get_task_or_404(db, task_id, user)
+
+
+@router.delete("/{task_id}/attachments/{attachment_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_task_attachment(task_id: int, attachment_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    attachment = db.get(TaskAttachment, attachment_id)
+    if not attachment or attachment.task_id != task_id:
+        raise HTTPException(status_code=404, detail="Fayl topilmadi")
+    if attachment.uploaded_by_user_id != user.id and not task_workflow.is_manager(user):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Sizda bu amalni bajarish huquqi yo'q.")
+    file_url = attachment.file_url
+    db.delete(attachment)
+    db.commit()
+    remove_stored_file(file_url)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.post("/{task_id}/comments", response_model=TaskCommentRead, status_code=status.HTTP_201_CREATED)
+def add_task_comment(
+    task_id: int,
+    text: str | None = Form(None),
+    files: list[UploadFile] = File(default=[]),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    task = get_task_or_404(db, task_id)
+    require_task_participant(task, user)
 
     clean_text = (text or "").strip() or None
-    has_file = bool(file and file.filename)
-    if not clean_text and not has_file:
+    uploads = [f for f in files if f and f.filename]
+    if not clean_text and not uploads:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Izoh matni yoki fayl kiritilishi shart.")
 
-    comment = TaskComment(
-        task_id=task.id,
-        author_user_id=user.id,
-        text=clean_text,
-        attachment_url=store_task_upload(file) if has_file else None,
-    )
+    comment = TaskComment(task_id=task.id, author_user_id=user.id, text=clean_text)
     db.add(comment)
+    db.flush()
+    save_attachments(db, task, uploads, user, comment_id=comment.id)
     db.commit()
     db.refresh(comment)
 
@@ -215,15 +337,21 @@ def delete_task_comment(task_id: int, comment_id: int, db: Session = Depends(get
         raise HTTPException(status_code=404, detail="Izoh topilmadi")
     if comment.author_user_id != user.id and not task_workflow.is_manager(user):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Sizda bu amalni bajarish huquqi yo'q.")
+    file_urls = [a.file_url for a in comment.attachments]
     db.delete(comment)
     db.commit()
+    for file_url in file_urls:
+        remove_stored_file(file_url)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.delete("/{task_id}", status_code=status.HTTP_204_NO_CONTENT, dependencies=[Depends(require_edit("ijro"))])
 def delete_task(task_id: int, db: Session = Depends(get_db)):
     task = get_task_or_404(db, task_id)
+    file_urls = [a.file_url for a in task.attachments]
     db.query(Notification).filter(Notification.task_id == task_id).delete(synchronize_session=False)
     db.delete(task)
     db.commit()
+    for file_url in file_urls:
+        remove_stored_file(file_url)
     return Response(status_code=status.HTTP_204_NO_CONTENT)

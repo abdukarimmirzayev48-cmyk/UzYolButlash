@@ -37,6 +37,20 @@ class TaskAssigneeRead(BaseModel):
     accepted_by_user: TaskUserSummary | None = None
 
 
+class TaskAttachmentRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    comment_id: int | None = None
+    file_url: str
+    file_name: str
+    content_type: str | None = None
+    size_bytes: int | None = None
+    is_image: bool
+    uploaded_by: TaskUserSummary
+    created_at: datetime
+
+
 class TaskCommentRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -44,6 +58,7 @@ class TaskCommentRead(BaseModel):
     author: TaskUserSummary
     text: str | None = None
     attachment_url: str | None = None
+    attachments: list[TaskAttachmentRead] = Field(default_factory=list)
     created_at: datetime
 
 
@@ -98,11 +113,13 @@ class TaskRead(TaskBase):
     department: TaskDepartmentSummary | None = None
     created_by_user: TaskUserSummary
     available_actions: list[str] = Field(default_factory=list)
+    attachment_count: int = 0
     created_at: datetime
     updated_at: datetime
 
 
 class TaskDetail(TaskRead):
+    attachments: list[TaskAttachmentRead] = Field(default_factory=list)
     comments: list[TaskCommentRead] = Field(default_factory=list)
     history: list[TaskHistoryRead] = Field(default_factory=list)
 

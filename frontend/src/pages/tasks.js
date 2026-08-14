@@ -31,13 +31,17 @@ const TASK_HISTORY_ACTION_LABELS = {
   status_changed: "Holat o'zgardi",
   deadline_changed: "Muddat o'zgardi",
   assignees_changed: "Mas'ul xodimlar o'zgardi",
+  files_added: "Fayl qo'shildi",
 };
+
+const TASK_MAX_FILE_MB = 10;
 
 const TASK_ICON_PATHS = {
   list: '<path d="M9 6h11"/><path d="M9 12h11"/><path d="M9 18h11"/><path d="M4 6h.01"/><path d="M4 12h.01"/><path d="M4 18h.01"/>',
   alert: '<path d="M12 9v4"/><path d="M12 17h.01"/><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"/>',
   clock: '<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>',
   check: '<path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>',
+  file: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>',
 };
 
 function taskIcon(name, size = 20) {
@@ -479,6 +483,129 @@ async function renderTasksList() {
   }
 }
 
+
+// ---- Fayllar (attachments) ----
+
+function fileSizeLabel(bytes) {
+  if (!bytes && bytes !== 0) return "";
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function fileDropZone(inputName, hint = "Fayllarni tanlang yoki shu yerga tashlang") {
+  return `<div class="file-drop" data-file-drop>
+    <label class="file-drop-label">
+      <span class="file-drop-hint">${hint}</span>
+      <span class="file-drop-note">Har bir fayl ${TASK_MAX_FILE_MB} MB gacha</span>
+      <input type="file" name="${inputName}" multiple />
+    </label>
+    <div class="file-chips" data-file-list></div>
+  </div>`;
+}
+
+function bindFileDropZone(scope) {
+  const zone = (scope || document).querySelector("[data-file-drop]");
+  if (!zone) return;
+  const input = zone.querySelector("input[type=file]");
+  const list = zone.querySelector("[data-file-list]");
+  const render = () => {
+    const files = Array.from(input.files || []);
+    zone.classList.toggle("has-files", files.length > 0);
+    list.innerHTML = files.map((f) => `<span class="file-chip">${esc(f.name)}<em>${fileSizeLabel(f.size)}</em></span>`).join("");
+  };
+  input.addEventListener("change", render);
+  ["dragenter", "dragover"].forEach((type) => zone.addEventListener(type, (event) => {
+    event.preventDefault();
+    zone.classList.add("dragover");
+  }));
+  ["dragleave", "drop"].forEach((type) => zone.addEventListener(type, () => zone.classList.remove("dragover")));
+  zone.addEventListener("drop", (event) => {
+    event.preventDefault();
+    // Assigning to .files keeps the normal form submit path working.
+    input.files = event.dataTransfer.files;
+    render();
+  });
+}
+
+// Returns the picked files, or null when one of them is over the limit —
+// checked here so a slow upload isn't wasted on a file the server will refuse.
+function collectFiles(input) {
+  const files = Array.from(input?.files || []);
+  const tooBig = files.find((f) => f.size > TASK_MAX_FILE_MB * 1024 * 1024);
+  if (tooBig) {
+    showToast(`Fayl juda katta: ${tooBig.name}. Har bir fayl ${TASK_MAX_FILE_MB} MB dan oshmasligi kerak.`, true);
+    return null;
+  }
+  return files;
+}
+
+function attachmentCard(att, deletable) {
+  const name = esc(att.file_name || "");
+  const url = esc(att.file_url || "");
+  const preview = att.is_image
+    ? `<button type="button" class="attachment-thumb" data-lightbox="${url}" data-lightbox-name="${name}"><img src="${url}" alt="${name}" loading="lazy" /></button>`
+    : `<a class="attachment-thumb is-file" href="${url}" target="_blank" rel="noopener">${taskIcon("file", 24)}</a>`;
+  return `<figure class="attachment-card">
+    ${preview}
+    <figcaption>
+      <a href="${url}" target="_blank" rel="noopener" title="${name}">${name}</a>
+      <span>${esc(fileSizeLabel(att.size_bytes))}${att.uploaded_by?.full_name ? ` · ${esc(att.uploaded_by.full_name)}` : ""}</span>
+    </figcaption>
+    ${deletable ? `<button type="button" class="attachment-remove" data-delete-attachment="${att.id}" title="O'chirish">&times;</button>` : ""}
+  </figure>`;
+}
+
+function attachmentGrid(attachments, emptyText) {
+  const items = attachments || [];
+  if (!items.length) return `<div class="empty">${emptyText}</div>`;
+  return `<div class="attachment-grid">${items.map((a) => attachmentCard(a, canEdit("ijro"))).join("")}</div>`;
+}
+
+function openLightbox(url, name) {
+  const overlay = document.createElement("div");
+  overlay.className = "lightbox";
+  overlay.innerHTML = `<figure><img src="${esc(url)}" alt="${esc(name || "")}" /><figcaption>${esc(name || "")}</figcaption></figure>
+    <button type="button" class="lightbox-close" aria-label="Yopish">&times;</button>`;
+  const close = () => {
+    overlay.remove();
+    document.removeEventListener("keydown", onKey);
+  };
+  const onKey = (event) => { if (event.key === "Escape") close(); };
+  overlay.addEventListener("click", (event) => { if (event.target.closest("figure img")) return; close(); });
+  document.addEventListener("keydown", onKey);
+  document.body.appendChild(overlay);
+}
+
+function bindAttachmentActions(taskId, onChanged) {
+  document.querySelectorAll("[data-lightbox]").forEach((button) => button.addEventListener("click", () => {
+    openLightbox(button.dataset.lightbox, button.dataset.lightboxName);
+  }));
+  document.querySelectorAll("[data-delete-attachment]").forEach((button) => button.addEventListener("click", async () => {
+    if (!confirmMsg("Ushbu faylni o'chirasizmi?")) return;
+    try {
+      await api(`/api/tasks/${taskId}/attachments/${button.dataset.deleteAttachment}`, { method: "DELETE" });
+      showToast("Fayl o'chirildi.");
+      onChanged();
+    } catch (error) {
+      showToast(error.message, true);
+    }
+  }));
+}
+
+function taskFilesTab(task) {
+  const taskFiles = (task.attachments || []).filter((a) => !a.comment_id);
+  return `
+    ${canEdit("ijro") ? section("Fayl yuklash", `
+      <form id="task-files-form" class="grid">
+        ${fileDropZone("files")}
+        <div class="form-footer"><button class="btn primary" type="submit">Yuklash</button></div>
+      </form>
+    `) : ""}
+    ${section(`Fayllar (${taskFiles.length})`, attachmentGrid(taskFiles, "Fayllar hali yo'q."))}
+  `;
+}
+
 function taskActionsPanel(task) {
   const actions = task.available_actions || [];
   if (!actions.length) return "";
@@ -507,19 +634,29 @@ function taskGeneralTab(task) {
   `;
 }
 
+function taskCommentFiles(comment) {
+  // attachment_url is the pre-multi-file column, kept so old comments still show.
+  const files = comment.attachments || [];
+  if (!files.length && comment.attachment_url) {
+    return `<a href="${esc(comment.attachment_url)}" target="_blank" rel="noopener">Yuklab olish</a>`;
+  }
+  if (!files.length) return dash;
+  return `<div class="attachment-grid compact">${files.map((a) => attachmentCard(a, canEdit("ijro"))).join("")}</div>`;
+}
+
 function taskCommentsTab(task) {
   return section("Izohlar", `
     <form id="task-comment-form" class="grid" style="margin-bottom:16px;">
       <textarea name="text" placeholder="Izoh yozing..."></textarea>
-      <label>Fayl (ixtiyoriy)<input type="file" name="file" /></label>
+      ${fileDropZone("files", "Fayl biriktirish (ixtiyoriy)")}
       <div class="form-footer"><button class="btn primary" type="submit">Izoh qo'shish</button></div>
     </form>
-    ${tableOrEmpty(task.comments, ["Sana", "Foydalanuvchi", "Izoh", "Fayl", ""], (c) => `
+    ${tableOrEmpty(task.comments, ["Sana", "Foydalanuvchi", "Izoh", "Fayllar", ""], (c) => `
       <tr>
         <td>${fmtDate(c.created_at)}</td>
         <td>${fmt(c.author?.full_name)}</td>
         <td>${fmt(c.text)}</td>
-        <td>${c.attachment_url ? `<a href="${esc(c.attachment_url)}" target="_blank" rel="noopener">Yuklab olish</a>` : dash}</td>
+        <td>${taskCommentFiles(c)}</td>
         <td>${canEdit("ijro") ? `<button class="link-btn" style="color:var(--danger)" data-delete-comment="${c.id}">O'chirish</button>` : ""}</td>
       </tr>
     `, "Izohlar hali yo'q.")}
@@ -551,7 +688,14 @@ async function renderTaskDetail(id) {
   app.innerHTML = `<div class="page"><div class="empty">Yuklanmoqda...</div></div>`;
   const task = await api(`/api/tasks/${id}`);
   const active = new URLSearchParams(location.search).get("tab") || "general";
-  const tabContent = active === "comments" ? taskCommentsTab(task) : active === "history" ? taskHistoryTab(task) : taskGeneralTab(task);
+  const tabContent = active === "files"
+    ? taskFilesTab(task)
+    : active === "comments"
+      ? taskCommentsTab(task)
+      : active === "history"
+        ? taskHistoryTab(task)
+        : taskGeneralTab(task);
+  const fileCount = task.attachment_count || 0;
 
   app.innerHTML = `<div class="page">
     ${workflowHeader({
@@ -562,7 +706,7 @@ async function renderTaskDetail(id) {
     })}
     ${task.is_overdue ? workflowWarningsPanel(["Bu topshiriqning muddati o'tib ketgan."]) : ""}
     ${taskActionsPanel(task)}
-    ${workflowTabs(active, [["general", "Umumiy"], ["comments", "Izohlar"], ["history", "Tarix"]], "task-tab")}
+    ${workflowTabs(active, [["general", "Umumiy"], ["files", fileCount ? `Fayllar (${fileCount})` : "Fayllar"], ["comments", "Izohlar"], ["history", "Tarix"]], "task-tab")}
     ${tabContent}
   </div>`;
 
@@ -572,14 +716,42 @@ async function renderTaskDetail(id) {
 
   bindTaskStatusActions(task, () => renderTaskDetail(id));
 
+  bindAttachmentActions(id, () => renderTaskDetail(id));
+
+  if (active === "files") {
+    bindFileDropZone(document);
+    document.querySelector("#task-files-form")?.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const form = event.currentTarget;
+      const files = collectFiles(form.elements.files);
+      if (!files) return;
+      if (!files.length) {
+        showToast("Fayl tanlanmadi.", true);
+        return;
+      }
+      const formData = new FormData();
+      files.forEach((file) => formData.append("files", file));
+      try {
+        await apiForm(`/api/tasks/${id}/attachments`, formData);
+        showToast(files.length > 1 ? `${files.length} ta fayl yuklandi.` : "Fayl yuklandi.");
+        renderTaskDetail(id);
+      } catch (error) {
+        showToast(error.message, true);
+      }
+    });
+  }
+
   if (active === "comments") {
+    bindFileDropZone(document);
     document.querySelector("#task-comment-form")?.addEventListener("submit", async (event) => {
       event.preventDefault();
       const form = event.currentTarget;
+      const files = collectFiles(form.elements.files);
+      if (!files) return;
       const formData = new FormData();
       const text = field(form, "text");
       if (text) formData.append("text", text);
-      if (form.elements.file.files[0]) formData.append("file", form.elements.file.files[0]);
+      files.forEach((file) => formData.append("files", file));
       try {
         await apiForm(`/api/tasks/${id}/comments`, formData);
         showToast("Izoh qo'shildi.");

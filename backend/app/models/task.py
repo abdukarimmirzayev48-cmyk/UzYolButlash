@@ -49,7 +49,13 @@ class Task(Base, TimestampMixin):
     department: Mapped[Department | None] = relationship()
     assignees: Mapped[list["TaskAssignee"]] = relationship(back_populates="task", cascade="all, delete-orphan")
     comments: Mapped[list["TaskComment"]] = relationship(back_populates="task", cascade="all, delete-orphan", order_by="TaskComment.created_at")
+    attachments: Mapped[list["TaskAttachment"]] = relationship(back_populates="task", cascade="all, delete-orphan", order_by="TaskAttachment.id")
     history: Mapped[list["TaskHistory"]] = relationship(back_populates="task", cascade="all, delete-orphan", order_by="TaskHistory.created_at")
+
+    @property
+    def attachment_count(self) -> int:
+        """Files attached to the task itself; comment files are counted with their comment."""
+        return sum(1 for a in self.attachments if a.comment_id is None)
 
     @property
     def is_overdue(self) -> bool:
@@ -84,6 +90,37 @@ class TaskComment(Base):
 
     task: Mapped[Task] = relationship(back_populates="comments")
     author: Mapped[User] = relationship()
+    attachments: Mapped[list["TaskAttachment"]] = relationship(
+        back_populates="comment", cascade="all, delete-orphan", order_by="TaskAttachment.id"
+    )
+
+
+class TaskAttachment(Base):
+    """A file on a task.
+
+    comment_id is null for files attached to the task itself (the brief, specs)
+    and set for files posted with a comment, so one table serves both places.
+    """
+
+    __tablename__ = "task_attachments"
+
+    id: Mapped[int] = mapped_column(primary_key=True, index=True)
+    task_id: Mapped[int] = mapped_column(ForeignKey("tasks.id", ondelete="CASCADE"), nullable=False, index=True)
+    comment_id: Mapped[int | None] = mapped_column(ForeignKey("task_comments.id", ondelete="CASCADE"), index=True)
+    uploaded_by_user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    file_url: Mapped[str] = mapped_column(String(500), nullable=False)
+    file_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    content_type: Mapped[str | None] = mapped_column(String(128))
+    size_bytes: Mapped[int | None] = mapped_column()
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now, nullable=False)
+
+    task: Mapped[Task] = relationship(back_populates="attachments")
+    comment: Mapped[TaskComment | None] = relationship(back_populates="attachments")
+    uploaded_by: Mapped[User] = relationship()
+
+    @property
+    def is_image(self) -> bool:
+        return bool(self.content_type and self.content_type.startswith("image/"))
 
 
 class TaskHistory(Base):
