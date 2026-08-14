@@ -3894,3 +3894,402 @@ body.public-layout.sidebar-collapsed .app-shell {
 .lightbox-close:hover {
   background: rgba(255, 255, 255, 0.26);
 }
+
+/* ---- Ijro: boshqaruv paneli, filtrlar va holat yo'lagi ---- */
+
+.tasks-summary-cards.kpi {
+  grid-template-columns: repeat(auto-fit, minmax(196px, 1fr));
+}
+
+/* Nine KPI labels are longer than the four the original cards carried, so let
+   them wrap instead of being cut off mid-word. */
+.tasks-summary-cards.kpi .tasks-summary-copy span {
+  font-size: 13px;
+  white-space: normal;
+  overflow: visible;
+  line-height: 1.25;
+}
+
+.tasks-summary-cards.kpi .tasks-summary-copy strong {
+  font-size: 22px;
+}
+
+.task-quick-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 14px;
+}
+
+.task-chip {
+  padding: 5px 12px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.task-chip:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.task-chip.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #ffffff;
+}
+
+.ops-date-filter {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.ops-date-filter input {
+  height: 32px;
+  padding: 0 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface);
+  font-size: 12.5px;
+}
+
+.task-sort-btn {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-weight: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.task-sort-btn:hover {
+  color: var(--accent);
+}
+
+.task-sort-btn.active {
+  color: var(--accent);
+}
+
+.task-sort-arrow {
+  margin-left: 3px;
+}
+
+.task-panel-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.task-panel-grid.two {
+  grid-template-columns: repeat(auto-fit, minmax(380px, 1fr));
+}
+
+.task-panel-grid > .card {
+  margin: 0;
+}
+
+/* ---- gorizontal ustunli diagramma ---- */
+
+.task-bars {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+
+.task-bar-row {
+  display: grid;
+  grid-template-columns: 120px 1fr 36px;
+  align-items: center;
+  gap: 10px;
+}
+
+.task-bar-label {
+  font-size: 12.5px;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.task-bar-track {
+  height: 10px;
+  border-radius: 999px;
+  background: var(--surface-soft);
+  overflow: hidden;
+}
+
+.task-bar-fill {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--accent);
+  min-width: 2px;
+  transition: width 0.3s ease;
+}
+
+.task-bar-fill.status-new { background: #64748b; }
+.task-bar-fill.status-accepted { background: #0ea5e9; }
+.task-bar-fill.status-in_progress { background: #d97706; }
+.task-bar-fill.status-done { background: #16a34a; }
+.task-bar-fill.status-verified { background: var(--accent); }
+.task-bar-fill.status-rejected { background: var(--danger); }
+.task-bar-fill.priority-low { background: #94a3b8; }
+.task-bar-fill.priority-medium { background: #0ea5e9; }
+.task-bar-fill.priority-high { background: #d97706; }
+.task-bar-fill.priority-urgent { background: var(--danger); }
+
+.task-bar-value {
+  font-size: 13px;
+  font-weight: 700;
+  text-align: right;
+}
+
+/* ---- oylik dinamika ---- */
+
+.task-trend {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  height: 150px;
+  position: relative;
+  padding-bottom: 34px;
+}
+
+.task-trend-col {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  height: 100%;
+}
+
+.task-trend-bars {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 3px;
+  width: 100%;
+  flex: 1;
+}
+
+.task-trend-bar {
+  width: 40%;
+  max-width: 18px;
+  min-height: 2px;
+  border-radius: 3px 3px 0 0;
+  background: var(--accent);
+}
+
+.task-trend-bar.completed {
+  background: #16a34a;
+}
+
+.task-trend-label {
+  font-size: 11px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.task-trend-legend {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  display: flex;
+  gap: 14px;
+  font-size: 11.5px;
+  color: var(--muted);
+}
+
+.task-trend-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.task-trend-legend i {
+  width: 9px;
+  height: 9px;
+  border-radius: 2px;
+  background: var(--accent);
+}
+
+.task-trend-legend i.completed {
+  background: #16a34a;
+}
+
+/* ---- panel ro'yxatlari ---- */
+
+.task-mini-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.task-mini-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  padding: 9px 4px;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  background: none;
+  text-align: left;
+  cursor: pointer;
+}
+
+.task-mini-row:last-child {
+  border-bottom: 0;
+}
+
+.task-mini-row:hover {
+  background: var(--surface-soft);
+}
+
+.task-mini-main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.task-mini-main strong {
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.task-mini-main span {
+  font-size: 11.5px;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.task-mini-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+}
+
+.task-mini-days {
+  font-size: 11.5px;
+  color: var(--muted);
+}
+
+.task-mini-days.late {
+  color: var(--danger);
+  font-weight: 650;
+}
+
+/* ---- holat yo'lagi (pipeline) ---- */
+
+.task-pipeline {
+  display: flex;
+  align-items: flex-start;
+  gap: 0;
+  margin-bottom: 16px;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+  overflow-x: auto;
+}
+
+.task-pipeline-step {
+  position: relative;
+  flex: 1;
+  min-width: 96px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 7px;
+  text-align: center;
+}
+
+/* The connector sits behind the dots and stops at the last step. */
+.task-pipeline-step::before {
+  content: "";
+  position: absolute;
+  top: 6px;
+  left: -50%;
+  width: 100%;
+  height: 2px;
+  background: var(--line);
+}
+
+.task-pipeline-step:first-child::before {
+  display: none;
+}
+
+.task-pipeline-step.done::before,
+.task-pipeline-step.current::before {
+  background: var(--accent);
+}
+
+.task-pipeline.rejected .task-pipeline-step.current::before,
+.task-pipeline.rejected .task-pipeline-step.step-rejected::before {
+  background: var(--danger);
+}
+
+.task-pipeline-dot {
+  position: relative;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid var(--line);
+  background: var(--surface);
+}
+
+.task-pipeline-step.done .task-pipeline-dot {
+  border-color: var(--accent);
+  background: var(--accent);
+}
+
+.task-pipeline-step.current .task-pipeline-dot {
+  border-color: var(--accent);
+  background: var(--surface);
+  box-shadow: 0 0 0 3px rgba(23, 107, 91, 0.18);
+}
+
+.task-pipeline.rejected .task-pipeline-step.current .task-pipeline-dot {
+  border-color: var(--danger);
+  box-shadow: 0 0 0 3px rgba(180, 35, 24, 0.18);
+}
+
+.task-pipeline-label {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.task-pipeline-step.done .task-pipeline-label,
+.task-pipeline-step.current .task-pipeline-label {
+  color: var(--text);
+  font-weight: 650;
+}
+
+@media (max-width: 720px) {
+  .task-bar-row {
+    grid-template-columns: 92px 1fr 30px;
+  }
+
+  .task-pipeline-step {
+    min-width: 78px;
+  }
+}

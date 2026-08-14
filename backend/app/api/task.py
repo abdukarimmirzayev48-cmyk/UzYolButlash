@@ -1,11 +1,13 @@
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
 from shutil import copyfileobj
 from typing import Any
+from urllib.parse import quote
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Response, UploadFile, status
-from sqlalchemy import func, or_, select
+from fastapi.responses import StreamingResponse
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
 from backend.app.core.paths import UPLOADS_DIR
@@ -32,7 +34,8 @@ from backend.app.schemas.task import (
     TaskStatusUpdate,
     TaskUpdate,
 )
-from backend.app.services import task_workflow
+from backend.app.services import task_export, task_query, task_stats, task_workflow
+from backend.app.services.task_query import TaskFilters
 from backend.app.services.auth import get_current_user, require_edit
 
 router = APIRouter(prefix="/api/tasks", tags=["tasks"])
@@ -144,44 +147,97 @@ def require_task_participant(task: Task, user: User) -> None:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Sizda bu amalni bajarish huquqi yo'q.")
 
 
-@router.get("", response_model=Page[TaskRead])
-def list_tasks(
-    db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
-    page: int = Query(1, ge=1),
-    page_size: int = Query(100, ge=1, le=200),
+EXPORT_MEDIA_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
+
+def collect_filters(
     search: str | None = None,
     status_filter: str | None = Query(default=None, alias="status"),
     priority: str | None = None,
     assigned_employee_id: int | None = None,
     department_id: int | None = None,
     overdue_only: bool = False,
+    state: str | None = Query(default=None, pattern="^(open|closed)$"),
+    mine: str | None = Query(default=None, pattern="^(assigned|created)$"),
+    deadline_from: date | None = None,
+    deadline_to: date | None = None,
+    created_from: date | None = None,
+    created_to: date | None = None,
+    sort: str = Query(default="deadline"),
+    order: str = Query(default="asc", pattern="^(asc|desc)$"),
+) -> TaskFilters:
+    return TaskFilters(
+        search=search,
+        status=status_filter,
+        priority=priority,
+        department_id=department_id,
+        assigned_employee_id=assigned_employee_id,
+        overdue_only=overdue_only,
+        state=state,
+        mine=mine,
+        deadline_from=deadline_from,
+        deadline_to=deadline_to,
+        created_from=created_from,
+        created_to=created_to,
+        sort=sort,
+        order=order,
+    )
+
+
+def filtered_tasks(db: Session, filters: TaskFilters, user: User) -> list[Task]:
+    stmt = select(Task).options(*TASK_OPTIONS)
+    clauses = task_query.filter_clauses(db, filters, user)
+    if clauses:
+        stmt = stmt.where(*clauses)
+    return list(db.scalars(task_query.apply_sort(stmt, filters)).all())
+
+
+@router.get("", response_model=Page[TaskRead])
+def list_tasks(
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(100, ge=1, le=200),
+    filters: TaskFilters = Depends(collect_filters),
 ):
     stmt = select(Task)
-    filters = []
-    if search:
-        value = f"%{search}%"
-        filters.append(or_(Task.title.ilike(value), Task.description.ilike(value)))
-    if status_filter:
-        filters.append(Task.status == status_filter)
-    if priority:
-        filters.append(Task.priority == priority)
-    if department_id:
-        filters.append(Task.department_id == department_id)
-    if assigned_employee_id:
-        filters.append(Task.assignees.any(TaskAssignee.employee_id == assigned_employee_id))
-    if overdue_only:
-        filters.append(Task.status.notin_(TASK_TERMINAL_STATUSES))
-        filters.append(Task.deadline < datetime.now())
-    if filters:
-        stmt = stmt.where(*filters)
+    clauses = task_query.filter_clauses(db, filters, user)
+    if clauses:
+        stmt = stmt.where(*clauses)
     total = db.scalar(select(func.count()).select_from(stmt.subquery())) or 0
     rows = db.scalars(
-        stmt.options(*TASK_OPTIONS).order_by(Task.deadline.asc()).offset((page - 1) * page_size).limit(page_size)
+        task_query.apply_sort(stmt.options(*TASK_OPTIONS), filters).offset((page - 1) * page_size).limit(page_size)
     ).all()
     for row in rows:
         row.available_actions = task_workflow.available_actions(row, user)
     return Page(items=rows, total=total, page=page, page_size=page_size)
+
+
+@router.get("/dashboard")
+def tasks_dashboard(
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+    filters: TaskFilters = Depends(collect_filters),
+):
+    return task_stats.build_dashboard(filtered_tasks(db, filters, user))
+
+
+@router.get("/export.xlsx")
+def export_tasks(
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+    filters: TaskFilters = Depends(collect_filters),
+    lang: str = Query(default="cyr"),
+    filter_note: str = Query(default="", max_length=500),
+):
+    tasks = filtered_tasks(db, filters, user)
+    stream = task_export.build_workbook(tasks, task_stats.build_dashboard(tasks), lang, filter_note)
+    filename = f"topshiriqlar_{date.today():%Y-%m-%d}.xlsx"
+    return StreamingResponse(
+        stream,
+        media_type=EXPORT_MEDIA_TYPE,
+        headers={"Content-Disposition": f"attachment; filename={filename}; filename*=UTF-8''{quote(filename)}"},
+    )
 
 
 @router.post("", response_model=TaskDetail, status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_edit("ijro"))])

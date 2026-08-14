@@ -74,26 +74,6 @@ function endOfDay(value) {
   return `${String(value).slice(0, 10)}T23:59:59`;
 }
 
-async function tasksAggregateStats() {
-  const pageSize = 100;
-  let page = 1;
-  let items = [];
-  let total = 0;
-  for (let i = 0; i < 10; i += 1) {
-    const data = await api(`/api/tasks?page=${page}&page_size=${pageSize}`);
-    total = data.total;
-    items = items.concat(data.items);
-    if (items.length >= total || !data.items.length) break;
-    page += 1;
-  }
-  return {
-    total,
-    overdue: items.filter((t) => t.is_overdue).length,
-    inProgress: items.filter((t) => t.status === "in_progress").length,
-    done: items.filter((t) => t.status === "done" || t.status === "verified").length,
-  };
-}
-
 async function tasksFetchAllFiltered(params) {
   const qs = new URLSearchParams(params);
   qs.delete("page");
@@ -404,24 +384,283 @@ function bindTaskDeleteButtons(items, onChanged) {
   }));
 }
 
+// Every view (panel, board, table) and the Excel export read the selection from
+// the URL, so a link you share reproduces exactly what you were looking at.
+const TASK_FILTER_KEYS = [
+  "search", "status", "priority", "assigned_employee_id", "department_id",
+  "overdue_only", "state", "mine", "deadline_from", "deadline_to", "sort", "order",
+];
+
+const TASK_QUICK_FILTERS = [
+  ["", "Barchasi", {}],
+  ["mine", "Menga biriktirilgan", { mine: "assigned" }],
+  ["created", "Men yaratganman", { mine: "created" }],
+  ["overdue", "Muddati o'tgan", { overdue_only: "true" }],
+  ["today", "Muddati bugun", {}],
+  ["week", "Shu hafta", {}],
+  ["open", "Ochiq", { state: "open" }],
+  ["closed", "Yopilgan", { state: "closed" }],
+];
+
+const TASK_SORT_COLUMNS = {
+  title: "Vazifa",
+  priority: "Muhimlik",
+  deadline: "Muddat",
+  status: "Holat",
+  created_at: "Yaratilgan",
+};
+
+function taskFilterParams(params) {
+  const next = new URLSearchParams();
+  TASK_FILTER_KEYS.forEach((key) => {
+    const value = params.get(key);
+    if (value) next.set(key, value);
+  });
+  return next;
+}
+
+// Quick filters that need "today"/"this week" are date ranges, not flags, so
+// they are resolved here against the browser's clock.
+function taskQuickFilterParams(key) {
+  const today = localDateValue(new Date());
+  if (key === "today") return { deadline_from: today, deadline_to: today, state: "open" };
+  if (key === "week") {
+    const end = new Date();
+    end.setDate(end.getDate() + 6);
+    return { deadline_from: today, deadline_to: localDateValue(end), state: "open" };
+  }
+  return TASK_QUICK_FILTERS.find(([k]) => k === key)?.[2] || {};
+}
+
+function activeTaskQuickFilter(params) {
+  const today = localDateValue(new Date());
+  if (params.get("overdue_only") === "true") return "overdue";
+  if (params.get("mine") === "assigned") return "mine";
+  if (params.get("mine") === "created") return "created";
+  if (params.get("deadline_from") === today && params.get("deadline_to") === today) return "today";
+  if (params.get("deadline_from") === today && params.get("deadline_to")) return "week";
+  if (params.get("state") === "open") return "open";
+  if (params.get("state") === "closed") return "closed";
+  return "";
+}
+
+// Human-readable summary of the current selection, stamped into the Excel file
+// so a downloaded report says what it is months later.
+function taskFilterNote(params, employees, departments) {
+  const parts = [];
+  // Labels go through the dictionary so the note matches the language of the
+  // workbook; values stay exactly as they are (names, dates, typed search text).
+  const add = (label, value) => { if (value) parts.push(`${localizeText(label)}: ${value}`); };
+  const flag = (label) => parts.push(localizeText(label));
+  add("Qidiruv", params.get("search"));
+  add("Holat", params.get("status") && statusLabel(params.get("status")));
+  add("Muhimlik", params.get("priority") && localizeText(taskPriorities.find(([k]) => k === params.get("priority"))?.[1]));
+  add("Xodim", employees.find((e) => String(e.id) === params.get("assigned_employee_id"))?.full_name);
+  add("Bo'lim", departments.find((d) => String(d.id) === params.get("department_id"))?.name);
+  add("Muddat (dan)", params.get("deadline_from"));
+  add("Muddat (gacha)", params.get("deadline_to"));
+  if (params.get("overdue_only") === "true") flag("Faqat muddati o'tganlar");
+  if (params.get("state") === "open") flag("Faqat ochiqlar");
+  if (params.get("state") === "closed") flag("Faqat yopilganlar");
+  if (params.get("mine") === "assigned") flag("Menga biriktirilgan");
+  if (params.get("mine") === "created") flag("Men yaratganman");
+  return parts.join("; ");
+}
+
+function downloadTasksExport(params, employees, departments) {
+  const query = taskFilterParams(params);
+  query.set("lang", currentLang() === "lat" ? "lat" : "cyr");
+  const note = taskFilterNote(params, employees, departments);
+  if (note) query.set("filter_note", note);
+  const link = document.createElement("a");
+  link.href = `/api/tasks/export.xlsx?${query.toString()}`;
+  link.download = "";
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  showToast("Excel fayl yuklab olinmoqda...");
+}
+
+function taskQuickFilterBar(params) {
+  const active = activeTaskQuickFilter(params);
+  return `<div class="task-quick-filters">${TASK_QUICK_FILTERS.map(([key, label]) => `
+    <button type="button" class="task-chip ${active === key ? "active" : ""}" data-quick-filter="${key}">${label}</button>
+  `).join("")}</div>`;
+}
+
+function bindTaskQuickFilters(view) {
+  document.querySelectorAll("[data-quick-filter]").forEach((button) => button.addEventListener("click", () => {
+    const next = new URLSearchParams();
+    next.set("view", view);
+    Object.entries(taskQuickFilterParams(button.dataset.quickFilter)).forEach(([k, v]) => next.set(k, v));
+    const params = new URLSearchParams(location.search);
+    ["search", "status", "priority", "assigned_employee_id", "department_id", "sort", "order"].forEach((key) => {
+      if (params.get(key)) next.set(key, params.get(key));
+    });
+    navigate(`/tasks?${next.toString()}`);
+  }));
+}
+
+function taskSortableHeader(key, params) {
+  const currentSort = params.get("sort") || "deadline";
+  const currentOrder = params.get("order") || "asc";
+  const isActive = currentSort === key;
+  // The arrow lives in its own element: glued onto the label it would form a
+  // string the Cyrillic dictionary has no key for, and the header would stay Latin.
+  const arrow = isActive ? `<span class="task-sort-arrow" data-noloc>${currentOrder === "desc" ? "↓" : "↑"}</span>` : "";
+  return `<th><button type="button" class="task-sort-btn ${isActive ? "active" : ""}" data-sort-key="${key}">${TASK_SORT_COLUMNS[key]}${arrow}</button></th>`;
+}
+
+function bindTaskSorting() {
+  document.querySelectorAll("[data-sort-key]").forEach((button) => button.addEventListener("click", () => {
+    const params = new URLSearchParams(location.search);
+    const key = button.dataset.sortKey;
+    const sameColumn = (params.get("sort") || "deadline") === key;
+    params.set("sort", key);
+    params.set("order", sameColumn && (params.get("order") || "asc") === "asc" ? "desc" : "asc");
+    params.set("view", "table");
+    navigate(`/tasks?${params.toString()}`);
+  }));
+}
+
+// ---- Boshqaruv paneli (dashboard) ----
+
+function taskBarList(rows, { colorFor } = {}) {
+  const max = Math.max(1, ...rows.map((r) => r.count));
+  return `<div class="task-bars">${rows.map((row) => `
+    <div class="task-bar-row">
+      <span class="task-bar-label">${esc(row.label)}</span>
+      <span class="task-bar-track"><span class="task-bar-fill ${colorFor ? colorFor(row) : ""}" style="width:${Math.round((row.count / max) * 100)}%"></span></span>
+      <span class="task-bar-value">${fmt(row.count)}</span>
+    </div>`).join("")}</div>`;
+}
+
+function taskTrendChart(months) {
+  const max = Math.max(1, ...months.map((m) => Math.max(m.created, m.completed)));
+  return `<div class="task-trend">${months.map((m) => `
+    <div class="task-trend-col">
+      <div class="task-trend-bars">
+        <span class="task-trend-bar created" style="height:${Math.round((m.created / max) * 100)}%" title="${m.created}"></span>
+        <span class="task-trend-bar completed" style="height:${Math.round((m.completed / max) * 100)}%" title="${m.completed}"></span>
+      </div>
+      <span class="task-trend-label">${esc(m.month.slice(5))}.${esc(m.month.slice(2, 4))}</span>
+    </div>`).join("")}
+    <div class="task-trend-legend"><span><i class="created"></i>Yaratilgan</span><span><i class="completed"></i>Bajarilgan</span></div>
+  </div>`;
+}
+
+function taskKpiCards(summary) {
+  const rate = summary.on_time_rate === null ? dash : `${fmt(summary.on_time_rate)}%`;
+  const avg = summary.avg_completion_days === null ? dash : `${fmt(summary.avg_completion_days)} kun`;
+  const cards = [
+    ["list", "teal", "Jami topshiriqlar", fmt(summary.total)],
+    ["clock", "amber", "Ochiq", fmt(summary.open)],
+    ["alert", "red", "Muddati o'tgan", fmt(summary.overdue)],
+    ["clock", "amber", "Muddati bugun", fmt(summary.due_today)],
+    ["list", "teal", "Shu hafta", fmt(summary.due_week)],
+    ["alert", "amber", "Qabul qilinmagan", fmt(summary.unaccepted)],
+    ["check", "green", "Bajarilgan", fmt(summary.completed)],
+    ["check", "green", "O'z vaqtida", rate],
+    ["clock", "teal", "O'rtacha bajarish", avg],
+  ];
+  return `<div class="tasks-summary-cards kpi">${cards.map(([icon, tone, label, value]) => `
+    <div class="tasks-summary-card">
+      <span class="tasks-summary-icon ${tone}">${taskIcon(icon)}</span>
+      <span class="tasks-summary-copy"><span>${label}</span><strong>${value}</strong></span>
+    </div>`).join("")}</div>`;
+}
+
+function taskMiniList(rows, emptyText) {
+  if (!rows.length) return `<div class="empty">${emptyText}</div>`;
+  return `<div class="task-mini-list">${rows.map((row) => {
+    const late = row.days_left !== null && row.days_left < 0;
+    const daysLabel = row.days_left === null
+      ? dash
+      : late ? `${Math.abs(row.days_left)} kun kechikdi` : row.days_left === 0 ? "Bugun" : `${row.days_left} kun qoldi`;
+    return `<button type="button" class="task-mini-row" data-nav="/tasks/${row.id}">
+      <span class="task-mini-main">
+        <strong>${esc(row.title)}</strong>
+        <span>${esc(row.assignees || "")}${row.department ? ` · ${esc(row.department)}` : ""}</span>
+      </span>
+      <span class="task-mini-meta">
+        ${taskPriorityBadge(row.priority)}
+        <span class="task-mini-days ${late ? "late" : ""}">${daysLabel}</span>
+      </span>
+    </button>`;
+  }).join("")}</div>`;
+}
+
+function taskDashboardHtml(data) {
+  const statusRows = data.by_status.map((r) => ({ label: statusLabel(r.status), count: r.count, key: r.status }));
+  const priorityRows = data.by_priority.map((r) => ({
+    label: taskPriorities.find(([k]) => k === r.priority)?.[1] || r.priority,
+    count: r.count,
+    key: r.priority,
+  }));
+  return `
+    ${taskKpiCards(data.summary)}
+    <div class="task-panel-grid">
+      ${section("Holat bo'yicha", taskBarList(statusRows, { colorFor: (r) => `status-${r.key}` }))}
+      ${section("Muhimlik bo'yicha", taskBarList(priorityRows, { colorFor: (r) => `priority-${r.key}` }))}
+      ${section("Oylik dinamika", taskTrendChart(data.monthly))}
+    </div>
+    <div class="task-panel-grid two">
+      ${section("Muddati o'tgan topshiriqlar", taskMiniList(data.overdue_tasks, "Muddati o'tgan topshiriq yo'q."))}
+      ${section("Yaqin muddatlar (7 kun)", taskMiniList(data.upcoming_tasks, "Yaqin kunlarda muddat yo'q."))}
+    </div>
+    ${section("Bo'limlar kesimida", tableOrEmpty(data.by_department, ["Bo'lim", "Jami", "Ochiq", "Muddati o'tgan", "Bajarilgan"], (r) => `
+      <tr>
+        <td>${fmt(r.department)}</td>
+        <td>${fmt(r.total)}</td>
+        <td>${fmt(r.open)}</td>
+        <td class="${r.overdue ? "ops-warning" : ""}">${fmt(r.overdue)}</td>
+        <td>${fmt(r.completed)}</td>
+      </tr>`, "Ma'lumot yo'q."))}
+    ${section("Xodimlar yuklamasi", tableOrEmpty(data.by_employee, ["Xodim", "Bo'lim", "Jami", "Ochiq", "Muddati o'tgan", "Bajarilgan", "O'z vaqtida"], (r) => `
+      <tr>
+        <td><button class="ops-primary-link" data-nav="/tasks?view=table&assigned_employee_id=${r.employee_id}">${fmt(r.full_name)}</button></td>
+        <td>${fmt(r.department)}</td>
+        <td>${fmt(r.total)}</td>
+        <td>${fmt(r.open)}</td>
+        <td class="${r.overdue ? "ops-warning" : ""}">${fmt(r.overdue)}</td>
+        <td>${fmt(r.completed)}</td>
+        <td>${fmt(r.on_time)}</td>
+      </tr>`, "Xodimlarga biriktirilgan topshiriq yo'q."))}
+  `;
+}
+
 async function renderTasksList() {
   const params = new URLSearchParams(location.search);
-  const view = params.get("view") === "table" ? "table" : "board";
-  const [employees, departments, stats] = await Promise.all([
+  const requested = params.get("view");
+  const view = requested === "table" ? "table" : requested === "board" ? "board" : "panel";
+  const filters = taskFilterParams(params);
+  const [employees, departments] = await Promise.all([
     api("/api/attendance/employees"),
     api("/api/departments").catch(() => []),
-    tasksAggregateStats(),
   ]);
 
   let bodyHtml;
   let boardItems = [];
   let tableData = null;
-  if (view === "table") {
-    tableData = await api(`/api/tasks?${params.toString()}`);
+  if (view === "panel") {
+    bodyHtml = taskDashboardHtml(await api(`/api/tasks/dashboard?${filters.toString()}`));
+  } else if (view === "table") {
+    const query = new URLSearchParams(filters);
+    if (params.get("page")) query.set("page", params.get("page"));
+    tableData = await api(`/api/tasks?${query.toString()}`);
     bodyHtml = `
       <section class="ops-table-card">
         <table class="ops-table">
-          <thead><tr><th>Vazifa</th><th>Mas'ul xodimlar</th><th>Bo'lim</th><th>Muhimlik</th><th>Muddat</th><th>Holat</th><th>Yaratgan</th><th></th></tr></thead>
+          <thead><tr>
+            ${taskSortableHeader("title", params)}
+            <th>Mas'ul xodimlar</th>
+            <th>Bo'lim</th>
+            ${taskSortableHeader("priority", params)}
+            ${taskSortableHeader("deadline", params)}
+            ${taskSortableHeader("status", params)}
+            <th>Yaratgan</th>
+            <th></th>
+          </tr></thead>
           <tbody>${tableData.items.length ? tableData.items.map((item) => `<tr class="task-priority-${esc(item.priority || "")}">
             <td><button class="ops-primary-link" data-nav="/tasks/${item.id}">${fmt(item.title)}</button></td>
             <td>${taskAssigneeNames(item)}</td>
@@ -441,7 +680,7 @@ async function renderTasksList() {
       ${opsFooter(tableData, "task")}
     `;
   } else {
-    boardItems = await tasksFetchAllFiltered(params);
+    boardItems = await tasksFetchAllFiltered(filters);
     bodyHtml = taskBoardHtml(boardItems);
   }
 
@@ -453,45 +692,32 @@ async function renderTasksList() {
           <p>Xodimlarga topshiriqlar biriktiring, muddat va bajarilishini kuzating. Doskada kartani boshqa ustunga tashlab holatini o'zgartiring.</p>
         </div>
       </div>
-      <div class="tasks-summary-cards">
-        <div class="tasks-summary-card">
-          <span class="tasks-summary-icon teal">${taskIcon("list")}</span>
-          <span class="tasks-summary-copy"><span>Jami topshiriqlar</span><strong>${fmt(stats.total)}</strong></span>
-        </div>
-        <div class="tasks-summary-card">
-          <span class="tasks-summary-icon red">${taskIcon("alert")}</span>
-          <span class="tasks-summary-copy"><span>Muddati o'tgan</span><strong>${fmt(stats.overdue)}</strong></span>
-        </div>
-        <div class="tasks-summary-card">
-          <span class="tasks-summary-icon amber">${taskIcon("clock")}</span>
-          <span class="tasks-summary-copy"><span>Bajarilmoqda</span><strong>${fmt(stats.inProgress)}</strong></span>
-        </div>
-        <div class="tasks-summary-card">
-          <span class="tasks-summary-icon green">${taskIcon("check")}</span>
-          <span class="tasks-summary-copy"><span>Yakunlangan</span><strong>${fmt(stats.done)}</strong></span>
-        </div>
-      </div>
       <div class="ops-commandbar">
         <div class="ops-command-left">
           ${canEdit("ijro") ? `<button class="btn primary" data-nav="/tasks/new">Topshiriq qo'shish</button>` : ""}
-          <button class="btn" type="button" data-nav="/tasks">Tozalash</button>
+          <button class="btn" type="button" data-nav="/tasks?view=${view}">Tozalash</button>
+          <button class="btn" type="button" data-export-tasks>Excel (XLSX)</button>
           <div class="tasks-view-toggle">
+            <button type="button" class="${view === "panel" ? "active" : ""}" data-view-toggle="panel">Panel</button>
             <button type="button" class="${view === "board" ? "active" : ""}" data-view-toggle="board">Doska</button>
             <button type="button" class="${view === "table" ? "active" : ""}" data-view-toggle="table">Jadval</button>
           </div>
         </div>
-        <form class="ops-search" id="task-search-form">
+        <form class="ops-search tasks-search" id="task-search-form">
           <input type="hidden" name="view" value="${esc(view)}" />
           <input name="search" placeholder="Sarlavha, tavsif" value="${esc(params.get("search") || "")}" />
           <select name="status"><option value="">Holat</option>${taskStatuses.map(([key, label]) => `<option value="${key}" ${params.get("status") === key ? "selected" : ""}>${label}</option>`).join("")}</select>
           <select name="priority"><option value="">Muhimlik</option>${taskPriorities.map(([key, label]) => `<option value="${key}" ${params.get("priority") === key ? "selected" : ""}>${label}</option>`).join("")}</select>
           <select name="assigned_employee_id"><option value="">Mas'ul xodim</option>${employees.map((e) => `<option value="${e.id}" ${params.get("assigned_employee_id") === String(e.id) ? "selected" : ""}>${esc(e.full_name)}</option>`).join("")}</select>
           <select name="department_id"><option value="">Bo'lim</option>${departments.map((d) => `<option value="${d.id}" ${params.get("department_id") === String(d.id) ? "selected" : ""}>${esc(d.name)}</option>`).join("")}</select>
-          <label class="inline-check"><input type="checkbox" name="overdue_only" value="true" ${params.get("overdue_only") === "true" ? "checked" : ""} /> Muddati o'tgan</label>
+          <label class="ops-date-filter">Muddat (dan)<input type="date" name="deadline_from" value="${esc(params.get("deadline_from") || "")}" /></label>
+          <label class="ops-date-filter">Muddat (gacha)<input type="date" name="deadline_to" value="${esc(params.get("deadline_to") || "")}" /></label>
+          <input type="hidden" name="sort" value="${esc(params.get("sort") || "")}" />
+          <input type="hidden" name="order" value="${esc(params.get("order") || "")}" />
           <button class="ops-tool-btn" type="submit">Saralash</button>
-          <button class="ops-tool-btn" type="button" data-nav="/tasks">Yangilash</button>
         </form>
       </div>
+      ${taskQuickFilterBar(params)}
       ${bodyHtml}
     </div>
   `;
@@ -499,19 +725,28 @@ async function renderTasksList() {
   document.querySelectorAll("[data-view-toggle]").forEach((button) => button.addEventListener("click", () => {
     const next = new URLSearchParams(location.search);
     next.set("view", button.dataset.viewToggle);
+    next.delete("page");
     navigate(`/tasks?${next.toString()}`);
   }));
 
-  bindOpsSearch("task-search-form", "/tasks", ["view", "search", "status", "priority", "assigned_employee_id", "department_id", "overdue_only"]);
+  document.querySelector("[data-export-tasks]")?.addEventListener("click", () => {
+    downloadTasksExport(params, employees, departments);
+  });
+
+  bindOpsSearch("task-search-form", "/tasks", [
+    "view", "search", "status", "priority", "assigned_employee_id", "department_id",
+    "deadline_from", "deadline_to", "sort", "order",
+  ]);
+  bindTaskQuickFilters(view);
 
   if (view === "table") {
+    bindTaskSorting();
     bindOpsPagination("task", "/tasks");
     bindTaskDeleteButtons(tableData.items, () => renderTasksList());
-  } else {
+  } else if (view === "board") {
     bindTaskBoardEvents(boardItems, () => renderTasksList());
   }
 }
-
 
 // ---- Fayllar (attachments) ----
 
@@ -635,11 +870,28 @@ function taskFilesTab(task) {
   `;
 }
 
+// The workflow's happy path. Rejected tasks leave it, so they get their own
+// closing step rather than being forced onto a line they never finished.
+const TASK_PIPELINE = ["new", "accepted", "in_progress", "done", "verified"];
+
+function taskStatusPipeline(task) {
+  const rejected = task.status === "rejected";
+  const steps = rejected ? [...TASK_PIPELINE.slice(0, 4), "rejected"] : TASK_PIPELINE;
+  const activeIndex = steps.indexOf(task.status);
+  return `<div class="task-pipeline ${rejected ? "rejected" : ""}">${steps.map((key, index) => {
+    const state = index < activeIndex ? "done" : index === activeIndex ? "current" : "upcoming";
+    return `<div class="task-pipeline-step ${state} step-${key}">
+      <span class="task-pipeline-dot"></span>
+      <span class="task-pipeline-label">${fmt(statusLabel(key))}</span>
+    </div>`;
+  }).join("")}</div>`;
+}
+
 function taskActionsPanel(task) {
   const actions = task.available_actions || [];
   if (!actions.length) return "";
   return `<section class="next-action-panel">
-    <div><span>Amallar</span><strong>Joriy holat: ${fmt(statusLabel(task.status))}</strong></div>
+    <div><span>Amallar</span><strong><span>Joriy holat</span>: <span>${fmt(statusLabel(task.status))}</span></strong></div>
     <div class="task-action-buttons">
       ${actions.map((s) => `<button class="btn ${s === "rejected" ? "" : "primary"}" type="button" data-task-status-action="${s}">${TASK_STATUS_ACTION_LABELS[s] || s}</button>`).join("")}
     </div>
@@ -733,6 +985,7 @@ async function renderTaskDetail(id) {
       backPath: "/tasks",
       fullEditPath: canEdit("ijro") ? `/tasks/${task.id}/edit` : "",
     })}
+    ${taskStatusPipeline(task)}
     ${task.is_overdue ? workflowWarningsPanel(["Bu topshiriqning muddati o'tib ketgan."]) : ""}
     ${taskActionsPanel(task)}
     ${workflowTabs(active, [["general", "Umumiy"], ["files", fileCount ? `Fayllar (${fileCount})` : "Fayllar"], ["comments", "Izohlar"], ["history", "Tarix"]], "task-tab")}
