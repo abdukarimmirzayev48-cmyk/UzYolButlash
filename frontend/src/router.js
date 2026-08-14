@@ -25,7 +25,9 @@ async function render() {
     } else if (location.pathname === "/employees") {
       await renderEmployeesList();
     } else if (location.pathname === "/departments") {
-      await renderDepartmentsList();
+      // Bo'limlar is now a tab on the Xodimlar page; keep the old URL working.
+      navigate("/employees?tab=departments");
+      return;
     } else if (location.pathname === "/dashboard") {
       await renderDashboardOverview();
     } else if (location.pathname === "/profit") {

@@ -677,7 +677,25 @@ function attendanceImportModal(state, onImported) {
 
 // ---- Xodimlar (Staff roster) — shared master data used by Davomat, Ijro, and any future module. ----
 
+// Bo'limlar is a rarely-touched lookup table, so it lives as a tab on the
+// Xodimlar page rather than owning a top-level nav slot of its own.
+const XODIMLAR_TABS = [
+  ["Xodimlar", "/employees"],
+  ["Bo'limlar", "/employees?tab=departments"],
+  ["Davomat", "/attendance"],
+  ["Ijro", "/tasks"],
+];
+
+function xodimlarTabs(activeLabel) {
+  return XODIMLAR_TABS.map(([label, path]) => (
+    label === activeLabel ? { label, active: true } : { label, path }
+  ));
+}
+
 async function renderEmployeesList() {
+  if (new URLSearchParams(location.search).get("tab") === "departments") {
+    return renderDepartmentsList();
+  }
   app.innerHTML = `<div class="page ops-page"><div class="empty">Yuklanmoqda...</div></div>`;
   const params = new URLSearchParams(location.search);
   const employees = await api("/api/attendance/employees");
@@ -699,7 +717,7 @@ async function renderEmployeesList() {
   app.innerHTML = opsListPage({
     className: "employees-ops-page",
     title: "Xodimlar",
-    tabs: [{ label: "Xodimlar", active: true }, { label: "Bo'limlar", path: "/departments" }, { label: "Davomat", path: "/attendance" }, { label: "Ijro", path: "/tasks" }],
+    tabs: xodimlarTabs("Xodimlar"),
     clearPath: "/employees",
     counter: `${fmt(employees.length)} ta xodim · ${fmt(activeCount)} ta faol`,
     formId: "employees-search-form",
@@ -813,8 +831,8 @@ async function renderDepartmentsList() {
 
   app.innerHTML = opsListPage({
     className: "departments-ops-page",
-    title: "Bo'limlar",
-    tabs: [{ label: "Xodimlar", path: "/employees" }, { label: "Bo'limlar", active: true }, { label: "Davomat", path: "/attendance" }, { label: "Ijro", path: "/tasks" }],
+    title: "Xodimlar",
+    tabs: xodimlarTabs("Bo'limlar"),
     counter: `${fmt(departments.length)} ta bo'lim`,
     headers: ["Nomi", "Tavsif", "Xodimlar soni", "Holat", ""],
     rows: departments.map((d) => `<tr>
