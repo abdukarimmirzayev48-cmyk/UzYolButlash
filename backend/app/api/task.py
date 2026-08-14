@@ -62,11 +62,25 @@ def update_model(instance: Any, data: dict[str, Any]) -> Any:
     return instance
 
 
+def can_view_task(task: Task, user: User) -> bool:
+    return (
+        task_workflow.is_manager(user)
+        or task_workflow.is_assignee(task, user)
+        or task.created_by_user_id == user.id
+    )
+
+
 def get_task_or_404(db: Session, task_id: int, user: User | None = None) -> Task:
     task = db.scalars(select(Task).options(*TASK_OPTIONS).where(Task.id == task_id)).first()
     if not task:
         raise HTTPException(status_code=404, detail="Topshiriq topilmadi")
+    # user is passed only on request-facing reads; internal reloads skip the check.
     if user is not None:
+        if not can_view_task(task, user):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Bu topshiriq sizga biriktirilmagan.",
+            )
         task.available_actions = task_workflow.available_actions(task, user)
     return task
 
@@ -143,7 +157,7 @@ def remove_stored_file(file_url: str) -> None:
 
 
 def require_task_participant(task: Task, user: User) -> None:
-    if not (task_workflow.is_manager(user) or task_workflow.is_assignee(task, user) or task.created_by_user_id == user.id):
+    if not can_view_task(task, user):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Sizda bu amalni bajarish huquqi yo'q.")
 
 
@@ -184,6 +198,16 @@ def collect_filters(
     )
 
 
+def require_manager(user: User) -> None:
+    """Reporting is a management view: it spans everyone's work, so only the
+    people who hold the "ijro" right (and admins) get it."""
+    if not task_workflow.is_manager(user):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Bu bo'lim faqat Ijro huquqiga ega xodimlar uchun.",
+        )
+
+
 def filtered_tasks(db: Session, filters: TaskFilters, user: User) -> list[Task]:
     stmt = select(Task).options(*TASK_OPTIONS)
     clauses = task_query.filter_clauses(db, filters, user)
@@ -219,6 +243,7 @@ def tasks_dashboard(
     user: User = Depends(get_current_user),
     filters: TaskFilters = Depends(collect_filters),
 ):
+    require_manager(user)
     return task_stats.build_dashboard(filtered_tasks(db, filters, user))
 
 
@@ -230,6 +255,7 @@ def export_tasks(
     lang: str = Query(default="cyr"),
     filter_note: str = Query(default="", max_length=500),
 ):
+    require_manager(user)
     tasks = filtered_tasks(db, filters, user)
     stream = task_export.build_workbook(tasks, task_stats.build_dashboard(tasks), lang, filter_note)
     filename = f"topshiriqlar_{date.today():%Y-%m-%d}.xlsx"

@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 from backend.app.models.attendance import Employee
 from backend.app.models.task import TASK_TERMINAL_STATUSES, Task, TaskAssignee
 from backend.app.models.user import User
+from backend.app.services import task_workflow
 
 SORTABLE_COLUMNS = {
     "deadline": Task.deadline,
@@ -50,8 +51,30 @@ def current_user_employee_id(db: Session, user: User) -> int | None:
     return db.query(Employee.id).filter(Employee.user_id == user.id).scalar()
 
 
+def visibility_clause(db: Session, user: User):
+    """What this user is allowed to see at all, before any filter is applied.
+
+    Managers (admins and anyone with the "ijro" edit right) see every task.
+    Everyone else only ever sees their own work -- tasks assigned to them, plus
+    anything they created themselves. Returns None when no restriction applies.
+
+    An employee with no linked user account matches nothing by assignment, so
+    linking staff cards to logins is what makes their tasks visible to them.
+    """
+    if task_workflow.is_manager(user):
+        return None
+    conditions = [Task.created_by_user_id == user.id]
+    employee_id = current_user_employee_id(db, user)
+    if employee_id:
+        conditions.append(Task.assignees.any(TaskAssignee.employee_id == employee_id))
+    return or_(*conditions)
+
+
 def filter_clauses(db: Session, filters: TaskFilters, user: User) -> list:
     clauses = []
+    visibility = visibility_clause(db, user)
+    if visibility is not None:
+        clauses.append(visibility)
     if filters.search:
         value = f"%{filters.search}%"
         clauses.append(or_(Task.title.ilike(value), Task.description.ilike(value)))

@@ -481,9 +481,12 @@ function downloadTasksExport(params, employees, departments) {
   showToast("Excel fayl yuklab olinmoqda...");
 }
 
-function taskQuickFilterBar(params) {
+function taskQuickFilterBar(params, isManager) {
   const active = activeTaskQuickFilter(params);
-  return `<div class="task-quick-filters">${TASK_QUICK_FILTERS.map(([key, label]) => `
+  // "Menga biriktirilgan" / "Men yaratganman" say nothing to someone who only
+  // ever sees their own tasks, so they are managers-only.
+  const chips = TASK_QUICK_FILTERS.filter(([key]) => isManager || !["mine", "created"].includes(key));
+  return `<div class="task-quick-filters">${chips.map(([key, label]) => `
     <button type="button" class="task-chip ${active === key ? "active" : ""}" data-quick-filter="${key}">${label}</button>
   `).join("")}</div>`;
 }
@@ -631,8 +634,11 @@ function taskDashboardHtml(data) {
 
 async function renderTasksList() {
   const params = new URLSearchParams(location.search);
+  const isManager = canEdit("ijro");
   const requested = params.get("view");
-  const view = requested === "table" ? "table" : requested === "board" ? "board" : "panel";
+  // The panel reports across everyone's work, so it is a managers-only view;
+  // an employee asking for it lands on their board instead.
+  const view = requested === "table" ? "table" : requested === "board" ? "board" : isManager ? "panel" : "board";
   const filters = taskFilterParams(params);
   const [employees, departments] = await Promise.all([
     api("/api/attendance/employees"),
@@ -689,16 +695,18 @@ async function renderTasksList() {
       <div class="page-header">
         <div class="page-title">
           <h1>Ijro</h1>
-          <p>Xodimlarga topshiriqlar biriktiring, muddat va bajarilishini kuzating. Doskada kartani boshqa ustunga tashlab holatini o'zgartiring.</p>
+          <p>${isManager
+            ? "Xodimlarga topshiriqlar biriktiring, muddat va bajarilishini kuzating. Doskada kartani boshqa ustunga tashlab holatini o'zgartiring."
+            : "Sizga biriktirilgan topshiriqlar. Har bir topshiriqni ochib, bosqichma-bosqich bajaring."}</p>
         </div>
       </div>
       <div class="ops-commandbar">
         <div class="ops-command-left">
           ${canEdit("ijro") ? `<button class="btn primary" data-nav="/tasks/new">Topshiriq qo'shish</button>` : ""}
           <button class="btn" type="button" data-nav="/tasks?view=${view}">Tozalash</button>
-          <button class="btn" type="button" data-export-tasks>Excel (XLSX)</button>
+          ${isManager ? `<button class="btn" type="button" data-export-tasks>Excel (XLSX)</button>` : ""}
           <div class="tasks-view-toggle">
-            <button type="button" class="${view === "panel" ? "active" : ""}" data-view-toggle="panel">Panel</button>
+            ${isManager ? `<button type="button" class="${view === "panel" ? "active" : ""}" data-view-toggle="panel">Panel</button>` : ""}
             <button type="button" class="${view === "board" ? "active" : ""}" data-view-toggle="board">Doska</button>
             <button type="button" class="${view === "table" ? "active" : ""}" data-view-toggle="table">Jadval</button>
           </div>
@@ -708,7 +716,7 @@ async function renderTasksList() {
           <input name="search" placeholder="Sarlavha, tavsif" value="${esc(params.get("search") || "")}" />
           <select name="status"><option value="">Holat</option>${taskStatuses.map(([key, label]) => `<option value="${key}" ${params.get("status") === key ? "selected" : ""}>${label}</option>`).join("")}</select>
           <select name="priority"><option value="">Muhimlik</option>${taskPriorities.map(([key, label]) => `<option value="${key}" ${params.get("priority") === key ? "selected" : ""}>${label}</option>`).join("")}</select>
-          <select name="assigned_employee_id"><option value="">Mas'ul xodim</option>${employees.map((e) => `<option value="${e.id}" ${params.get("assigned_employee_id") === String(e.id) ? "selected" : ""}>${esc(e.full_name)}</option>`).join("")}</select>
+          ${isManager ? `<select name="assigned_employee_id"><option value="">Mas'ul xodim</option>${employees.map((e) => `<option value="${e.id}" ${params.get("assigned_employee_id") === String(e.id) ? "selected" : ""}>${esc(e.full_name)}</option>`).join("")}</select>` : ""}
           <select name="department_id"><option value="">Bo'lim</option>${departments.map((d) => `<option value="${d.id}" ${params.get("department_id") === String(d.id) ? "selected" : ""}>${esc(d.name)}</option>`).join("")}</select>
           <label class="ops-date-filter">Muddat (dan)<input type="date" name="deadline_from" value="${esc(params.get("deadline_from") || "")}" /></label>
           <label class="ops-date-filter">Muddat (gacha)<input type="date" name="deadline_to" value="${esc(params.get("deadline_to") || "")}" /></label>
@@ -717,7 +725,7 @@ async function renderTasksList() {
           <button class="ops-tool-btn" type="submit">Saralash</button>
         </form>
       </div>
-      ${taskQuickFilterBar(params)}
+      ${taskQuickFilterBar(params, isManager)}
       ${bodyHtml}
     </div>
   `;
