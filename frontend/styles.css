@@ -2042,35 +2042,6 @@ tr:last-child td {
   box-shadow: 0 8px 22px rgba(15, 23, 42, 0.06);
 }
 
-.tasks-summary-icon {
-  display: inline-grid;
-  flex: 0 0 auto;
-  width: 42px;
-  height: 42px;
-  place-items: center;
-  border-radius: 12px;
-}
-
-.tasks-summary-icon.teal {
-  background: #ddf8f3;
-  color: #00a99d;
-}
-
-.tasks-summary-icon.red {
-  background: #fff1f0;
-  color: var(--danger);
-}
-
-.tasks-summary-icon.amber {
-  background: #fff4df;
-  color: #8a4f00;
-}
-
-.tasks-summary-icon.green {
-  background: #e8f7ef;
-  color: #176b45;
-}
-
 .tasks-summary-copy {
   display: grid;
   gap: 3px;
@@ -3897,24 +3868,53 @@ body.public-layout.sidebar-collapsed .app-shell {
 
 /* ---- Ijro: boshqaruv paneli, filtrlar va holat yo'lagi ---- */
 
-.tasks-summary-cards.kpi,
+/* Plain figure cards: a label and a number, no decoration. A real grid (the
+   old flex row left a ragged last line) so every card shares the row evenly. */
 .kpi-cards {
-  grid-template-columns: repeat(auto-fit, minmax(196px, 1fr));
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(178px, 1fr));
+  gap: 12px;
+  margin: 4px 0 20px;
 }
 
-/* Nine KPI labels are longer than the four the original cards carried, so let
-   them wrap instead of being cut off mid-word. */
-.tasks-summary-cards.kpi .tasks-summary-copy span,
-.kpi-cards .tasks-summary-copy span {
-  font-size: 13px;
-  white-space: normal;
-  overflow: visible;
-  line-height: 1.25;
+.kpi-card {
+  display: grid;
+  align-content: start;
+  gap: 4px;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
 }
 
-.tasks-summary-cards.kpi .tasks-summary-copy strong,
-.kpi-cards .tasks-summary-copy strong {
-  font-size: 22px;
+.kpi-card[data-nav] {
+  cursor: pointer;
+}
+
+.kpi-card[data-nav]:hover {
+  border-color: var(--accent);
+}
+
+.kpi-card span {
+  color: var(--muted);
+  font-size: 12.5px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.kpi-card strong {
+  font-size: 23px;
+  font-weight: 700;
+  line-height: 1.15;
+}
+
+/* Only the figures that mean "act on this" carry colour. */
+.kpi-card.warn strong {
+  color: var(--danger);
+}
+
+.kpi-card.good strong {
+  color: var(--accent);
 }
 
 .task-quick-filters {
@@ -4545,6 +4545,10 @@ body.public-layout.sidebar-collapsed .app-shell {
 /* The section landing page keeps its cards a little wider than Ijro's. */
 .module-overview .kpi-cards {
   grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+}
+
+.module-overview .page-header {
+  margin-bottom: 4px;
 }
 
 .section-note {

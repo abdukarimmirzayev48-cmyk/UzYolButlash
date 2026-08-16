@@ -1,18 +1,5 @@
 // ---- Yetkazib berish: bo'lim ko'rinishi (module overview) ----
 
-const DELIVERY_ICON_PATHS = {
-  truck: '<path d="M10 17h4V5H2v12h3"/><path d="M20 17h2v-3.34a4 4 0 0 0-1.17-2.83L19 9h-5v8h1"/><circle cx="7.5" cy="17.5" r="2.5"/><circle cx="17.5" cy="17.5" r="2.5"/>',
-  box: '<path d="m7.5 4.27 9 5.15"/><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/>',
-  alert: '<path d="M12 9v4"/><path d="M12 17h.01"/><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"/>',
-  check: '<path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>',
-  clock: '<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>',
-  money: '<rect width="20" height="14" x="2" y="5" rx="2"/><circle cx="12" cy="12" r="3"/>',
-};
-
-function deliveryIcon(name, size = 20) {
-  return `<svg class="icon" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg">${DELIVERY_ICON_PATHS[name] || ""}</svg>`;
-}
-
 function statBarList(rows, classPrefix) {
   const visible = rows.filter((row) => row.count > 0);
   if (!visible.length) return `<div class="empty">Ma'lumot yo'q.</div>`;
@@ -40,24 +27,24 @@ function deliveryTrendChart(months) {
 }
 
 function deliveryKpiCards(s) {
+  // tone marks the ones that mean "act on this", nothing else.
   const cards = [
-    ["box", "teal", "Jami partiyalar", fmt(s.batches_total), "/delivery-batches"],
-    ["clock", "amber", "Ochiq partiyalar", fmt(s.batches_open), "/delivery-batches"],
-    ["truck", "amber", "Hozir yo'lda", fmt(s.on_the_move), "/delivery-batches?status=in_transit"],
-    ["clock", "teal", "Yuklashdan oldin", fmt(s.before_loading), "/delivery-batches?status=planned"],
-    ["alert", "red", "Muddati kechikkan", fmt(s.late), ""],
-    ["alert", "red", "Muammoli", fmt(s.problems), "/delivery-batches?status=issue"],
-    ["check", "green", "Bu oy yetkazilgan", fmt(s.completed_this_month), ""],
-    ["truck", "teal", "Reys biriktirilmagan", fmt(s.trips_need_assignment), "/logistics"],
-    ["box", "teal", "Qabul qilingan miqdor", fmtQty(s.accepted_quantity), ""],
-    ["money", "green", "Logistika daromadi", fmtMoney(s.logistics_revenue), ""],
-    ["money", "amber", "Logistika xarajati", fmtMoney(s.logistics_cost), ""],
-    ["money", "green", "Logistika farqi", fmtMoney(s.logistics_margin), ""],
+    ["", "Jami partiyalar", fmt(s.batches_total), "/delivery-batches"],
+    ["", "Ochiq partiyalar", fmt(s.batches_open), "/delivery-batches"],
+    ["", "Hozir yo'lda", fmt(s.on_the_move), "/delivery-batches?status=in_transit"],
+    ["", "Yuklashdan oldin", fmt(s.before_loading), "/delivery-batches?status=planned"],
+    ["warn", "Muddati kechikkan", fmt(s.late), ""],
+    ["warn", "Muammoli", fmt(s.problems), "/delivery-batches?status=issue"],
+    ["warn", "Reys biriktirilmagan", fmt(s.trips_need_assignment), "/logistics"],
+    ["good", "Bu oy yetkazilgan", fmt(s.completed_this_month), ""],
+    ["", "Qabul qilingan miqdor", fmtQty(s.accepted_quantity), ""],
+    ["", "Logistika daromadi", fmtMoney(s.logistics_revenue), ""],
+    ["", "Logistika xarajati", fmtMoney(s.logistics_cost), ""],
+    [Number(s.logistics_margin) < 0 ? "warn" : "good", "Logistika farqi", fmtMoney(s.logistics_margin), ""],
   ];
-  return `<div class="tasks-summary-cards kpi-cards">${cards.map(([icon, tone, label, value, path]) => `
-    <div class="tasks-summary-card" ${path ? `data-nav="${path}" style="cursor:pointer"` : ""}>
-      <span class="tasks-summary-icon ${tone}">${deliveryIcon(icon)}</span>
-      <span class="tasks-summary-copy"><span>${label}</span><strong>${value}</strong></span>
+  return `<div class="kpi-cards">${cards.map(([tone, label, value, path]) => `
+    <div class="kpi-card ${tone}" ${path ? `data-nav="${path}"` : ""}>
+      <span>${label}</span><strong>${value}</strong>
     </div>`).join("")}</div>`;
 }
 

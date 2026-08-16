@@ -39,10 +39,6 @@ const TASK_HISTORY_ACTION_LABELS = {
 const TASK_MAX_FILE_MB = 10;
 
 const TASK_ICON_PATHS = {
-  list: '<path d="M9 6h11"/><path d="M9 12h11"/><path d="M9 18h11"/><path d="M4 6h.01"/><path d="M4 12h.01"/><path d="M4 18h.01"/>',
-  alert: '<path d="M12 9v4"/><path d="M12 17h.01"/><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"/>',
-  clock: '<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>',
-  check: '<path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>',
   file: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>',
 };
 
@@ -651,21 +647,20 @@ function taskKpiCards(summary) {
   const rate = summary.on_time_rate === null ? dash : `${fmt(summary.on_time_rate)}%`;
   const avg = summary.avg_completion_days === null ? dash : `${fmt(summary.avg_completion_days)} kun`;
   const cards = [
-    ["list", "teal", "Jami topshiriqlar", fmt(summary.total)],
-    ["clock", "amber", "Ochiq", fmt(summary.open)],
-    ["alert", "red", "Muddati o'tgan", fmt(summary.overdue)],
-    ["clock", "amber", "Muddati bugun", fmt(summary.due_today)],
-    ["list", "teal", "Shu hafta", fmt(summary.due_week)],
-    ["alert", "amber", "Qabul qilinmagan", fmt(summary.unaccepted)],
-    ["check", "green", "Bajarilgan", fmt(summary.completed)],
-    ["check", "green", "O'z vaqtida", rate],
-    ["clock", "teal", "O'rtacha bajarish", avg],
+    ["", "Jami topshiriqlar", fmt(summary.total)],
+    ["", "Ochiq", fmt(summary.open)],
+    ["warn", "Muddati o'tgan", fmt(summary.overdue)],
+    ["", "Muddati bugun", fmt(summary.due_today)],
+    ["", "Shu hafta", fmt(summary.due_week)],
+    ["warn", "Qabul qilinmagan", fmt(summary.unaccepted)],
+    ["good", "Bajarilgan", fmt(summary.completed)],
+    // A rate is only good news above a threshold -- colouring the label green
+    // regardless would paint "0%" as a success.
+    [summary.on_time_rate === null ? "" : summary.on_time_rate >= 80 ? "good" : "warn", "O'z vaqtida", rate],
+    ["", "O'rtacha bajarish", avg],
   ];
-  return `<div class="tasks-summary-cards kpi">${cards.map(([icon, tone, label, value]) => `
-    <div class="tasks-summary-card">
-      <span class="tasks-summary-icon ${tone}">${taskIcon(icon)}</span>
-      <span class="tasks-summary-copy"><span>${label}</span><strong>${value}</strong></span>
-    </div>`).join("")}</div>`;
+  return `<div class="kpi-cards">${cards.map(([tone, label, value]) => `
+    <div class="kpi-card ${tone}"><span>${label}</span><strong>${value}</strong></div>`).join("")}</div>`;
 }
 
 function taskMiniList(rows, emptyText) {
