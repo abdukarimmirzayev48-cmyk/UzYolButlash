@@ -1,3 +1,4 @@
+from datetime import date
 from decimal import Decimal
 from shutil import copyfileobj
 from typing import Any
@@ -76,7 +77,8 @@ overview_router = APIRouter(prefix="/api/delivery", tags=["delivery-overview"])
 @overview_router.get("/overview")
 def delivery_overview(
     db: Session = Depends(get_db),
-    period: str = Query(default="year", pattern="^(month|quarter|year|all)$"),
+    date_from: date | None = None,
+    date_to: date | None = None,
     client_id: int | None = None,
     route: str | None = None,
 ):
@@ -84,8 +86,8 @@ def delivery_overview(
 
     Batches carry their items and logistics record, so the quantities, the trip
     status and the truck all come from the same objects the detail pages show.
-    client_id/route narrow the whole page; period narrows only the results (see
-    delivery_stats).
+    client_id/route narrow the whole page; the date range narrows only the
+    results (see delivery_stats).
     """
     batches = list(
         db.scalars(
@@ -108,7 +110,7 @@ def delivery_overview(
             select(Transport).options(selectinload(Transport.driver), selectinload(Transport.check_ins))
         ).all()
     )
-    data = delivery_stats.build_overview(batches, transports, period=period)
+    data = delivery_stats.build_overview(batches, transports, date_from=date_from, date_to=date_to)
     data["filter_options"] = options
     return data
 UPLOAD_DIR = UPLOADS_DIR / "delivery-batches"
@@ -460,12 +462,17 @@ def list_batches(
     client_id: int | None = None,
     contract_id: int | None = None,
     order_id: int | None = None,
+    overdue_only: bool = False,
+    group: str | None = Query(default=None, pattern="^(moving|problem)$"),
 ):
     stmt = (
         select(DeliveryBatch)
-        .join(Client)
-        .join(Contract)
-        .join(Order)
+        # Spell the ON clauses out: chained .join(Contract) after .join(Client)
+        # walks Client.contracts instead of the batch's own contract, which both
+        # multiplies rows and drops any batch whose client owns no contract.
+        .join(Client, DeliveryBatch.client_id == Client.id)
+        .join(Contract, DeliveryBatch.contract_id == Contract.id)
+        .join(Order, DeliveryBatch.order_id == Order.id)
         .outerjoin(DeliveryBatchItem)
         .options(selectinload(DeliveryBatch.client), selectinload(DeliveryBatch.contract), selectinload(DeliveryBatch.order), selectinload(DeliveryBatch.items), selectinload(DeliveryBatch.logistics), selectinload(DeliveryBatch.documents))
         .distinct()
@@ -476,6 +483,15 @@ def list_batches(
         filters.append(or_(DeliveryBatch.batch_number.ilike(value), Order.order_number.ilike(value), Contract.contract_number.ilike(value), Client.name.ilike(value), Client.inn.ilike(value), DeliveryBatchItem.product_name.ilike(value), DeliveryBatch.supplier_name.ilike(value)))
     if status_filter:
         filters.append(DeliveryBatch.status == status_filter)
+    if group:
+        # Reuse the overview's own sets so a dashboard counter and the list it
+        # links to can never disagree about what "on the move" means.
+        statuses = delivery_stats.BATCH_ON_THE_MOVE if group == "moving" else delivery_stats.BATCH_PROBLEM
+        filters.append(DeliveryBatch.status.in_(list(statuses)))
+    if overdue_only:
+        # Same rule the overview counts by: still open and past its promised date.
+        filters.append(DeliveryBatch.status.notin_(list(delivery_stats.BATCH_CLOSED)))
+        filters.append(DeliveryBatch.planned_delivery_date < date.today())
     if client_id:
         filters.append(DeliveryBatch.client_id == client_id)
     if contract_id:
@@ -847,6 +863,8 @@ def list_logistics(
     client_id: int | None = None,
     contract_id: int | None = None,
     order_id: int | None = None,
+    overdue_only: bool = False,
+    group: str | None = Query(default=None, pattern="^(moving|problem)$"),
 ):
     stmt = select(Logistics).join(DeliveryBatch).join(Order).join(Client).options(selectinload(Logistics.batch).selectinload(DeliveryBatch.client), selectinload(Logistics.batch).selectinload(DeliveryBatch.order)).distinct()
     if search:

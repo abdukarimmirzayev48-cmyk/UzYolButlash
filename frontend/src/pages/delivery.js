@@ -1,48 +1,31 @@
 // ---- Yetkazib berish: bo'lim ko'rinishi (module overview) ----
 
-function statBarList(rows, classPrefix) {
-  const visible = rows.filter((row) => row.count > 0);
-  if (!visible.length) return `<div class="empty">Ma'lumot yo'q.</div>`;
-  const max = Math.max(1, ...visible.map((r) => r.count));
-  return `<div class="stat-bars">${visible.map((row) => `
-    <div class="stat-bar-row">
-      <span class="stat-bar-label" title="${esc(row.label)}">${esc(row.label)}</span>
-      <span class="stat-bar-track"><span class="stat-bar-fill ${classPrefix}-${esc(row.key)}" style="width:${Math.round((row.count / max) * 100)}%"></span></span>
-      <span class="stat-bar-value">${fmt(row.count)}</span>
-    </div>`).join("")}</div>`;
+const OVERVIEW_ICONS = {
+  box: '<path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/>',
+  check: '<circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/>',
+  download: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>',
+  wallet: '<path d="M19 7V5a2 2 0 0 0-2-2H5a2 2 0 0 0 0 4h15a1 1 0 0 1 1 1v4a1 1 0 0 1-1 1h-3a2 2 0 0 1 0-4h4"/><path d="M3 5v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-3"/>',
+  truck: '<path d="M14 18V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v11a1 1 0 0 0 1 1h2"/><path d="M15 18H9"/><path d="M19 18h2a1 1 0 0 0 1-1v-3.65a1 1 0 0 0-.22-.62l-3.48-4.35A1 1 0 0 0 17.52 8H14"/><circle cx="17" cy="18" r="2"/><circle cx="7" cy="18" r="2"/>',
+  clock: '<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>',
+  alert: '<path d="M12 9v4"/><path d="M12 17h.01"/><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"/>',
+  hourglass: '<path d="M5 22h14"/><path d="M5 2h14"/><path d="M17 22v-4.17a2 2 0 0 0-.59-1.42L12 12l-4.41 4.41A2 2 0 0 0 7 17.83V22"/><path d="M7 2v4.17a2 2 0 0 0 .59 1.42L12 12l4.41-4.41A2 2 0 0 0 17 6.17V2"/>',
+  plus: '<line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>',
+  link: '<path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>',
+  userPlus: '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" y1="8" x2="19" y2="14"/><line x1="22" y1="11" x2="16" y2="11"/>',
+  filter: '<polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/>',
+};
+
+function overviewIcon(name, size = 18) {
+  return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${OVERVIEW_ICONS[name] || ""}</svg>`;
 }
 
-function deliveryTrendChart(months) {
-  const max = Math.max(1, ...months.map((m) => Math.max(m.created, m.delivered)));
-  return `<div class="stat-trend">${months.map((m) => `
-    <div class="stat-trend-col">
-      <div class="stat-trend-bars">
-        <span class="stat-trend-bar" style="height:${Math.round((m.created / max) * 100)}%" title="${m.created}"></span>
-        <span class="stat-trend-bar delivered" style="height:${Math.round((m.delivered / max) * 100)}%" title="${m.delivered}"></span>
-      </div>
-      <span class="stat-trend-label">${esc(m.month.slice(5))}.${esc(m.month.slice(2, 4))}</span>
-    </div>`).join("")}
-    <div class="stat-trend-legend"><span><i></i>Ochilgan</span><span><i class="delivered"></i>Yetkazilgan</span></div>
-  </div>`;
-}
-
-const DELIVERY_PERIODS = [
-  ["month", "Bu oy"],
-  ["quarter", "3 oy"],
-  ["year", "Bu yil"],
-  ["all", "Hammasi"],
-];
-
-function deliveryFilterBar(params, options) {
-  const period = params.get("period") || "year";
-  return `<div class="overview-filters">
-    <div class="task-quick-filters">
-      ${DELIVERY_PERIODS.map(([key, label]) => `
-        <button type="button" class="task-chip ${period === key ? "active" : ""}" data-period="${key}">${label}</button>
-      `).join("")}
+function overviewToolbar(params, options, range) {
+  return `<div class="overview-toolbar">
+    <div class="overview-toolbar-actions">
+      <button class="btn primary" type="button" data-nav="/delivery-batches/new">${overviewIcon("plus", 16)}<span>Yangi partiya</span></button>
+      <button class="btn" type="button" data-nav="/logistics">${overviewIcon("plus", 16)}<span>Reys yaratish</span></button>
     </div>
-    <form class="overview-filter-form" id="delivery-filter-form">
-      <input type="hidden" name="period" value="${esc(period)}" />
+    <form class="overview-toolbar-filters" id="delivery-filter-form">
       <select name="client_id">
         <option value="">Barcha mijozlar</option>
         ${options.clients.map((c) => `<option value="${c.id}" ${params.get("client_id") === String(c.id) ? "selected" : ""}>${esc(c.name)}</option>`).join("")}
@@ -51,151 +34,216 @@ function deliveryFilterBar(params, options) {
         <option value="">Barcha yo'nalishlar</option>
         ${options.routes.map((r) => `<option value="${esc(r)}" ${params.get("route") === r ? "selected" : ""}>${esc(r)}</option>`).join("")}
       </select>
-      <button class="ops-tool-btn" type="submit">Qo'llash</button>
+      <input type="date" name="date_from" value="${esc(range.from || "")}" />
+      <span class="overview-date-sep" data-noloc>–</span>
+      <input type="date" name="date_to" value="${esc(range.to || "")}" />
+      <button class="ops-tool-btn" type="submit">${overviewIcon("filter", 14)}<span>Qo'llash</span></button>
       <button class="ops-tool-btn" type="button" data-nav="/delivery">Tozalash</button>
     </form>
   </div>`;
 }
 
-function kpiCardHtml(tone, label, value, path) {
-  return `<div class="kpi-card ${tone}" ${path ? `data-nav="${path}"` : ""}><span>${label}</span><strong>${value}</strong></div>`;
-}
-
-// Two groups on purpose: the first is the state of the yard right now and the
-// period filter must not touch it; the second is what the chosen window
-// produced. Mixing them in one strip is how a dashboard starts lying.
-function deliveryNowCards(n) {
-  return `<div class="kpi-cards">
-    ${kpiCardHtml("", "Ochiq partiyalar", fmt(n.batches_open), "/delivery-batches")}
-    ${kpiCardHtml("", "Hozir yo'lda", fmt(n.on_the_move), "/delivery-batches?status=in_transit")}
-    ${kpiCardHtml("", "Yuklashdan oldin", fmt(n.before_loading), "/delivery-batches?status=planned")}
-    ${kpiCardHtml(n.late ? "warn" : "", "Muddati kechikkan", fmt(n.late), "")}
-    ${kpiCardHtml(n.problems ? "warn" : "", "Muammoli", fmt(n.problems), "/delivery-batches?status=issue")}
-    ${kpiCardHtml(n.trips_need_assignment ? "warn" : "", "Reys biriktirilmagan", fmt(n.trips_need_assignment), "/logistics")}
-    ${kpiCardHtml("", "Faol transportlar", `${fmt(n.fleet_active)} / ${fmt(n.fleet_total)}`, "/transports")}
-    ${kpiCardHtml("", "Jami partiyalar", fmt(n.batches_total), "/delivery-batches")}
-  </div>`;
-}
-
-function deliveryResultCards(r) {
-  return `<div class="kpi-cards">
-    ${kpiCardHtml("good", "Yetkazilgan partiyalar", fmt(r.delivered), "")}
-    ${kpiCardHtml("", "Ochilgan partiyalar", fmt(r.created), "")}
-    ${kpiCardHtml("", "Qabul qilingan miqdor", fmtQty(r.accepted_quantity), "")}
-    ${kpiCardHtml(Number(r.quantity_difference) < 0 ? "warn" : "", "Miqdor farqi", fmtQty(r.quantity_difference), "")}
-    ${kpiCardHtml("", "Logistika daromadi", fmtMoney(r.logistics_revenue), "")}
-    ${kpiCardHtml("", "Logistika xarajati", fmtMoney(r.logistics_cost), "")}
-    ${kpiCardHtml(Number(r.logistics_margin) < 0 ? "warn" : "good", "Logistika farqi", fmtMoney(r.logistics_margin), "")}
-  </div>`;
-}
-
-function deliveryBatchList(rows, emptyText, options = {}) {
-  if (!rows.length) return `<div class="empty">${emptyText}</div>`;
-  return `<div class="mini-list">${rows.map((row) => {
-    const meta = [row.client_name, row.vehicle_number, row.route_name].filter(Boolean).join(" · ");
-    const right = options.showLate && row.days_late
-      ? `<span class="mini-days late">${row.days_late} kun kechikdi</span>`
-      : `<span class="mini-days">${row.planned_delivery_date ? fmtDayOnly(row.planned_delivery_date) : dash}</span>`;
-    return `<button type="button" class="mini-row" data-nav="/delivery-batches/${row.id}">
-      <span class="mini-main">
-        <strong>${esc(row.batch_number || "")}</strong>
-        <span>${esc(meta)}</span>
+// Top row: the headline figures. Each names its own scope underneath, so
+// "right now" and "in the chosen range" can sit side by side without confusion.
+function overviewHeadline(n, r) {
+  const cards = [
+    ["box", "Faol jarayonlar", fmt(n.active), "Faol partiyalar", "/delivery-batches"],
+    ["check", "Yakunlangan partiyalar", fmt(r.delivered), "Tanlangan davrda", ""],
+    ["download", "Qabul qilingan miqdor", fmtQty(r.accepted_quantity, "t"), "Tanlangan davrda", ""],
+    ["wallet", "Logistika natijasi", fmtMoney(r.logistics_margin), "Daromad va xarajat farqi", ""],
+    ["truck", "Faol transport", `${fmt(n.fleet_active)}/${fmt(n.fleet_total)}`, "Transport parki", "/transports"],
+  ];
+  return `<div class="headline-cards">${cards.map(([icon, label, value, note, path]) => `
+    <div class="headline-card" ${path ? `data-nav="${path}"` : ""}>
+      <span class="headline-icon">${overviewIcon(icon, 20)}</span>
+      <span class="headline-copy">
+        <span class="headline-label">${label}</span>
+        <strong>${value}</strong>
+        <span class="headline-note">${note}</span>
       </span>
-      <span class="mini-meta">${statusBadge(row.status)}${right}</span>
-    </button>`;
-  }).join("")}</div>`;
+    </div>`).join("")}</div>`;
 }
 
-function deliveryFleetGrid(fleet) {
-  if (!fleet.length) return `<div class="empty">Transportlar qo'shilmagan.</div>`;
-  return `<div class="fleet-grid">${fleet.map((t) => `
-    <div class="fleet-card ${esc(t.status)}" data-nav="/transports/${t.id}" style="cursor:pointer">
-      <div class="fleet-card-top">
-        <span class="fleet-card-plate">${esc(t.vehicle_number || "")}</span>
-        ${statusBadge(t.status)}
-      </div>
-      <span>${esc(t.driver_name || "Haydovchi biriktirilmagan")}</span>
-      <span>${esc([t.vehicle_type, t.capacity].filter(Boolean).join(" · ") || "—")}</span>
-      <span>${t.current_location ? esc(t.current_location) : "Joylashuv belgilanmagan"}</span>
-    </div>`).join("")}</div>`;
+// Always "now" -- the date range never touches this strip, which is why it is
+// its own titled block instead of being mixed into the row above.
+function overviewOperational(n) {
+  const items = [
+    ["truck", "", "Yo'lda", n.on_the_move, "/delivery-batches?group=moving"],
+    ["clock", "warn", "Muddati o'tgan", n.late, "/delivery-batches?overdue_only=true"],
+    ["alert", "warn", "Muammoli", n.problems, "/delivery-batches?group=problem"],
+    ["hourglass", "", "Transport kutmoqda", n.trips_need_assignment, "/logistics"],
+  ];
+  return `<section class="card ops-monitor">
+    <div class="card-header"><h2>Operatsion nazorat</h2></div>
+    <div class="ops-monitor-row">
+      ${items.map(([icon, tone, label, value, path]) => `
+        <button type="button" class="ops-monitor-item ${value ? tone : ""}" data-nav="${path}">
+          <span class="ops-monitor-icon">${overviewIcon(icon, 20)}</span>
+          <span class="ops-monitor-copy"><span class="ops-monitor-label">${label}</span><strong>${fmt(value)}</strong></span>
+        </button>`).join("")}
+    </div>
+  </section>`;
+}
+
+// Plain SVG: a gridded column chart reads better than a bare CSS bar strip and
+// needs no charting library (the app has no build step).
+function overviewTrendChart(months) {
+  const width = 560;
+  const height = 210;
+  const padLeft = 34;
+  const padBottom = 26;
+  const padTop = 10;
+  const peak = Math.max(1, ...months.map((m) => Math.max(m.created, m.delivered)));
+  // Whole-number gridlines: 6/4 would label the axis 0, 2, 3, 5, 6.
+  const ticks = Math.min(4, peak);
+  const step = Math.ceil(peak / ticks);
+  const max = step * ticks;
+  const plotH = height - padBottom - padTop;
+  const plotW = width - padLeft - 8;
+  const slot = plotW / Math.max(1, months.length);
+  const barW = Math.min(16, slot / 3);
+  const y = (value) => padTop + plotH - (value / max) * plotH;
+
+  const grid = Array.from({ length: ticks + 1 }, (_, i) => {
+    const value = step * i;
+    return `<line x1="${padLeft}" y1="${y(value)}" x2="${width - 8}" y2="${y(value)}" class="chart-grid" />
+      <text x="${padLeft - 8}" y="${y(value) + 4}" class="chart-tick" text-anchor="end">${Math.round(value)}</text>`;
+  }).join("");
+
+  const bars = months.map((m, index) => {
+    const center = padLeft + slot * index + slot / 2;
+    return `
+      <rect x="${center - barW - 2}" y="${y(m.created)}" width="${barW}" height="${Math.max(1, plotH + padTop - y(m.created))}" class="chart-bar created" rx="2"><title>${m.created}</title></rect>
+      <rect x="${center + 2}" y="${y(m.delivered)}" width="${barW}" height="${Math.max(1, plotH + padTop - y(m.delivered))}" class="chart-bar delivered" rx="2"><title>${m.delivered}</title></rect>
+      <text x="${center}" y="${height - 8}" class="chart-tick" text-anchor="middle">${esc(m.month.slice(5))}.${esc(m.month.slice(2, 4))}</text>`;
+  }).join("");
+
+  return `<div class="chart-block">
+    <div class="chart-legend"><span><i class="created"></i>Ochilgan</span><span><i class="delivered"></i>Yetkazilgan</span></div>
+    <div class="chart-axis-title">Partiyalar soni</div>
+    <svg viewBox="0 0 ${width} ${height}" class="chart-svg" role="img" aria-label="Yetkazib berish dinamikasi">${grid}${bars}</svg>
+  </div>`;
+}
+
+const STATUS_MIX_LABELS = {
+  delivered: "Yetkazilgan",
+  unfinished: "Yakunlanmagan",
+  problem: "Muammoli",
+};
+
+function overviewStatusRing(mix) {
+  const size = 148;
+  const stroke = 18;
+  const radius = (size - stroke) / 2;
+  const circumference = 2 * Math.PI * radius;
+  let offset = 0;
+  const arcs = mix.items.filter((item) => item.count > 0).map((item) => {
+    const length = (item.count / (mix.total || 1)) * circumference;
+    const arc = `<circle cx="${size / 2}" cy="${size / 2}" r="${radius}" class="ring-arc ${item.key}"
+      stroke-width="${stroke}" fill="none"
+      stroke-dasharray="${length} ${circumference - length}" stroke-dashoffset="${-offset}" />`;
+    offset += length;
+    return arc;
+  }).join("");
+
+  return `<div class="ring-block">
+    <div class="ring-chart">
+      <svg viewBox="0 0 ${size} ${size}" role="img" aria-label="Partiyalar holati">
+        <circle cx="${size / 2}" cy="${size / 2}" r="${radius}" class="ring-track" stroke-width="${stroke}" fill="none" />
+        ${arcs}
+      </svg>
+      <div class="ring-center"><span>Jami</span><strong>${fmt(mix.total)}</strong></div>
+    </div>
+    <div class="ring-legend">
+      ${mix.items.map((item) => `
+        <div class="ring-legend-row">
+          <span class="ring-dot ${item.key}"></span>
+          <span class="ring-legend-label">${STATUS_MIX_LABELS[item.key] || item.key}</span>
+          <strong>${fmt(item.count)}</strong>
+          <span class="ring-percent" data-noloc>${item.percent}%</span>
+        </div>`).join("")}
+    </div>
+  </div>`;
+}
+
+function overviewCardWithLink(title, body, linkPath) {
+  return `<section class="card">
+    <div class="card-header"><h2>${title}</h2></div>
+    <div class="card-body">${body}</div>
+    <div class="card-footer-link"><button type="button" class="link-btn" data-nav="${linkPath}">Barchasini ko'rish <span data-noloc>→</span></button></div>
+  </section>`;
+}
+
+function overviewQuickActions() {
+  const actions = [
+    ["plus", "Yangi partiya yaratish", "/delivery-batches/new"],
+    ["truck", "Reys yaratish", "/logistics"],
+    ["link", "Transport biriktirish", "/transports"],
+    ["userPlus", "Mijoz qo'shish", "/clients/new"],
+    ["download", "Hisobotlarni yuklab olish", "/profit"],
+  ];
+  return `<section class="card">
+    <div class="card-header"><h2>Tezkor amallar</h2></div>
+    <div class="quick-actions">
+      ${actions.map(([icon, label, path]) => `
+        <button type="button" class="quick-action" data-nav="${path}">
+          <span class="quick-action-icon">${overviewIcon(icon, 18)}</span><span>${label}</span>
+        </button>`).join("")}
+    </div>
+  </section>`;
 }
 
 async function renderDeliveryOverview() {
   app.innerHTML = `<div class="page ops-page"><div class="empty">Yuklanmoqda...</div></div>`;
   const params = new URLSearchParams(location.search);
   const query = new URLSearchParams();
-  ["period", "client_id", "route"].forEach((key) => { if (params.get(key)) query.set(key, params.get(key)); });
+  ["date_from", "date_to", "client_id", "route"].forEach((key) => { if (params.get(key)) query.set(key, params.get(key)); });
   const data = await api(`/api/delivery/overview?${query.toString()}`);
   const n = data.now;
   const r = data.result;
-  const periodLabel = DELIVERY_PERIODS.find(([k]) => k === (params.get("period") || "year"))?.[1] || "";
-  const batchRows = data.by_batch_status.map((row) => ({ key: row.status, label: optionLabel(batchStatuses, row.status), count: row.count }));
-  const tripRows = data.by_logistics_status.map((row) => ({ key: row.status, label: optionLabel(logisticsStatuses, row.status), count: row.count }));
 
   app.innerHTML = `
     <div class="page ops-page module-overview">
-      <div class="page-header">
-        <div class="page-title">
-          <h1>Yetkazib berish</h1>
-          <p>Partiyalar, logistika reyslari va o'z avtoparkingiz — bo'lim bo'yicha umumiy holat.</p>
-        </div>
-        <div class="actions">
-          <button class="btn" type="button" data-nav="/delivery-batches">Partiyalar</button>
-          <button class="btn" type="button" data-nav="/logistics">Logistika</button>
-          <button class="btn" type="button" data-nav="/transports">Transportlar</button>
-        </div>
+      <div class="overview-head">
+        <h1>Yetkazib berish</h1>
+        <p>Partiyalar, reyslar va transport parkini bitta oynada boshqaring</p>
       </div>
 
-      ${deliveryFilterBar(params, data.filter_options)}
+      ${overviewToolbar(params, data.filter_options, data.range)}
+      ${overviewHeadline(n, r)}
+      ${overviewOperational(n)}
 
-      <h2 class="overview-group-title">Hozirgi holat</h2>
-      <p class="section-note">Bu raqamlar doim ayni damdagi holatni ko'rsatadi — davr tanlovi ularga ta'sir qilmaydi.</p>
-      ${deliveryNowCards(n)}
-
-      <h2 class="overview-group-title">Natijalar<span class="overview-group-note">${esc(periodLabel)}</span></h2>
-      ${deliveryResultCards(r)}
-
-      <div class="panel-grid">
-        ${section("Partiyalar holati", statBarList(batchRows, "batch"))}
-        ${section("Reyslar holati", statBarList(tripRows, "trip"))}
-        ${section("Oylik dinamika (so'nggi 6 oy)", deliveryTrendChart(data.monthly))}
+      <div class="panel-grid two">
+        ${section("Yetkazib berish dinamikasi", overviewTrendChart(data.monthly))}
+        ${section("Partiyalar holati", overviewStatusRing(data.status_mix))}
       </div>
 
       <div class="panel-grid two">
-        ${section("Hozir yo'lda", deliveryBatchList(data.on_the_move_batches, "Yo'lda partiya yo'q."))}
-        ${section("Muddati kechikkan", deliveryBatchList(data.late_batches, "Kechikkan partiya yo'q.", { showLate: true }))}
+        ${overviewCardWithLink("Transport parki", tableOrEmpty(data.fleet.slice(0, 5), ["Transport", "Davlat raqami", "Haydovchi", "Yuk ko'tarish", "Holat"], (t) => `
+          <tr>
+            <td>${fmt(t.vehicle_type)}</td>
+            <td>${fmt(t.vehicle_number)}</td>
+            <td>${fmt(t.driver_name)}</td>
+            <td>${fmt(t.capacity)}</td>
+            <td>${statusBadge(t.status)}</td>
+          </tr>`, "Transportlar qo'shilmagan."), "/transports")}
+
+        ${overviewCardWithLink("Mijozlar kesimida", tableOrEmpty(data.top_clients.slice(0, 5), ["Mijoz", "Faol partiyalar", "Qabul qilingan miqdor", "Logistika daromadi"], (c) => `
+          <tr>
+            <td>${fmt(c.client_name)}</td>
+            <td>${fmt(c.open)}</td>
+            <td>${fmtQty(c.quantity, "t")}</td>
+            <td>${fmtMoney(c.revenue)}</td>
+          </tr>`, "Mijozlar bo'yicha ma'lumot yo'q."), "/delivery-batches")}
       </div>
 
-      <div class="panel-grid two">
-        ${section("Muammoli partiyalar", deliveryBatchList(data.problem_batches, "Muammoli partiya yo'q."))}
-        ${section("Transport biriktirilmagan reyslar", deliveryBatchList(data.unassigned_trips, "Barcha reyslarga transport biriktirilgan."))}
-      </div>
-
-      ${section("O'z avtoparki", `
-        <p class="section-note"><span>Faol transportlar</span>: ${fmt(n.fleet_active)} / ${fmt(n.fleet_total)}${n.fleet_maintenance ? ` · <span>Ta'mirda</span>: ${fmt(n.fleet_maintenance)}` : ""}</p>
-        ${deliveryFleetGrid(data.fleet)}
-      `)}
-
-      ${section("Mijozlar kesimida", tableOrEmpty(data.top_clients, ["Mijoz", "Yetkazilgan partiyalar", "Qabul qilingan miqdor", "Logistika daromadi"], (row) => `
-        <tr>
-          <td>${fmt(row.client_name)}</td>
-          <td>${fmt(row.batches)}</td>
-          <td>${fmtQty(row.quantity)}</td>
-          <td>${fmtMoney(row.revenue)}</td>
-        </tr>`, "Tanlangan davrda yetkazilgan partiya yo'q."))}
+      ${overviewQuickActions()}
     </div>
   `;
 
-  document.querySelectorAll("[data-period]").forEach((button) => button.addEventListener("click", () => {
-    const next = new URLSearchParams(location.search);
-    next.set("period", button.dataset.period);
-    navigate(`/delivery?${next.toString()}`);
-  }));
-  bindOpsSearch("delivery-filter-form", "/delivery", ["period", "client_id", "route"]);
+  bindOpsSearch("delivery-filter-form", "/delivery", ["client_id", "route", "date_from", "date_to"]);
 }
 
-// ---- Shared "detail page" design system (icon-badge sections, two-tone panels,
-// timeline, progress bar) — reusable across the app, not logistics-specific. ----
 const DETAIL_ICON_PATHS = {
   list: '<path d="M9 6h11"/><path d="M9 12h11"/><path d="M9 18h11"/><path d="M4 6h.01"/><path d="M4 12h.01"/><path d="M4 18h.01"/>',
   truck: '<path d="M14 18V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v11a1 1 0 0 0 1 1h2"/><path d="M15 18H9"/><path d="M19 18h2a1 1 0 0 0 1-1v-3.65a1 1 0 0 0-.22-.624l-3.48-4.35A1 1 0 0 0 17.52 8H14"/><circle cx="17" cy="18" r="2"/><circle cx="7" cy="18" r="2"/>',
