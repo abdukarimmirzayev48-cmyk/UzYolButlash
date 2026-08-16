@@ -74,11 +74,18 @@ overview_router = APIRouter(prefix="/api/delivery", tags=["delivery-overview"])
 
 
 @overview_router.get("/overview")
-def delivery_overview(db: Session = Depends(get_db)):
+def delivery_overview(
+    db: Session = Depends(get_db),
+    period: str = Query(default="year", pattern="^(month|quarter|year|all)$"),
+    client_id: int | None = None,
+    route: str | None = None,
+):
     """Everything the Yetkazib berish section is responsible for, in one call.
 
     Batches carry their items and logistics record, so the quantities, the trip
     status and the truck all come from the same objects the detail pages show.
+    client_id/route narrow the whole page; period narrows only the results (see
+    delivery_stats).
     """
     batches = list(
         db.scalars(
@@ -90,12 +97,20 @@ def delivery_overview(db: Session = Depends(get_db)):
             )
         ).all()
     )
+    options = delivery_stats.filter_options(batches)
+    if client_id:
+        batches = [b for b in batches if b.client_id == client_id]
+    if route:
+        batches = [b for b in batches if b.logistics and b.logistics.route_name == route]
+
     transports = list(
         db.scalars(
             select(Transport).options(selectinload(Transport.driver), selectinload(Transport.check_ins))
         ).all()
     )
-    return delivery_stats.build_overview(batches, transports)
+    data = delivery_stats.build_overview(batches, transports, period=period)
+    data["filter_options"] = options
+    return data
 UPLOAD_DIR = UPLOADS_DIR / "delivery-batches"
 QTY = Decimal("0.001")
 MANUAL_LOGISTICS_STATUSES = {

@@ -26,26 +26,67 @@ function deliveryTrendChart(months) {
   </div>`;
 }
 
-function deliveryKpiCards(s) {
-  // tone marks the ones that mean "act on this", nothing else.
-  const cards = [
-    ["", "Jami partiyalar", fmt(s.batches_total), "/delivery-batches"],
-    ["", "Ochiq partiyalar", fmt(s.batches_open), "/delivery-batches"],
-    ["", "Hozir yo'lda", fmt(s.on_the_move), "/delivery-batches?status=in_transit"],
-    ["", "Yuklashdan oldin", fmt(s.before_loading), "/delivery-batches?status=planned"],
-    ["warn", "Muddati kechikkan", fmt(s.late), ""],
-    ["warn", "Muammoli", fmt(s.problems), "/delivery-batches?status=issue"],
-    ["warn", "Reys biriktirilmagan", fmt(s.trips_need_assignment), "/logistics"],
-    ["good", "Bu oy yetkazilgan", fmt(s.completed_this_month), ""],
-    ["", "Qabul qilingan miqdor", fmtQty(s.accepted_quantity), ""],
-    ["", "Logistika daromadi", fmtMoney(s.logistics_revenue), ""],
-    ["", "Logistika xarajati", fmtMoney(s.logistics_cost), ""],
-    [Number(s.logistics_margin) < 0 ? "warn" : "good", "Logistika farqi", fmtMoney(s.logistics_margin), ""],
-  ];
-  return `<div class="kpi-cards">${cards.map(([tone, label, value, path]) => `
-    <div class="kpi-card ${tone}" ${path ? `data-nav="${path}"` : ""}>
-      <span>${label}</span><strong>${value}</strong>
-    </div>`).join("")}</div>`;
+const DELIVERY_PERIODS = [
+  ["month", "Bu oy"],
+  ["quarter", "3 oy"],
+  ["year", "Bu yil"],
+  ["all", "Hammasi"],
+];
+
+function deliveryFilterBar(params, options) {
+  const period = params.get("period") || "year";
+  return `<div class="overview-filters">
+    <div class="task-quick-filters">
+      ${DELIVERY_PERIODS.map(([key, label]) => `
+        <button type="button" class="task-chip ${period === key ? "active" : ""}" data-period="${key}">${label}</button>
+      `).join("")}
+    </div>
+    <form class="overview-filter-form" id="delivery-filter-form">
+      <input type="hidden" name="period" value="${esc(period)}" />
+      <select name="client_id">
+        <option value="">Barcha mijozlar</option>
+        ${options.clients.map((c) => `<option value="${c.id}" ${params.get("client_id") === String(c.id) ? "selected" : ""}>${esc(c.name)}</option>`).join("")}
+      </select>
+      <select name="route">
+        <option value="">Barcha yo'nalishlar</option>
+        ${options.routes.map((r) => `<option value="${esc(r)}" ${params.get("route") === r ? "selected" : ""}>${esc(r)}</option>`).join("")}
+      </select>
+      <button class="ops-tool-btn" type="submit">Qo'llash</button>
+      <button class="ops-tool-btn" type="button" data-nav="/delivery">Tozalash</button>
+    </form>
+  </div>`;
+}
+
+function kpiCardHtml(tone, label, value, path) {
+  return `<div class="kpi-card ${tone}" ${path ? `data-nav="${path}"` : ""}><span>${label}</span><strong>${value}</strong></div>`;
+}
+
+// Two groups on purpose: the first is the state of the yard right now and the
+// period filter must not touch it; the second is what the chosen window
+// produced. Mixing them in one strip is how a dashboard starts lying.
+function deliveryNowCards(n) {
+  return `<div class="kpi-cards">
+    ${kpiCardHtml("", "Ochiq partiyalar", fmt(n.batches_open), "/delivery-batches")}
+    ${kpiCardHtml("", "Hozir yo'lda", fmt(n.on_the_move), "/delivery-batches?status=in_transit")}
+    ${kpiCardHtml("", "Yuklashdan oldin", fmt(n.before_loading), "/delivery-batches?status=planned")}
+    ${kpiCardHtml(n.late ? "warn" : "", "Muddati kechikkan", fmt(n.late), "")}
+    ${kpiCardHtml(n.problems ? "warn" : "", "Muammoli", fmt(n.problems), "/delivery-batches?status=issue")}
+    ${kpiCardHtml(n.trips_need_assignment ? "warn" : "", "Reys biriktirilmagan", fmt(n.trips_need_assignment), "/logistics")}
+    ${kpiCardHtml("", "Faol transportlar", `${fmt(n.fleet_active)} / ${fmt(n.fleet_total)}`, "/transports")}
+    ${kpiCardHtml("", "Jami partiyalar", fmt(n.batches_total), "/delivery-batches")}
+  </div>`;
+}
+
+function deliveryResultCards(r) {
+  return `<div class="kpi-cards">
+    ${kpiCardHtml("good", "Yetkazilgan partiyalar", fmt(r.delivered), "")}
+    ${kpiCardHtml("", "Ochilgan partiyalar", fmt(r.created), "")}
+    ${kpiCardHtml("", "Qabul qilingan miqdor", fmtQty(r.accepted_quantity), "")}
+    ${kpiCardHtml(Number(r.quantity_difference) < 0 ? "warn" : "", "Miqdor farqi", fmtQty(r.quantity_difference), "")}
+    ${kpiCardHtml("", "Logistika daromadi", fmtMoney(r.logistics_revenue), "")}
+    ${kpiCardHtml("", "Logistika xarajati", fmtMoney(r.logistics_cost), "")}
+    ${kpiCardHtml(Number(r.logistics_margin) < 0 ? "warn" : "good", "Logistika farqi", fmtMoney(r.logistics_margin), "")}
+  </div>`;
 }
 
 function deliveryBatchList(rows, emptyText, options = {}) {
@@ -81,10 +122,15 @@ function deliveryFleetGrid(fleet) {
 
 async function renderDeliveryOverview() {
   app.innerHTML = `<div class="page ops-page"><div class="empty">Yuklanmoqda...</div></div>`;
-  const data = await api("/api/delivery/overview");
-  const s = data.summary;
-  const batchRows = data.by_batch_status.map((r) => ({ key: r.status, label: optionLabel(batchStatuses, r.status), count: r.count }));
-  const tripRows = data.by_logistics_status.map((r) => ({ key: r.status, label: optionLabel(logisticsStatuses, r.status), count: r.count }));
+  const params = new URLSearchParams(location.search);
+  const query = new URLSearchParams();
+  ["period", "client_id", "route"].forEach((key) => { if (params.get(key)) query.set(key, params.get(key)); });
+  const data = await api(`/api/delivery/overview?${query.toString()}`);
+  const n = data.now;
+  const r = data.result;
+  const periodLabel = DELIVERY_PERIODS.find(([k]) => k === (params.get("period") || "year"))?.[1] || "";
+  const batchRows = data.by_batch_status.map((row) => ({ key: row.status, label: optionLabel(batchStatuses, row.status), count: row.count }));
+  const tripRows = data.by_logistics_status.map((row) => ({ key: row.status, label: optionLabel(logisticsStatuses, row.status), count: row.count }));
 
   app.innerHTML = `
     <div class="page ops-page module-overview">
@@ -100,12 +146,19 @@ async function renderDeliveryOverview() {
         </div>
       </div>
 
-      ${deliveryKpiCards(s)}
+      ${deliveryFilterBar(params, data.filter_options)}
+
+      <h2 class="overview-group-title">Hozirgi holat</h2>
+      <p class="section-note">Bu raqamlar doim ayni damdagi holatni ko'rsatadi — davr tanlovi ularga ta'sir qilmaydi.</p>
+      ${deliveryNowCards(n)}
+
+      <h2 class="overview-group-title">Natijalar<span class="overview-group-note">${esc(periodLabel)}</span></h2>
+      ${deliveryResultCards(r)}
 
       <div class="panel-grid">
         ${section("Partiyalar holati", statBarList(batchRows, "batch"))}
         ${section("Reyslar holati", statBarList(tripRows, "trip"))}
-        ${section("Oylik dinamika", deliveryTrendChart(data.monthly))}
+        ${section("Oylik dinamika (so'nggi 6 oy)", deliveryTrendChart(data.monthly))}
       </div>
 
       <div class="panel-grid two">
@@ -119,26 +172,26 @@ async function renderDeliveryOverview() {
       </div>
 
       ${section("O'z avtoparki", `
-        <p class="section-note"><span>Faol transportlar</span>: ${fmt(s.fleet_active)} / ${fmt(s.fleet_total)}${s.fleet_maintenance ? ` · <span>Ta'mirda</span>: ${fmt(s.fleet_maintenance)}` : ""}</p>
+        <p class="section-note"><span>Faol transportlar</span>: ${fmt(n.fleet_active)} / ${fmt(n.fleet_total)}${n.fleet_maintenance ? ` · <span>Ta'mirda</span>: ${fmt(n.fleet_maintenance)}` : ""}</p>
         ${deliveryFleetGrid(data.fleet)}
       `)}
 
-      ${section("Miqdorlar", detailList([
-        ["Rejalashtirilgan", fmtQty(s.planned_quantity)],
-        ["Yuklangan", fmtQty(s.loaded_quantity)],
-        ["Qabul qilingan", fmtQty(s.accepted_quantity)],
-        ["Qabul qilinganlar bo'yicha farq", fmtQty(s.quantity_difference)],
-      ]))}
-
-      ${section("Mijozlar kesimida", tableOrEmpty(data.top_clients, ["Mijoz", "Partiyalar", "Ochiq", "Qabul qilingan miqdor"], (r) => `
+      ${section("Mijozlar kesimida", tableOrEmpty(data.top_clients, ["Mijoz", "Yetkazilgan partiyalar", "Qabul qilingan miqdor", "Logistika daromadi"], (row) => `
         <tr>
-          <td>${fmt(r.client_name)}</td>
-          <td>${fmt(r.batches)}</td>
-          <td>${fmt(r.open)}</td>
-          <td>${fmtQty(r.quantity)}</td>
-        </tr>`, "Mijozlar bo'yicha ma'lumot yo'q."))}
+          <td>${fmt(row.client_name)}</td>
+          <td>${fmt(row.batches)}</td>
+          <td>${fmtQty(row.quantity)}</td>
+          <td>${fmtMoney(row.revenue)}</td>
+        </tr>`, "Tanlangan davrda yetkazilgan partiya yo'q."))}
     </div>
   `;
+
+  document.querySelectorAll("[data-period]").forEach((button) => button.addEventListener("click", () => {
+    const next = new URLSearchParams(location.search);
+    next.set("period", button.dataset.period);
+    navigate(`/delivery?${next.toString()}`);
+  }));
+  bindOpsSearch("delivery-filter-form", "/delivery", ["period", "client_id", "route"]);
 }
 
 // ---- Shared "detail page" design system (icon-badge sections, two-tone panels,
