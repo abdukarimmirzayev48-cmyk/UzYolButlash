@@ -1,3 +1,159 @@
+// ---- Yetkazib berish: bo'lim ko'rinishi (module overview) ----
+
+const DELIVERY_ICON_PATHS = {
+  truck: '<path d="M10 17h4V5H2v12h3"/><path d="M20 17h2v-3.34a4 4 0 0 0-1.17-2.83L19 9h-5v8h1"/><circle cx="7.5" cy="17.5" r="2.5"/><circle cx="17.5" cy="17.5" r="2.5"/>',
+  box: '<path d="m7.5 4.27 9 5.15"/><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/>',
+  alert: '<path d="M12 9v4"/><path d="M12 17h.01"/><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"/>',
+  check: '<path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>',
+  clock: '<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>',
+  money: '<rect width="20" height="14" x="2" y="5" rx="2"/><circle cx="12" cy="12" r="3"/>',
+};
+
+function deliveryIcon(name, size = 20) {
+  return `<svg class="icon" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg">${DELIVERY_ICON_PATHS[name] || ""}</svg>`;
+}
+
+function statBarList(rows, classPrefix) {
+  const visible = rows.filter((row) => row.count > 0);
+  if (!visible.length) return `<div class="empty">Ma'lumot yo'q.</div>`;
+  const max = Math.max(1, ...visible.map((r) => r.count));
+  return `<div class="stat-bars">${visible.map((row) => `
+    <div class="stat-bar-row">
+      <span class="stat-bar-label" title="${esc(row.label)}">${esc(row.label)}</span>
+      <span class="stat-bar-track"><span class="stat-bar-fill ${classPrefix}-${esc(row.key)}" style="width:${Math.round((row.count / max) * 100)}%"></span></span>
+      <span class="stat-bar-value">${fmt(row.count)}</span>
+    </div>`).join("")}</div>`;
+}
+
+function deliveryTrendChart(months) {
+  const max = Math.max(1, ...months.map((m) => Math.max(m.created, m.delivered)));
+  return `<div class="stat-trend">${months.map((m) => `
+    <div class="stat-trend-col">
+      <div class="stat-trend-bars">
+        <span class="stat-trend-bar" style="height:${Math.round((m.created / max) * 100)}%" title="${m.created}"></span>
+        <span class="stat-trend-bar delivered" style="height:${Math.round((m.delivered / max) * 100)}%" title="${m.delivered}"></span>
+      </div>
+      <span class="stat-trend-label">${esc(m.month.slice(5))}.${esc(m.month.slice(2, 4))}</span>
+    </div>`).join("")}
+    <div class="stat-trend-legend"><span><i></i>Ochilgan</span><span><i class="delivered"></i>Yetkazilgan</span></div>
+  </div>`;
+}
+
+function deliveryKpiCards(s) {
+  const cards = [
+    ["box", "teal", "Jami partiyalar", fmt(s.batches_total), "/delivery-batches"],
+    ["clock", "amber", "Ochiq partiyalar", fmt(s.batches_open), "/delivery-batches"],
+    ["truck", "amber", "Hozir yo'lda", fmt(s.on_the_move), "/delivery-batches?status=in_transit"],
+    ["clock", "teal", "Yuklashdan oldin", fmt(s.before_loading), "/delivery-batches?status=planned"],
+    ["alert", "red", "Muddati kechikkan", fmt(s.late), ""],
+    ["alert", "red", "Muammoli", fmt(s.problems), "/delivery-batches?status=issue"],
+    ["check", "green", "Bu oy yetkazilgan", fmt(s.completed_this_month), ""],
+    ["truck", "teal", "Reys biriktirilmagan", fmt(s.trips_need_assignment), "/logistics"],
+    ["box", "teal", "Qabul qilingan miqdor", fmtQty(s.accepted_quantity), ""],
+    ["money", "green", "Logistika daromadi", fmtMoney(s.logistics_revenue), ""],
+    ["money", "amber", "Logistika xarajati", fmtMoney(s.logistics_cost), ""],
+    ["money", "green", "Logistika farqi", fmtMoney(s.logistics_margin), ""],
+  ];
+  return `<div class="tasks-summary-cards kpi-cards">${cards.map(([icon, tone, label, value, path]) => `
+    <div class="tasks-summary-card" ${path ? `data-nav="${path}" style="cursor:pointer"` : ""}>
+      <span class="tasks-summary-icon ${tone}">${deliveryIcon(icon)}</span>
+      <span class="tasks-summary-copy"><span>${label}</span><strong>${value}</strong></span>
+    </div>`).join("")}</div>`;
+}
+
+function deliveryBatchList(rows, emptyText, options = {}) {
+  if (!rows.length) return `<div class="empty">${emptyText}</div>`;
+  return `<div class="mini-list">${rows.map((row) => {
+    const meta = [row.client_name, row.vehicle_number, row.route_name].filter(Boolean).join(" · ");
+    const right = options.showLate && row.days_late
+      ? `<span class="mini-days late">${row.days_late} kun kechikdi</span>`
+      : `<span class="mini-days">${row.planned_delivery_date ? fmtDayOnly(row.planned_delivery_date) : dash}</span>`;
+    return `<button type="button" class="mini-row" data-nav="/delivery-batches/${row.id}">
+      <span class="mini-main">
+        <strong>${esc(row.batch_number || "")}</strong>
+        <span>${esc(meta)}</span>
+      </span>
+      <span class="mini-meta">${statusBadge(row.status)}${right}</span>
+    </button>`;
+  }).join("")}</div>`;
+}
+
+function deliveryFleetGrid(fleet) {
+  if (!fleet.length) return `<div class="empty">Transportlar qo'shilmagan.</div>`;
+  return `<div class="fleet-grid">${fleet.map((t) => `
+    <div class="fleet-card ${esc(t.status)}" data-nav="/transports/${t.id}" style="cursor:pointer">
+      <div class="fleet-card-top">
+        <span class="fleet-card-plate">${esc(t.vehicle_number || "")}</span>
+        ${statusBadge(t.status)}
+      </div>
+      <span>${esc(t.driver_name || "Haydovchi biriktirilmagan")}</span>
+      <span>${esc([t.vehicle_type, t.capacity].filter(Boolean).join(" · ") || "—")}</span>
+      <span>${t.current_location ? esc(t.current_location) : "Joylashuv belgilanmagan"}</span>
+    </div>`).join("")}</div>`;
+}
+
+async function renderDeliveryOverview() {
+  app.innerHTML = `<div class="page ops-page"><div class="empty">Yuklanmoqda...</div></div>`;
+  const data = await api("/api/delivery/overview");
+  const s = data.summary;
+  const batchRows = data.by_batch_status.map((r) => ({ key: r.status, label: optionLabel(batchStatuses, r.status), count: r.count }));
+  const tripRows = data.by_logistics_status.map((r) => ({ key: r.status, label: optionLabel(logisticsStatuses, r.status), count: r.count }));
+
+  app.innerHTML = `
+    <div class="page ops-page module-overview">
+      <div class="page-header">
+        <div class="page-title">
+          <h1>Yetkazib berish</h1>
+          <p>Partiyalar, logistika reyslari va o'z avtoparkingiz — bo'lim bo'yicha umumiy holat.</p>
+        </div>
+        <div class="actions">
+          <button class="btn" type="button" data-nav="/delivery-batches">Partiyalar</button>
+          <button class="btn" type="button" data-nav="/logistics">Logistika</button>
+          <button class="btn" type="button" data-nav="/transports">Transportlar</button>
+        </div>
+      </div>
+
+      ${deliveryKpiCards(s)}
+
+      <div class="panel-grid">
+        ${section("Partiyalar holati", statBarList(batchRows, "batch"))}
+        ${section("Reyslar holati", statBarList(tripRows, "trip"))}
+        ${section("Oylik dinamika", deliveryTrendChart(data.monthly))}
+      </div>
+
+      <div class="panel-grid two">
+        ${section("Hozir yo'lda", deliveryBatchList(data.on_the_move_batches, "Yo'lda partiya yo'q."))}
+        ${section("Muddati kechikkan", deliveryBatchList(data.late_batches, "Kechikkan partiya yo'q.", { showLate: true }))}
+      </div>
+
+      <div class="panel-grid two">
+        ${section("Muammoli partiyalar", deliveryBatchList(data.problem_batches, "Muammoli partiya yo'q."))}
+        ${section("Transport biriktirilmagan reyslar", deliveryBatchList(data.unassigned_trips, "Barcha reyslarga transport biriktirilgan."))}
+      </div>
+
+      ${section("O'z avtoparki", `
+        <p class="section-note"><span>Faol transportlar</span>: ${fmt(s.fleet_active)} / ${fmt(s.fleet_total)}${s.fleet_maintenance ? ` · <span>Ta'mirda</span>: ${fmt(s.fleet_maintenance)}` : ""}</p>
+        ${deliveryFleetGrid(data.fleet)}
+      `)}
+
+      ${section("Miqdorlar", detailList([
+        ["Rejalashtirilgan", fmtQty(s.planned_quantity)],
+        ["Yuklangan", fmtQty(s.loaded_quantity)],
+        ["Qabul qilingan", fmtQty(s.accepted_quantity)],
+        ["Qabul qilinganlar bo'yicha farq", fmtQty(s.quantity_difference)],
+      ]))}
+
+      ${section("Mijozlar kesimida", tableOrEmpty(data.top_clients, ["Mijoz", "Partiyalar", "Ochiq", "Qabul qilingan miqdor"], (r) => `
+        <tr>
+          <td>${fmt(r.client_name)}</td>
+          <td>${fmt(r.batches)}</td>
+          <td>${fmt(r.open)}</td>
+          <td>${fmtQty(r.quantity)}</td>
+        </tr>`, "Mijozlar bo'yicha ma'lumot yo'q."))}
+    </div>
+  `;
+}
+
 // ---- Shared "detail page" design system (icon-badge sections, two-tone panels,
 // timeline, progress bar) — reusable across the app, not logistics-specific. ----
 const DETAIL_ICON_PATHS = {

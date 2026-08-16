@@ -13,7 +13,7 @@ from backend.app.api.contracts import router as contracts_router
 from backend.app.api.customer_requests import public_router as customer_requests_public_router
 from backend.app.api.customer_requests import router as customer_requests_router
 from backend.app.api.dashboard import router as dashboard_router
-from backend.app.api.delivery import logistics_router, router as delivery_router
+from backend.app.api.delivery import logistics_router, overview_router as delivery_overview_router, router as delivery_router
 from backend.app.api.finance import finance_router, invoice_router, payment_router
 from backend.app.api.hikvision_agent import router as hikvision_agent_router
 from backend.app.api.inventory import router as inventory_router
@@ -62,6 +62,7 @@ app.include_router(customer_requests_router, dependencies=authenticated)
 app.include_router(dashboard_router, dependencies=authenticated)
 app.include_router(orders_router, dependencies=authenticated)
 app.include_router(delivery_router, dependencies=authenticated)
+app.include_router(delivery_overview_router, dependencies=authenticated)
 app.include_router(logistics_router, dependencies=authenticated)
 app.include_router(transports_router, dependencies=authenticated)
 app.include_router(invoice_router, dependencies=authenticated)
@@ -125,7 +126,7 @@ def frontend(full_path: str):
         or full_path.startswith("request")
         or full_path.startswith("contracts")
         or full_path.startswith("orders")
-        or full_path.startswith("delivery-batches")
+        or full_path.startswith("delivery")
         or full_path.startswith("logistics")
         or full_path.startswith("transports")
         or full_path.startswith("customer-invoices")

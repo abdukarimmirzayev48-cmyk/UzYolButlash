@@ -3897,20 +3897,23 @@ body.public-layout.sidebar-collapsed .app-shell {
 
 /* ---- Ijro: boshqaruv paneli, filtrlar va holat yo'lagi ---- */
 
-.tasks-summary-cards.kpi {
+.tasks-summary-cards.kpi,
+.kpi-cards {
   grid-template-columns: repeat(auto-fit, minmax(196px, 1fr));
 }
 
 /* Nine KPI labels are longer than the four the original cards carried, so let
    them wrap instead of being cut off mid-word. */
-.tasks-summary-cards.kpi .tasks-summary-copy span {
+.tasks-summary-cards.kpi .tasks-summary-copy span,
+.kpi-cards .tasks-summary-copy span {
   font-size: 13px;
   white-space: normal;
   overflow: visible;
   line-height: 1.25;
 }
 
-.tasks-summary-cards.kpi .tasks-summary-copy strong {
+.tasks-summary-cards.kpi .tasks-summary-copy strong,
+.kpi-cards .tasks-summary-copy strong {
   font-size: 22px;
 }
 
@@ -3985,37 +3988,43 @@ body.public-layout.sidebar-collapsed .app-shell {
   margin-left: 3px;
 }
 
-.task-panel-grid {
+.task-panel-grid,
+.panel-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
   gap: 16px;
   margin-bottom: 16px;
 }
 
-.task-panel-grid.two {
+.task-panel-grid.two,
+.panel-grid.two {
   grid-template-columns: repeat(auto-fit, minmax(380px, 1fr));
 }
 
-.task-panel-grid > .card {
+.task-panel-grid > .card,
+.panel-grid > .card {
   margin: 0;
 }
 
 /* ---- gorizontal ustunli diagramma ---- */
 
-.task-bars {
+.task-bars,
+.stat-bars {
   display: flex;
   flex-direction: column;
   gap: 9px;
 }
 
-.task-bar-row {
+.task-bar-row,
+.stat-bar-row {
   display: grid;
   grid-template-columns: 120px 1fr 36px;
   align-items: center;
   gap: 10px;
 }
 
-.task-bar-label {
+.task-bar-label,
+.stat-bar-label {
   font-size: 12.5px;
   color: var(--muted);
   overflow: hidden;
@@ -4023,14 +4032,16 @@ body.public-layout.sidebar-collapsed .app-shell {
   white-space: nowrap;
 }
 
-.task-bar-track {
+.task-bar-track,
+.stat-bar-track {
   height: 10px;
   border-radius: 999px;
   background: var(--surface-soft);
   overflow: hidden;
 }
 
-.task-bar-fill {
+.task-bar-fill,
+.stat-bar-fill {
   display: block;
   height: 100%;
   border-radius: 999px;
@@ -4039,18 +4050,29 @@ body.public-layout.sidebar-collapsed .app-shell {
   transition: width 0.3s ease;
 }
 
-.task-bar-fill.status-new { background: #64748b; }
-.task-bar-fill.status-accepted { background: #0ea5e9; }
-.task-bar-fill.status-in_progress { background: #d97706; }
-.task-bar-fill.status-done { background: #16a34a; }
-.task-bar-fill.status-verified { background: var(--accent); }
-.task-bar-fill.status-rejected { background: var(--danger); }
-.task-bar-fill.priority-low { background: #94a3b8; }
-.task-bar-fill.priority-medium { background: #0ea5e9; }
-.task-bar-fill.priority-high { background: #d97706; }
-.task-bar-fill.priority-urgent { background: var(--danger); }
+.task-bar-fill.status-new,
+.stat-bar-fill.status-new { background: #64748b; }
+.task-bar-fill.status-accepted,
+.stat-bar-fill.status-accepted { background: #0ea5e9; }
+.task-bar-fill.status-in_progress,
+.stat-bar-fill.status-in_progress { background: #d97706; }
+.task-bar-fill.status-done,
+.stat-bar-fill.status-done { background: #16a34a; }
+.task-bar-fill.status-verified,
+.stat-bar-fill.status-verified { background: var(--accent); }
+.task-bar-fill.status-rejected,
+.stat-bar-fill.status-rejected { background: var(--danger); }
+.task-bar-fill.priority-low,
+.stat-bar-fill.priority-low { background: #94a3b8; }
+.task-bar-fill.priority-medium,
+.stat-bar-fill.priority-medium { background: #0ea5e9; }
+.task-bar-fill.priority-high,
+.stat-bar-fill.priority-high { background: #d97706; }
+.task-bar-fill.priority-urgent,
+.stat-bar-fill.priority-urgent { background: var(--danger); }
 
-.task-bar-value {
+.task-bar-value,
+.stat-bar-value {
   font-size: 13px;
   font-weight: 700;
   text-align: right;
@@ -4058,7 +4080,8 @@ body.public-layout.sidebar-collapsed .app-shell {
 
 /* ---- oylik dinamika ---- */
 
-.task-trend {
+.task-trend,
+.stat-trend {
   display: flex;
   align-items: flex-end;
   gap: 10px;
@@ -4067,7 +4090,8 @@ body.public-layout.sidebar-collapsed .app-shell {
   padding-bottom: 34px;
 }
 
-.task-trend-col {
+.task-trend-col,
+.stat-trend-col {
   flex: 1;
   display: flex;
   flex-direction: column;
@@ -4076,7 +4100,8 @@ body.public-layout.sidebar-collapsed .app-shell {
   height: 100%;
 }
 
-.task-trend-bars {
+.task-trend-bars,
+.stat-trend-bars {
   display: flex;
   align-items: flex-end;
   justify-content: center;
@@ -4085,7 +4110,8 @@ body.public-layout.sidebar-collapsed .app-shell {
   flex: 1;
 }
 
-.task-trend-bar {
+.task-trend-bar,
+.stat-trend-bar {
   width: 40%;
   max-width: 18px;
   min-height: 2px;
@@ -4093,17 +4119,20 @@ body.public-layout.sidebar-collapsed .app-shell {
   background: var(--accent);
 }
 
-.task-trend-bar.completed {
+.task-trend-bar.completed,
+.stat-trend-bar.completed {
   background: #16a34a;
 }
 
-.task-trend-label {
+.task-trend-label,
+.stat-trend-label {
   font-size: 11px;
   color: var(--muted);
   white-space: nowrap;
 }
 
-.task-trend-legend {
+.task-trend-legend,
+.stat-trend-legend {
   position: absolute;
   bottom: 0;
   left: 0;
@@ -4113,31 +4142,36 @@ body.public-layout.sidebar-collapsed .app-shell {
   color: var(--muted);
 }
 
-.task-trend-legend span {
+.task-trend-legend span,
+.stat-trend-legend span {
   display: inline-flex;
   align-items: center;
   gap: 5px;
 }
 
-.task-trend-legend i {
+.task-trend-legend i,
+.stat-trend-legend i {
   width: 9px;
   height: 9px;
   border-radius: 2px;
   background: var(--accent);
 }
 
-.task-trend-legend i.completed {
+.task-trend-legend i.completed,
+.stat-trend-legend i.completed {
   background: #16a34a;
 }
 
 /* ---- panel ro'yxatlari ---- */
 
-.task-mini-list {
+.task-mini-list,
+.mini-list {
   display: flex;
   flex-direction: column;
 }
 
-.task-mini-row {
+.task-mini-row,
+.mini-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -4151,29 +4185,34 @@ body.public-layout.sidebar-collapsed .app-shell {
   cursor: pointer;
 }
 
-.task-mini-row:last-child {
+.task-mini-row:last-child,
+.mini-row:last-child {
   border-bottom: 0;
 }
 
-.task-mini-row:hover {
+.task-mini-row:hover,
+.mini-row:hover {
   background: var(--surface-soft);
 }
 
-.task-mini-main {
+.task-mini-main,
+.mini-main {
   display: flex;
   flex-direction: column;
   gap: 2px;
   min-width: 0;
 }
 
-.task-mini-main strong {
+.task-mini-main strong,
+.mini-main strong {
   font-size: 13px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.task-mini-main span {
+.task-mini-main span,
+.mini-main span {
   font-size: 11.5px;
   color: var(--muted);
   overflow: hidden;
@@ -4181,19 +4220,22 @@ body.public-layout.sidebar-collapsed .app-shell {
   white-space: nowrap;
 }
 
-.task-mini-meta {
+.task-mini-meta,
+.mini-meta {
   display: flex;
   align-items: center;
   gap: 8px;
   white-space: nowrap;
 }
 
-.task-mini-days {
+.task-mini-days,
+.mini-days {
   font-size: 11.5px;
   color: var(--muted);
 }
 
-.task-mini-days.late {
+.task-mini-days.late,
+.mini-days.late {
   color: var(--danger);
   font-weight: 650;
 }
@@ -4285,7 +4327,8 @@ body.public-layout.sidebar-collapsed .app-shell {
 }
 
 @media (max-width: 720px) {
-  .task-bar-row {
+  .task-bar-row,
+  .stat-bar-row {
     grid-template-columns: 92px 1fr 30px;
   }
 
@@ -4414,4 +4457,98 @@ body.public-layout.sidebar-collapsed .app-shell {
   font-size: 14px;
   font-weight: 650;
   word-break: break-word;
+}
+
+/* ---- Yetkazib berish: bo'lim ko'rinishi ---- */
+
+/* Batch and trip statuses grouped by what they mean for a dispatcher:
+   grey = not started, blue = being prepared, amber = moving, green = finished,
+   red = needs attention. */
+.stat-bar-fill.batch-planned,
+.stat-bar-fill.batch-cancelled,
+.stat-bar-fill.trip-not_assigned,
+.stat-bar-fill.trip-cancelled { background: #94a3b8; }
+
+.stat-bar-fill.batch-supplier_preparing,
+.stat-bar-fill.batch-ready_for_loading,
+.stat-bar-fill.batch-waiting_payment,
+.stat-bar-fill.trip-carrier_search,
+.stat-bar-fill.trip-carrier_assigned,
+.stat-bar-fill.trip-vehicle_assigned { background: #0ea5e9; }
+
+.stat-bar-fill.batch-loading,
+.stat-bar-fill.batch-loaded,
+.stat-bar-fill.batch-in_transit,
+.stat-bar-fill.batch-arrived,
+.stat-bar-fill.batch-unloading,
+.stat-bar-fill.trip-loading,
+.stat-bar-fill.trip-loaded,
+.stat-bar-fill.trip-in_transit,
+.stat-bar-fill.trip-arrived,
+.stat-bar-fill.trip-unloading { background: #d97706; }
+
+.stat-bar-fill.batch-accepted,
+.stat-bar-fill.batch-completed,
+.stat-bar-fill.trip-delivered,
+.stat-bar-fill.trip-accepted,
+.stat-bar-fill.trip-completed { background: #16a34a; }
+
+.stat-bar-fill.batch-issue,
+.stat-bar-fill.batch-quantity_difference,
+.stat-bar-fill.batch-documents_pending,
+.stat-bar-fill.trip-issue { background: var(--danger); }
+
+.stat-trend-bar.delivered { background: #16a34a; }
+.stat-trend-legend i.delivered { background: #16a34a; }
+
+/* Fleet cards */
+.fleet-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 12px;
+}
+
+.fleet-card {
+  display: grid;
+  gap: 4px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-left: 3px solid #94a3b8;
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+.fleet-card.active { border-left-color: #16a34a; }
+.fleet-card.maintenance { border-left-color: var(--warning); }
+
+.fleet-card-top {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.fleet-card-plate {
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+}
+
+.fleet-card span {
+  color: var(--muted);
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The section landing page keeps its cards a little wider than Ijro's. */
+.module-overview .kpi-cards {
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+}
+
+.section-note {
+  margin: 0 0 12px;
+  color: var(--muted);
+  font-size: 12.5px;
 }

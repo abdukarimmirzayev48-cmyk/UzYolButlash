@@ -236,6 +236,16 @@ function initSidebar() {
     group.addEventListener("mouseenter", () => document.body.classList.remove("top-nav-closed"));
   });
 
+  // A section button with data-nav-module opens that module's own overview page;
+  // the dropdown still lists the individual pages underneath it.
+  document.querySelectorAll("[data-nav-module]").forEach((button) => {
+    button.addEventListener("click", () => {
+      document.body.classList.add("top-nav-closed");
+      button.blur();
+      navigate(button.dataset.navModule);
+    });
+  });
+
   const langButton = document.querySelector("#top-lang-toggle");
   if (langButton) {
     langButton.textContent = currentLang() === "cyr" ? "Lotin" : "Кирилл";
@@ -508,7 +518,9 @@ function moneyInputField(name, label, value = "", options = {}) {
 
 function fmtMoney(value) {
   if (value === null || value === undefined || value === "") return dash;
-  return `${new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 2 }).format(Number(value))} so'm`;
+  // The currency word is part of the same text node as the digits, so the DOM
+  // pass can never reach it -- translate it here, while it is still separate.
+  return `${new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 2 }).format(Number(value))} ${localizeText("so'm")}`;
 }
 
 function fmtQty(value, unit = "") {

@@ -29,6 +29,8 @@ from backend.app.models.finance import CustomerInvoice
 from backend.app.models.inventory import StockAllocation
 from backend.app.models.order import Order, OrderItem
 from backend.app.models.procurement import SupplierAddress, SupplierAddressType
+from backend.app.models.transport import Transport
+from backend.app.services import delivery_stats
 from backend.app.services.auth import require_edit
 from backend.app.services.order_status import sync_order_status
 from backend.app.services.telegram_bot import notify_driver_of_trip
@@ -68,6 +70,32 @@ from backend.app.schemas.delivery import (
 
 router = APIRouter(prefix="/api/delivery-batches", tags=["delivery-batches"])
 logistics_router = APIRouter(prefix="/api/logistics", tags=["logistics"])
+overview_router = APIRouter(prefix="/api/delivery", tags=["delivery-overview"])
+
+
+@overview_router.get("/overview")
+def delivery_overview(db: Session = Depends(get_db)):
+    """Everything the Yetkazib berish section is responsible for, in one call.
+
+    Batches carry their items and logistics record, so the quantities, the trip
+    status and the truck all come from the same objects the detail pages show.
+    """
+    batches = list(
+        db.scalars(
+            select(DeliveryBatch).options(
+                selectinload(DeliveryBatch.items),
+                selectinload(DeliveryBatch.logistics),
+                selectinload(DeliveryBatch.client),
+                selectinload(DeliveryBatch.order),
+            )
+        ).all()
+    )
+    transports = list(
+        db.scalars(
+            select(Transport).options(selectinload(Transport.driver), selectinload(Transport.check_ins))
+        ).all()
+    )
+    return delivery_stats.build_overview(batches, transports)
 UPLOAD_DIR = UPLOADS_DIR / "delivery-batches"
 QTY = Decimal("0.001")
 MANUAL_LOGISTICS_STATUSES = {

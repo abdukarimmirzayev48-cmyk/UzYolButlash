@@ -120,6 +120,8 @@ async function render() {
       await renderTransportFuelLog(getTransportIdFromPath());
     } else if (location.pathname === "/transports") {
       await renderTransportsList();
+    } else if (location.pathname === "/delivery") {
+      await renderDeliveryOverview();
     } else if (location.pathname === "/tasks/new") {
       await renderNewTask();
     } else if (/^\/tasks\/\d+\/edit$/.test(location.pathname)) {
