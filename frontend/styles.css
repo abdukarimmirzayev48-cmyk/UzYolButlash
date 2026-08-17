@@ -5076,3 +5076,63 @@ body.public-layout.sidebar-collapsed .app-shell {
   font-weight: 600;
   white-space: nowrap;
 }
+
+/* ---- buyurtma: "mahsulot qachon kerak?" ---- */
+
+.order-date-field {
+  display: grid;
+  gap: 8px;
+  padding: 14px 16px;
+  margin-bottom: 16px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface-soft);
+}
+
+.order-date-head {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+}
+
+.order-date-head .helper-text {
+  margin: 0;
+}
+
+.order-date-controls {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+}
+
+.order-date-controls input[type="date"] {
+  height: 36px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--surface);
+  font-size: 13.5px;
+}
+
+.order-date-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.date-note {
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
+.date-note.ok {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.date-note.warn {
+  color: var(--danger);
+  font-weight: 600;
+}

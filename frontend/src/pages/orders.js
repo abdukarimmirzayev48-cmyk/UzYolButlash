@@ -459,9 +459,111 @@ function orderWizardConfirmPanel(state) {
   </div>`;
 }
 
+// ---- "Mahsulot qachon kerak?" ----
+
+function orderDateValue(date) {
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+}
+
+function orderDatePlus(days) {
+  const date = new Date();
+  date.setDate(date.getDate() + days);
+  return orderDateValue(date);
+}
+
+function orderDaysBetween(from, to) {
+  if (!from || !to) return null;
+  const start = new Date(`${from}T00:00:00`);
+  const end = new Date(`${to}T00:00:00`);
+  return Math.round((end - start) / 86400000);
+}
+
+const ORDER_DATE_PRESETS = [
+  ["1 hafta", 7],
+  ["2 hafta", 14],
+  ["1 oy", 30],
+  ["2 oy", 60],
+];
+
+// What the chosen date actually means, in words: how far away it is and
+// whether it still falls inside the contract. A bare date box told the user
+// none of that, so the field was easy to fill in wrongly.
+function orderDateHuman(value) {
+  // dd.mm.yyyy for this helper: the app-wide "2026 M08 25" is fine in a table
+  // but unhelpful in a sentence explaining a deadline.
+  if (!value) return "";
+  const [year, month, day] = String(value).slice(0, 10).split("-");
+  return `${day}.${month}.${year}`;
+}
+
+// What the chosen date actually means, in words: how far away it is and
+// whether it still falls inside the contract. A bare date box told the user
+// none of that, so the field was easy to fill in wrongly.
+// Every translatable phrase sits in its own element -- glued to a date it
+// would form a string the dictionary has no key for and would stay Latin.
+function orderRequiredDateNote(state) {
+  const value = state.requiredDate || "";
+  const today = orderDateValue(new Date());
+  const limit = state.contract?.valid_until || "";
+  const limitPart = limit
+    ? ` · <span>Shartnoma muddati:</span> <b data-noloc>${esc(orderDateHuman(limit))}</b>`
+    : "";
+  if (!value) {
+    return `<span class="date-note">Sanani tanlang yoki tayyor variantlardan birini bosing.</span>`;
+  }
+  if (value < today) {
+    return `<span class="date-note warn"><span>Bu sana o'tib ketgan. Kelajakdagi sanani tanlang.</span></span>`;
+  }
+  if (limit && value > limit) {
+    return `<span class="date-note warn"><span>Bu sana shartnoma muddatidan keyin.</span> <span>Shartnoma amal qiladi:</span> <b data-noloc>${esc(orderDateHuman(limit))}</b></span>`;
+  }
+  const days = orderDaysBetween(today, value);
+  // Capitalised labels on purpose: the string extractor drops all-lowercase
+  // multi-word fragments, since those are almost always class names.
+  const when = days === 0
+    ? `<span>Bugun kerak</span>`
+    : days === 1
+      ? `<span>Ertaga kerak</span>`
+      : `<span>Qolgan kun:</span> <b data-noloc>${days}</b>`;
+  return `<span class="date-note ok"><b data-noloc>${esc(orderDateHuman(value))}</b> · ${when}${limitPart}</span>`;
+}
+
+function refreshOrderRequiredDateNote(state) {
+  const holder = document.querySelector("[data-required-date-note]");
+  if (!holder) return;
+  holder.innerHTML = orderRequiredDateNote(state);
+  localizeDom(holder);
+}
+
+function orderRequiredDateField(state) {
+  const today = orderDateValue(new Date());
+  const limit = state.contract?.valid_until || "";
+  const presets = ORDER_DATE_PRESETS
+    .map(([label, days]) => [label, orderDatePlus(days)])
+    .filter(([, value]) => !limit || value <= limit);
+  return `<div class="order-date-field">
+    <div class="order-date-head">
+      <span class="field-label-text">Mahsulot qachon kerak? <span class="required-mark" aria-hidden="true">*</span></span>
+      <span class="helper-text">Mijoz mahsulotni qaysi sanagacha kutmoqda</span>
+    </div>
+    <div class="order-date-controls">
+      <input type="date" name="required_date" value="${esc(state.requiredDate || "")}"
+             min="${esc(today)}" ${limit ? `max="${esc(limit)}"` : ""} required />
+      <div class="order-date-presets">
+        ${presets.map(([label, value]) => `
+          <button type="button" class="task-chip ${state.requiredDate === value ? "active" : ""}" data-required-date="${esc(value)}">${label}</button>
+        `).join("")}
+        ${limit ? `<button type="button" class="task-chip ${state.requiredDate === limit ? "active" : ""}" data-required-date="${esc(limit)}">Shartnoma oxiri</button>` : ""}
+      </div>
+    </div>
+    <div data-required-date-note>${orderRequiredDateNote(state)}</div>
+  </div>`;
+}
+
 function orderWizardBody(state) {
   if (state.step === 1) return section("Shartnoma tanlash", `${selectField("contract_id", "Shartnoma", [["", "Shartnomani tanlang"]], "", { required: true }).replace("</select>", `${state.contractOptions || ""}</select>`)}${orderWizardContractSummary(state)}`);
-  if (state.step === 2) return section("Mahsulot va miqdor", `${textField("required_date", "Talab qilingan sana", state.requiredDate || "", "date", { required: true })}${orderWizardProductsTable(state)}`);
+  if (state.step === 2) return section("Mahsulot va miqdor", `${orderRequiredDateField(state)}${orderWizardProductsTable(state)}`);
   if (state.step === 3) return section("Manba va yetkazib berish modeli", orderWizardSourcePanel(state));
   if (state.step === 4) return section("Zaxira / Xarid", orderWizardStockPanel(state));
   if (state.step === 5) return section("Narx va logistika", orderWizardPricePanel(state));
@@ -483,7 +585,9 @@ function validateOrderWizardStep(state, targetStep = state.step) {
   const totals = orderWizardTotals(state);
   if (targetStep >= 2 && !totals.selected.length) return "Kamida bitta mahsulot uchun buyurtma miqdorini kiriting.";
   if (targetStep >= 2 && totals.selected.some((item) => numberValue(item.quantity) > numberValue(item.remaining_quantity))) return "Buyurtma miqdori shartnoma qoldig'idan oshmasligi kerak.";
+  if (targetStep >= 2 && !state.requiredDate) return "Mahsulot qachon kerakligini belgilang.";
   if (targetStep >= 2 && state.requiredDate && state.requiredDate < state.orderDate) return "Talab qilingan sana buyurtma sanasidan oldin bo'lishi mumkin emas.";
+  if (targetStep >= 2 && state.contract?.valid_until && state.requiredDate > state.contract.valid_until) return "Talab qilingan sana shartnoma amal qilish muddatidan keyin bo'lishi mumkin emas.";
   if (targetStep >= 3 && (!state.sourceType || !state.fulfillmentType)) return "Manba va yetkazib berish modelini tanlang.";
   if (targetStep >= 4 && state.sourceType === "supplier_held_stock") {
     const lot = (state.stockLots || []).find((item) => Number(item.id) === Number(state.stockLotId));
@@ -571,7 +675,18 @@ async function renderOrderWizard() {
     form.querySelectorAll("[data-order-wizard-qty]").forEach((input) => input.addEventListener("input", () => {
       updateOrderWizardProductTotals(state, input);
     }));
-    form.elements.required_date?.addEventListener("input", () => { state.requiredDate = form.elements.required_date.value; });
+    form.elements.required_date?.addEventListener("input", () => {
+      state.requiredDate = form.elements.required_date.value;
+      refreshOrderRequiredDateNote(state);
+    });
+    document.querySelectorAll("[data-required-date]").forEach((button) => button.addEventListener("click", () => {
+      state.requiredDate = button.dataset.requiredDate;
+      if (form.elements.required_date) form.elements.required_date.value = state.requiredDate;
+      document.querySelectorAll("[data-required-date]").forEach((other) => {
+        other.classList.toggle("active", other.dataset.requiredDate === state.requiredDate);
+      });
+      refreshOrderRequiredDateNote(state);
+    }));
     form.elements.source_type?.addEventListener("change", async () => {
       state.sourceType = form.elements.source_type.value;
       if (state.sourceType === "russia_direct" && !numberValue(state.markupPercent)) state.markupPercent = "5";
