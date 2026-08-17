@@ -538,10 +538,24 @@ function numberValue(value) {
 function formatNumberInputValue(value, options = {}) {
   if (value === null || value === undefined || value === "") return "";
   const normalized = normalizeNumberInputValue(value);
-  if (normalized === "" || Number.isNaN(Number(normalized))) return "";
-  return new Intl.NumberFormat("ru-RU", {
-    maximumFractionDigits: options.maximumFractionDigits ?? 2,
-  }).format(Number(normalized));
+  if (normalized === "") return "";
+
+  // Group only the whole part and leave the fraction alone, so a half-typed
+  // decimal survives keystroke by keystroke. Running the whole string through
+  // Intl on every keypress turned Number("22.") back into 22 and swallowed the
+  // separator, which meant a fractional amount could not be typed at all:
+  // "22.5" landed as 225 and "1234.75" as 123 475.
+  const negative = normalized.startsWith("-");
+  const digits = normalized.replace(/[^0-9.]/g, "");
+  const hasSeparator = digits.includes(".");
+  const [whole, ...rest] = digits.split(".");
+  const fraction = rest.join("").slice(0, options.maximumFractionDigits ?? 3);
+  // A lone "-" has to survive too, or a negative amount can never be started.
+  if (whole === "" && !hasSeparator) return negative ? "-" : "";
+  const wholeNumber = whole === "" ? 0 : Number(whole);
+  if (!Number.isFinite(wholeNumber)) return "";
+  const grouped = new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 0 }).format(wholeNumber);
+  return `${negative ? "-" : ""}${grouped}${hasSeparator ? "," : ""}${fraction}`;
 }
 
 function setupFormattedNumberInputs(root = document) {

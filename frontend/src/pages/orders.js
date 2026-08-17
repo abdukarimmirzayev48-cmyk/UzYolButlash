@@ -346,7 +346,9 @@ async function enrichOrderWizardContract(state, contractId) {
       state.items[balance.contract_item_id] = "";
     }
   });
-  state.requiredDate = state.contract.valid_until || state.orderDate;
+  // Left blank on purpose: defaulting to the contract's last day made every
+  // order look like it was due at the end of the contract.
+  state.requiredDate = "";
   state.stockLotId = "";
   state.stockAllocatedQuantity = "";
 }
@@ -466,25 +468,12 @@ function orderDateValue(date) {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
 }
 
-function orderDatePlus(days) {
-  const date = new Date();
-  date.setDate(date.getDate() + days);
-  return orderDateValue(date);
-}
-
 function orderDaysBetween(from, to) {
   if (!from || !to) return null;
   const start = new Date(`${from}T00:00:00`);
   const end = new Date(`${to}T00:00:00`);
   return Math.round((end - start) / 86400000);
 }
-
-const ORDER_DATE_PRESETS = [
-  ["1 hafta", 7],
-  ["2 hafta", 14],
-  ["1 oy", 30],
-  ["2 oy", 60],
-];
 
 // What the chosen date actually means, in words: how far away it is and
 // whether it still falls inside the contract. A bare date box told the user
@@ -510,7 +499,7 @@ function orderRequiredDateNote(state) {
     ? ` · <span>Shartnoma muddati:</span> <b data-noloc>${esc(orderDateHuman(limit))}</b>`
     : "";
   if (!value) {
-    return `<span class="date-note">Sanani tanlang yoki tayyor variantlardan birini bosing.</span>`;
+    return `<span class="date-note">Mahsulot kerak bo'ladigan sanani tanlang.</span>`;
   }
   if (value < today) {
     return `<span class="date-note warn"><span>Bu sana o'tib ketgan. Kelajakdagi sanani tanlang.</span></span>`;
@@ -539,9 +528,6 @@ function refreshOrderRequiredDateNote(state) {
 function orderRequiredDateField(state) {
   const today = orderDateValue(new Date());
   const limit = state.contract?.valid_until || "";
-  const presets = ORDER_DATE_PRESETS
-    .map(([label, days]) => [label, orderDatePlus(days)])
-    .filter(([, value]) => !limit || value <= limit);
   return `<div class="order-date-field">
     <div class="order-date-head">
       <span class="field-label-text">Mahsulot qachon kerak? <span class="required-mark" aria-hidden="true">*</span></span>
@@ -550,12 +536,6 @@ function orderRequiredDateField(state) {
     <div class="order-date-controls">
       <input type="date" name="required_date" value="${esc(state.requiredDate || "")}"
              min="${esc(today)}" ${limit ? `max="${esc(limit)}"` : ""} required />
-      <div class="order-date-presets">
-        ${presets.map(([label, value]) => `
-          <button type="button" class="task-chip ${state.requiredDate === value ? "active" : ""}" data-required-date="${esc(value)}">${label}</button>
-        `).join("")}
-        ${limit ? `<button type="button" class="task-chip ${state.requiredDate === limit ? "active" : ""}" data-required-date="${esc(limit)}">Shartnoma oxiri</button>` : ""}
-      </div>
     </div>
     <div data-required-date-note>${orderRequiredDateNote(state)}</div>
   </div>`;
@@ -679,14 +659,7 @@ async function renderOrderWizard() {
       state.requiredDate = form.elements.required_date.value;
       refreshOrderRequiredDateNote(state);
     });
-    document.querySelectorAll("[data-required-date]").forEach((button) => button.addEventListener("click", () => {
-      state.requiredDate = button.dataset.requiredDate;
-      if (form.elements.required_date) form.elements.required_date.value = state.requiredDate;
-      document.querySelectorAll("[data-required-date]").forEach((other) => {
-        other.classList.toggle("active", other.dataset.requiredDate === state.requiredDate);
-      });
-      refreshOrderRequiredDateNote(state);
-    }));
+
     form.elements.source_type?.addEventListener("change", async () => {
       state.sourceType = form.elements.source_type.value;
       if (state.sourceType === "russia_direct" && !numberValue(state.markupPercent)) state.markupPercent = "5";

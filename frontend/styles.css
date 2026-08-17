@@ -5116,12 +5116,6 @@ body.public-layout.sidebar-collapsed .app-shell {
   font-size: 13.5px;
 }
 
-.order-date-presets {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-
 .date-note {
   font-size: 12.5px;
   color: var(--muted);
