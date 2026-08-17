@@ -309,6 +309,16 @@ def parse_items(text: str) -> list[dict]:
     total_with_vat = total_with_vat or amount_after([r"(?:QQS bilan|с НДС|НДС билан|жами тўлов|итого)"], text)
     if not product_name and not any([quantity, unit_price, total_with_vat]):
         return []
+
+    # These contracts state one price, "qo'shilgan qiymat solig'i bilan birga",
+    # and usually give no VAT breakdown at all. Split that inclusive total here
+    # so the review screen shows the same base and tax that will be stored --
+    # otherwise the reviewer sees two empty boxes and has to work it out.
+    rate = vat_rate or Decimal("12")
+    if total_with_vat and total_without_vat is None and vat_amount is None and rate:
+        total_without_vat = (total_with_vat / (Decimal("1") + rate / Decimal("100"))).quantize(Decimal("0.01"))
+        vat_amount = total_with_vat - total_without_vat
+
     return [{
         "product_name": product_name,
         "product_brand": brand,
@@ -318,7 +328,7 @@ def parse_items(text: str) -> list[dict]:
         "quantity": quantity,
         "unit_price": unit_price,
         "amount_without_vat": total_without_vat,
-        "vat_rate": vat_rate or Decimal("12"),
+        "vat_rate": rate,
         "vat_amount": vat_amount,
         "amount_with_vat": total_with_vat,
     }]
@@ -352,8 +362,15 @@ def calculation_warnings(result: ParsedContractResult) -> list[str]:
         vat = item.get("vat_amount")
         total = item.get("amount_with_vat")
         mismatch = False
-        if q is not None and p is not None and subtotal is not None and abs((q * p) - subtotal) > tolerance:
-            mismatch = True
+        # quantity x unit price has to land on one of the two totals: the base
+        # when the price excludes VAT, the inclusive total when it carries it.
+        # Measuring against the base alone flags every VAT-inclusive contract,
+        # which is most of them here.
+        if q is not None and p is not None:
+            line_total = q * p
+            candidates = [c for c in (subtotal, total) if c is not None]
+            if candidates and all(abs(line_total - c) > tolerance for c in candidates):
+                mismatch = True
         if subtotal is not None and vat_rate is not None and vat is not None and abs((subtotal * vat_rate / 100) - vat) > tolerance:
             mismatch = True
         if subtotal is not None and vat is not None and total is not None and abs((subtotal + vat) - total) > tolerance:

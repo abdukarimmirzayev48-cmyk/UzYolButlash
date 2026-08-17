@@ -282,6 +282,31 @@ def calculate_item(item: ContractItem) -> None:
     item.total_with_vat = money(item.subtotal + item.vat_amount)
 
 
+def complete_parsed_item_amounts(item: ContractItem) -> None:
+    """Fill in only the figures the contract itself left unstated.
+
+    These contracts price the goods "qo'shilgan qiymat solig'i bilan birga" --
+    VAT included -- and typically state that single total and nothing else. When
+    the inclusive total is all we have, the base and the tax must be derived
+    *out of* it. Doing what calculate_item() does -- quantity x unit price, then
+    +12% -- charges the tax a second time, because that unit price already
+    carries it: a 195 000 000 contract came out as 218 400 000.
+
+    Anything the PDF did state is left exactly as parsed.
+    """
+    rate = item.vat_rate if item.vat_rate is not None else Decimal("12")
+    if item.total_with_vat and not item.subtotal and not item.vat_amount:
+        item.subtotal = money(item.total_with_vat / (Decimal("1") + rate / Decimal("100")))
+        item.vat_amount = money(item.total_with_vat - item.subtotal)
+        return
+    if not item.subtotal:
+        item.subtotal = money(item.quantity * item.unit_price)
+    if not item.vat_amount:
+        item.vat_amount = money(item.subtotal * rate / Decimal("100"))
+    if not item.total_with_vat:
+        item.total_with_vat = money(item.subtotal + item.vat_amount)
+
+
 def apply_product_fields(db: Session, item: ContractItem) -> None:
     if item.product_id is None:
         return
@@ -584,8 +609,7 @@ def create_contract_from_parsed(payload: ContractFromParsedCreate, db: Session =
             raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Birlik narxi 0 dan katta bo‘lishi kerak.")
         item = parsed_item_to_contract_item(contract.id, item_payload)
         apply_product_fields(db, item)
-        if item.subtotal == 0 or item.vat_amount == 0 or item.total_with_vat == 0:
-            calculate_item(item)
+        complete_parsed_item_amounts(item)
         db.add(item)
     db.flush()
     db.add(
