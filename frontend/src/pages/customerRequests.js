@@ -80,7 +80,7 @@ async function renderCustomerRequestsList() {
         <td>${fmt(item.payment_source_label)}</td>
         <td>${requestStatusBadge(item)}</td>
         <td>${fmtDate(item.created_at)}</td>
-        <td><div class="ops-row-actions"><button class="link-btn" data-nav="/customer-requests/${item.id}">Ko'rish</button>${canEdit("sotuv") ? `<button class="link-btn" data-nav="/customer-requests/${item.id}/edit">Tahrirlash</button>` : ""}</div></td>
+        <td><div class="ops-row-actions"><button class="link-btn" data-nav="/customer-requests/${item.id}">Ko'rish</button>${canEdit("sotuv") ? `<button class="link-btn" data-nav="/customer-requests/${item.id}/edit">Tahrirlash</button><button class="link-btn" style="color:var(--danger)" data-delete-request="${item.id}" data-request-number="${esc(item.request_number || "")}">O'chirish</button>` : ""}</div></td>
       </tr>
     `).join(""),
     emptyText: "Talabnomalar topilmadi.",
@@ -89,6 +89,7 @@ async function renderCustomerRequestsList() {
   });
   bindOpsSearch("customer-request-search-form", "/customer-requests", ["search", "status", "customer_type", "payment_source", "product_id"]);
   bindOpsPagination("customerrequest", "/customer-requests");
+  bindCustomerRequestDelete(() => renderCustomerRequestsList());
 }
 
 async function renderCustomerRequestDetail(id) {
@@ -105,7 +106,8 @@ async function renderCustomerRequestDetail(id) {
         <div class="actions workflow-actions">
           <button class="btn" data-nav="/customer-requests">Orqaga</button>
           ${canEdit("sotuv") ? `<button class="btn" data-nav="/customer-requests/${request.id}/edit">Tahrirlash</button>
-          <button class="btn primary" data-convert-request="${request.id}">Buyurtmaga o'tkazish</button>` : ""}
+          <button class="btn primary" data-convert-request="${request.id}">Buyurtmaga o'tkazish</button>
+          <button class="btn danger" data-delete-request="${request.id}" data-request-number="${esc(request.request_number || "")}">O'chirish</button>` : ""}
         </div>
       </div>
       ${section("Mijoz turi va to'lov manbasi", detailList([["Mijoz turi", request.customer_type_label], ["To'lov manbasi", request.payment_source_label], ["Status", request.status_label]]))}
@@ -125,6 +127,25 @@ async function renderCustomerRequestDetail(id) {
     </div>
   `;
   bindCustomerRequestDetailActions(request);
+}
+
+// Shared by the list and the card so both delete the same way. The backend
+// refuses once a contract was built from the request, and that refusal is what
+// the user sees -- no need to duplicate the rule here.
+function bindCustomerRequestDelete(onDeleted) {
+  app.querySelectorAll("[data-delete-request]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const number = button.dataset.requestNumber || "";
+      if (!confirmMsg(`${number} talabnomasi butunlay o'chiriladi. Bu amalni bekor qilib bo'lmaydi.`)) return;
+      try {
+        await api(`/api/customer-requests/${button.dataset.deleteRequest}`, { method: "DELETE" });
+        showToast("Talabnoma o'chirildi.");
+        onDeleted();
+      } catch (error) {
+        showToast(error.message, true);
+      }
+    });
+  });
 }
 
 function bindCustomerRequestDetailActions(request) {
@@ -158,6 +179,7 @@ function bindCustomerRequestDetailActions(request) {
       showToast(error.message, true);
     }
   });
+  bindCustomerRequestDelete(() => navigate("/customer-requests"));
 }
 
 async function renderEditCustomerRequest(id) {

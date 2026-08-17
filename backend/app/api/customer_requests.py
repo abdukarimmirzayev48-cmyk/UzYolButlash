@@ -1,11 +1,12 @@
 from datetime import datetime
 from decimal import Decimal
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session, selectinload
 
 from backend.app.db.session import get_db
+from backend.app.models.contract import Contract
 from backend.app.models.customer_request import (
     CompanyRegistry,
     CustomerRequest,
@@ -346,6 +347,26 @@ def update_customer_request_status(
     add_status_history(db, request, old_status, payload.status, payload.comment or payload.rejection_reason, payload.changed_by)
     db.commit()
     return serialize_detail(get_request_or_404(db, request_id))
+
+
+@router.delete("/{request_id}", status_code=status.HTTP_204_NO_CONTENT, dependencies=[Depends(require_edit("sotuv"))])
+def delete_customer_request(request_id: int, db: Session = Depends(get_db)):
+    """Remove a talabnoma -- for the mistaken and the spam ones.
+
+    Refused once a contract has been built from it: that contract points back
+    here, and deleting the request would leave it pointing at nothing. Such a
+    request should be cancelled by status, not erased.
+    """
+    request = get_request_or_404(db, request_id)
+    contract = db.scalars(select(Contract).where(Contract.customer_request_id == request_id)).first()
+    if contract:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Bu talabnoma asosida {contract.contract_number} shartnomasi tuzilgan, shuning uchun o'chirib bo'lmaydi.",
+        )
+    db.delete(request)
+    db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.post("/{request_id}/convert-to-order", dependencies=[Depends(require_edit("sotuv"))])

@@ -282,9 +282,10 @@ function publicRequestScheduleStep() {
     <button class="btn" type="button" data-public-add-schedule>Oy qo'shish</button>
     <div class="public-total-grid">
       <div><span>Umumiy miqdor</span><strong>${fmtQty(requested, publicRequestState.form.unit)}</strong></div>
-      <div><span>Grafik jami</span><strong>${fmtQty(total, publicRequestState.form.unit)}</strong></div>
+      <div><span>Grafik jami</span><strong data-schedule-total>${fmtQty(total, publicRequestState.form.unit)}</strong></div>
     </div>
-    ${publicError("schedule")}${total && requested && total !== requested ? `<p class="public-warning">Kalendar grafikdagi jami miqdor umumiy miqdorga teng bo'lishi kerak.</p>` : ""}
+    ${publicError("schedule")}
+    <p class="public-warning" data-schedule-warning ${total && requested && total !== requested ? "" : "hidden"}>Kalendar grafikdagi jami miqdor umumiy miqdorga teng bo'lishi kerak.</p>
   `;
 }
 
@@ -473,8 +474,12 @@ function bindPublicRequestEvents() {
     });
   });
   app.querySelectorAll("[data-schedule-field]").forEach((input) => {
+    // Neither event re-renders: the totals refresh in place and the number
+    // formatting is handled by setupFormattedNumberInputs. Re-rendering on
+    // change meant that clicking "Davom etish" straight after typing rebuilt
+    // the step under the pointer, so the first click was swallowed.
     input.addEventListener("input", () => publicUpdateScheduleField(input, false));
-    input.addEventListener("change", () => publicUpdateScheduleField(input));
+    input.addEventListener("change", () => publicUpdateScheduleField(input, false));
   });
   app.querySelector("[data-public-add-schedule]")?.addEventListener("click", () => {
     publicRequestState.form.schedule.push({ year: new Date().getFullYear(), month: 1, quantity: "" });
@@ -517,7 +522,22 @@ function publicUpdateScheduleField(input, rerender = true) {
   const [index, key] = input.dataset.scheduleField.split(":");
   publicRequestState.form.schedule[Number(index)][key] = key === "quantity" ? normalizeNumberInputValue(input.value) : input.value;
   publicRequestSaveDraft();
-  if (rerender) renderPublicTalabnoma();
+  if (rerender) {
+    renderPublicTalabnoma();
+    return;
+  }
+  // While typing, refresh only the total and the mismatch warning. A full
+  // re-render here would rebuild the input and throw away focus and caret.
+  publicRefreshScheduleTotals();
+}
+
+function publicRefreshScheduleTotals() {
+  const total = publicScheduleTotal();
+  const requested = numberValue(publicRequestState.form.total_quantity);
+  const totalNode = app.querySelector("[data-schedule-total]");
+  if (totalNode) totalNode.textContent = localizeText(fmtQty(total, publicRequestState.form.unit));
+  const warning = app.querySelector("[data-schedule-warning]");
+  if (warning) warning.hidden = !(total && requested && total !== requested);
 }
 
 async function publicLookupInn() {
