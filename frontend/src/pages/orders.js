@@ -501,15 +501,15 @@ function orderRequiredDateNote(state) {
   if (!value) {
     return `<span class="date-note">Mahsulot kerak bo'ladigan sanani tanlang.</span>`;
   }
+  // Notices, not blocks: both cases happen in real deals, so they inform
+  // rather than stop the order.
   if (value < today) {
-    return `<span class="date-note warn"><span>Bu sana o'tib ketgan. Kelajakdagi sanani tanlang.</span></span>`;
+    return `<span class="date-note warn"><span>Diqqat: bu sana bugundan oldin.</span>${limitPart}</span>`;
   }
   if (limit && value > limit) {
-    return `<span class="date-note warn"><span>Bu sana shartnoma muddatidan keyin.</span> <span>Shartnoma amal qiladi:</span> <b data-noloc>${esc(orderDateHuman(limit))}</b></span>`;
+    return `<span class="date-note warn"><span>Diqqat: bu sana shartnoma muddatidan keyin.</span>${limitPart}</span>`;
   }
   const days = orderDaysBetween(today, value);
-  // Capitalised labels on purpose: the string extractor drops all-lowercase
-  // multi-word fragments, since those are almost always class names.
   const when = days === 0
     ? `<span>Bugun kerak</span>`
     : days === 1
@@ -526,16 +526,13 @@ function refreshOrderRequiredDateNote(state) {
 }
 
 function orderRequiredDateField(state) {
-  const today = orderDateValue(new Date());
-  const limit = state.contract?.valid_until || "";
   return `<div class="order-date-field">
     <div class="order-date-head">
       <span class="field-label-text">Mahsulot qachon kerak? <span class="required-mark" aria-hidden="true">*</span></span>
       <span class="helper-text">Mijoz mahsulotni qaysi sanagacha kutmoqda</span>
     </div>
     <div class="order-date-controls">
-      <input type="date" name="required_date" value="${esc(state.requiredDate || "")}"
-             min="${esc(today)}" ${limit ? `max="${esc(limit)}"` : ""} required />
+      ${ruDateField("required_date", state.requiredDate || "", { required: true })}
     </div>
     <div data-required-date-note>${orderRequiredDateNote(state)}</div>
   </div>`;
@@ -565,9 +562,10 @@ function validateOrderWizardStep(state, targetStep = state.step) {
   const totals = orderWizardTotals(state);
   if (targetStep >= 2 && !totals.selected.length) return "Kamida bitta mahsulot uchun buyurtma miqdorini kiriting.";
   if (targetStep >= 2 && totals.selected.some((item) => numberValue(item.quantity) > numberValue(item.remaining_quantity))) return "Buyurtma miqdori shartnoma qoldig'idan oshmasligi kerak.";
+  // The date only has to be present. Whether it sits before the contract date
+  // or past its expiry is shown as a notice under the field, not enforced --
+  // real orders do get agreed outside those bounds.
   if (targetStep >= 2 && !state.requiredDate) return "Mahsulot qachon kerakligini belgilang.";
-  if (targetStep >= 2 && state.requiredDate && state.requiredDate < state.orderDate) return "Talab qilingan sana buyurtma sanasidan oldin bo'lishi mumkin emas.";
-  if (targetStep >= 2 && state.contract?.valid_until && state.requiredDate > state.contract.valid_until) return "Talab qilingan sana shartnoma amal qilish muddatidan keyin bo'lishi mumkin emas.";
   if (targetStep >= 3 && (!state.sourceType || !state.fulfillmentType)) return "Manba va yetkazib berish modelini tanlang.";
   if (targetStep >= 4 && state.sourceType === "supplier_held_stock") {
     const lot = (state.stockLots || []).find((item) => Number(item.id) === Number(state.stockLotId));
@@ -655,6 +653,7 @@ async function renderOrderWizard() {
     form.querySelectorAll("[data-order-wizard-qty]").forEach((input) => input.addEventListener("input", () => {
       updateOrderWizardProductTotals(state, input);
     }));
+    bindRuDateFields(document);
     form.elements.required_date?.addEventListener("input", () => {
       state.requiredDate = form.elements.required_date.value;
       refreshOrderRequiredDateNote(state);

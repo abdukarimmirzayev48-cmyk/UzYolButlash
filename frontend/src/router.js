@@ -165,6 +165,7 @@ async function render() {
     }
     setupFormattedNumberInputs(app);
     bindSelectSearch(app);
+    bindRuDateFields(app);
     document.querySelectorAll("[data-nav]").forEach((button) => {
       button.addEventListener("click", () => navigate(button.dataset.nav));
     });

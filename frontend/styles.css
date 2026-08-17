@@ -5107,15 +5107,6 @@ body.public-layout.sidebar-collapsed .app-shell {
   gap: 8px 14px;
 }
 
-.order-date-controls input[type="date"] {
-  height: 36px;
-  padding: 0 10px;
-  border: 1px solid var(--line);
-  border-radius: 7px;
-  background: var(--surface);
-  font-size: 13.5px;
-}
-
 .date-note {
   font-size: 12.5px;
   color: var(--muted);
@@ -5129,4 +5120,67 @@ body.public-layout.sidebar-collapsed .app-shell {
 .date-note.warn {
   color: var(--danger);
   font-weight: 600;
+}
+
+/* ---- дд.мм.гггг sana maydoni ---- */
+
+.ru-date {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.ru-date-text {
+  width: 118px;
+  height: 36px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--surface);
+  font-size: 13.5px;
+  letter-spacing: 0.2px;
+}
+
+.ru-date-text:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: -1px;
+}
+
+.ru-date-text.invalid {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+/* Only the calendar button of the native control is kept; its own text would
+   render in the browser's locale, which is the whole reason for this field. */
+.ru-date-picker {
+  width: 34px;
+  height: 36px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  cursor: pointer;
+  background: var(--surface) center / 17px 17px no-repeat
+    url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23677381' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><rect x='3' y='4' width='18' height='18' rx='2'/><line x1='16' y1='2' x2='16' y2='6'/><line x1='8' y1='2' x2='8' y2='6'/><line x1='3' y1='10' x2='21' y2='10'/></svg>");
+}
+
+.ru-date-picker::-webkit-datetime-edit,
+.ru-date-picker::-webkit-inner-spin-button,
+.ru-date-picker::-webkit-clear-button {
+  display: none;
+}
+
+/* Chromium's own indicator glyph does not render at this size, so the button
+   draws its own icon and the indicator sits on top, invisible but clickable. */
+.ru-date-picker::-webkit-calendar-picker-indicator {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.ru-date-picker:hover {
+  border-color: var(--accent);
 }

@@ -239,6 +239,79 @@ function bindSelectSearch(root = app) {
   });
 }
 
+// ---- дд.мм.гггг sana maydoni ----
+//
+// Chromium <input type="date"> ni har doim brauzerning o'z tilida chizadi
+// (bizda dd/mm/yyyy) va buni na lang="", na sahifa lokali o'zgartira oladi.
+// Shuning uchun ko'rinadigan maydon -- niqobli matn katakchasi, ISO qiymat
+// esa yonidagi yashirin inputda turadi, ya'ni forma uni avvalgidek nomi
+// bo'yicha o'qiydi. Yonida kalendar tugmasi ham qoladi.
+
+function isoToRuDate(iso) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(iso || ""));
+  return match ? `${match[3]}.${match[2]}.${match[1]}` : "";
+}
+
+function ruDateToIso(text) {
+  const match = /^(\d{2})\.(\d{2})\.(\d{4})$/.exec(String(text || "").trim());
+  if (!match) return "";
+  const [, day, month, year] = match;
+  const date = new Date(`${year}-${month}-${day}T00:00:00`);
+  if (Number.isNaN(date.getTime())) return "";
+  // Reject 31.02.2026 and friends: the Date constructor would roll them over.
+  if (date.getMonth() + 1 !== Number(month) || date.getDate() !== Number(day)) return "";
+  return `${year}-${month}-${day}`;
+}
+
+function ruDateMask(raw) {
+  const digits = String(raw || "").replace(/\D/g, "").slice(0, 8);
+  return [digits.slice(0, 2), digits.slice(2, 4), digits.slice(4, 8)].filter(Boolean).join(".");
+}
+
+function ruDateField(name, value = "", options = {}) {
+  const attrs = [options.min ? `data-min="${esc(options.min)}"` : "", options.max ? `data-max="${esc(options.max)}"` : ""].join(" ");
+  return `<span class="ru-date" data-ru-date ${attrs}>
+    <input type="hidden" name="${esc(name)}" value="${esc(value)}" />
+    <input type="text" class="ru-date-text" data-ru-date-text inputmode="numeric" maxlength="10"
+           placeholder="дд.мм.гггг" value="${esc(isoToRuDate(value))}" ${options.required ? "required" : ""} />
+    <input type="date" class="ru-date-picker" data-ru-date-picker value="${esc(value)}" tabindex="-1" aria-label="Kalendar" />
+  </span>`;
+}
+
+function bindRuDateFields(root = app) {
+  root.querySelectorAll("[data-ru-date]").forEach((holder) => {
+    if (holder.dataset.ruDateBound) return;
+    holder.dataset.ruDateBound = "true";
+    const hidden = holder.querySelector("input[type=hidden]");
+    const text = holder.querySelector("[data-ru-date-text]");
+    const picker = holder.querySelector("[data-ru-date-picker]");
+
+    // The form listens on the hidden input by name, so tell it the value moved.
+    const publish = (iso) => {
+      if (hidden.value === iso) return;
+      hidden.value = iso;
+      hidden.dispatchEvent(new Event("input", { bubbles: true }));
+      hidden.dispatchEvent(new Event("change", { bubbles: true }));
+    };
+
+    text.addEventListener("input", () => {
+      const masked = ruDateMask(text.value);
+      const atEnd = text.selectionStart === text.value.length;
+      text.value = masked;
+      if (atEnd) text.setSelectionRange(masked.length, masked.length);
+      const iso = ruDateToIso(masked);
+      picker.value = iso;
+      publish(iso);
+      text.classList.toggle("invalid", masked.length === 10 && !iso);
+    });
+    picker.addEventListener("change", () => {
+      text.value = isoToRuDate(picker.value);
+      text.classList.remove("invalid");
+      publish(picker.value);
+    });
+  });
+}
+
 async function api(path, options = {}) {
   const response = await fetch(path, {
     headers: { "Content-Type": "application/json", ...(options.headers || {}) },
