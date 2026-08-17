@@ -1,6 +1,6 @@
 async function fetchClientsForSelect(selectedId = null) {
-  const data = await api("/api/clients?page_size=100");
-  return data.items.map((client) => `
+  const clients = await fetchAllClients();
+  return clients.map((client) => `
     <option value="${client.id}" ${Number(selectedId) === client.id ? "selected" : ""}>
       ${esc(client.name)}${client.inn ? ` - ${esc(client.inn)}` : ""}
     </option>
@@ -272,8 +272,8 @@ function contractWizardStepper(step) {
 }
 
 async function contractWizardClientOptions(selectedId = "") {
-  const data = await api("/api/clients?page_size=100");
-  return [["", "Mijozni tanlang"], ...data.items.map((client) => [
+  const clients = await fetchAllClients();
+  return [["", "Mijozni tanlang"], ...clients.map((client) => [
     String(client.id),
     `${client.name}${client.inn ? ` - ${client.inn}` : ""}`,
   ])];

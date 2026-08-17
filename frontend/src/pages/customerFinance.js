@@ -1,6 +1,6 @@
 async function fetchClientsOptions(selectedId = null) {
-  const data = await api("/api/clients?page_size=100");
-  return data.items.map((client) => `<option value="${client.id}" ${Number(selectedId) === client.id ? "selected" : ""}>${esc(client.name)}${client.inn ? ` - ${esc(client.inn)}` : ""}</option>`).join("");
+  const clients = await fetchAllClients();
+  return clients.map((client) => `<option value="${client.id}" ${Number(selectedId) === client.id ? "selected" : ""}>${esc(client.name)}${client.inn ? ` - ${esc(client.inn)}` : ""}</option>`).join("");
 }
 
 function financeItemRow(item = {}, index = 0) {

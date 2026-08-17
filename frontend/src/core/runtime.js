@@ -175,6 +175,27 @@ function translateApiErrorDetail(detail) {
   }).join("; ");
 }
 
+// A <select> needs every row, but the API caps a page at 100 and there are
+// already 267 clients -- one request silently dropped two thirds of them, so
+// most customers simply could not be picked. Walk the pages instead.
+async function fetchAllPages(path, pageSize = 100, maxPages = 50) {
+  const joiner = path.includes("?") ? "&" : "?";
+  let items = [];
+  for (let page = 1; page <= maxPages; page += 1) {
+    const data = await api(`${path}${joiner}page=${page}&page_size=${pageSize}`);
+    items = items.concat(data.items || []);
+    if (!(data.items || []).length || items.length >= (data.total || 0)) break;
+  }
+  return items;
+}
+
+async function fetchAllClients() {
+  // The API orders by creation date, which tells a person nothing when they are
+  // hunting for one name among 267. Sort for the dropdown instead.
+  const clients = await fetchAllPages("/api/clients");
+  return clients.sort((a, b) => String(a.name || "").localeCompare(String(b.name || ""), "ru"));
+}
+
 async function api(path, options = {}) {
   const response = await fetch(path, {
     headers: { "Content-Type": "application/json", ...(options.headers || {}) },
