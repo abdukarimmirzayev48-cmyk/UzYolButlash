@@ -228,20 +228,25 @@ def advance(api: Api, batch: dict, stage: str, today: date) -> str:
     if stage == "arrived":
         return "arrived"
 
-    # Acceptance: the customer signs for what actually arrived.
-    shortfall = 0.5 if stage == "difference" else 0
+    # Acceptance: the customer signs for what actually arrived. A batch is only
+    # flagged for a shortfall it actually has -- a problem status whose numbers
+    # all balance is worse than no demo data, because nobody can explain it.
+    shortfall = {"difference": 0.5, "issue": 2.0}.get(stage, 0)
     detail = api.call("GET", f"/api/delivery-batches/{batch_id}")
     for index, item in enumerate(detail["items"]):
         accepted = float(item["loaded_quantity"] or 0) - (shortfall if index == 0 else 0)
         api.call("PATCH", f"/api/delivery-batches/{batch_id}/items/{item['id']}", {
             "accepted_quantity": max(accepted, 0),
+            "comment": f"Qabulda {shortfall:g} t kam chiqdi." if shortfall and index == 0 else None,
         })
 
     if stage == "issue":
-        api.call("PATCH", f"/api/delivery-batches/{batch_id}", {
-            "status": "issue",
-            "notes": "Qabul qilishda nomuvofiqlik aniqlandi, tekshirilmoqda.",
-        })
+        reason = (
+            f"Qabul qilishda {shortfall:g} t kam chiqdi. Sisterna plombasi butun, "
+            "og'irlik o'lchovi qayta tekshirilmoqda. Ta'minotchiga da'vo yuborildi."
+        )
+        api.call("PATCH", f"/api/delivery-batches/{batch_id}", {"status": "issue", "notes": reason})
+        api.call("POST", f"/api/delivery-batches/{batch_id}/notes", {"note": reason, "created_by": DEMO_TAG})
         return "issue"
 
     add_documents(api, batch_id, ["ttn", "acceptance_act", "quality_certificate"])
