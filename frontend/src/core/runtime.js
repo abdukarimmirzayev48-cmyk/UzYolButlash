@@ -196,6 +196,49 @@ async function fetchAllClients() {
   return clients.sort((a, b) => String(a.name || "").localeCompare(String(b.name || ""), "ru"));
 }
 
+// Search box that filters a real <select>. Deliberately not a custom combobox:
+// the <select> stays the value holder, so `required`, change listeners and
+// field() keep working exactly as before -- only the option list narrows.
+function selectSearch(selectName, placeholder = "Qidirish") {
+  return `<div class="select-search">
+    <input type="search" data-select-filter="${esc(selectName)}" placeholder="${esc(placeholder)}" />
+    <span class="select-search-count" data-select-count></span>
+  </div>`;
+}
+
+function bindSelectSearch(root = app) {
+  root.querySelectorAll("[data-select-filter]").forEach((search) => {
+    if (search.dataset.searchBound) return;
+    search.dataset.searchBound = "true";
+    const select = root.querySelector(`select[name="${search.dataset.selectFilter}"]`);
+    if (!select) return;
+    const counter = search.parentElement.querySelector("[data-select-count]");
+    const all = [...select.options].map((option) => ({
+      value: option.value,
+      text: option.text,
+      haystack: option.text.toLowerCase(),
+    }));
+    const real = all.filter((option) => option.value).length;
+
+    const apply = () => {
+      const query = search.value.trim().toLowerCase();
+      const chosen = select.value;
+      // The placeholder row and whatever is currently chosen always stay, so a
+      // filter can never hide the value the form is about to submit.
+      const shown = all.filter((option) => !option.value || !query || option.haystack.includes(query) || option.value === chosen);
+      select.innerHTML = "";
+      shown.forEach((option) => select.add(new Option(option.text, option.value, false, option.value === chosen)));
+      select.value = chosen;
+      if (counter) {
+        const matched = shown.filter((option) => option.value).length;
+        counter.textContent = query ? localizeText(`${matched} / ${real}`) : localizeText(`${real} ta`);
+      }
+    };
+    search.addEventListener("input", apply);
+    apply();
+  });
+}
+
 async function api(path, options = {}) {
   const response = await fetch(path, {
     headers: { "Content-Type": "application/json", ...(options.headers || {}) },

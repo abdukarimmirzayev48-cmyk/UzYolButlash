@@ -168,7 +168,7 @@ async function contractForm(contract = null) {
             ${textField("contract_number", "Contract number", contract?.contract_number)}
             ${textField("contract_date", "Contract date", contract?.contract_date || today, "date")}
             ${textField("valid_until", "Valid until", contract?.valid_until || oneYearLater, "date")}
-            <label>Client<select name="client_id"><option value="">Select client</option>${clientOptions}</select></label>
+            <label>Client${selectSearch("client_id", "Mijoz nomi yoki STIR bo'yicha qidiring")}<select name="client_id"><option value="">Select client</option>${clientOptions}</select></label>
             ${textField("title", "Title", contract?.title)}
             ${selectField("status", "Status", contractStatuses, contract?.status || "draft")}
             ${textField("created_by", "Created by", contract?.created_by)}
@@ -345,7 +345,7 @@ function contractWizardClientPanel(state) {
   const address = contractWizardLegalAddress(state.client);
   const bank = contractWizardPrimaryBank(state.client);
   const warnings = state.client ? contractWizardClientWarnings(state.client) : [];
-  return `${selectField("client_id", "Mijoz", state.clientOptions || [["", "Mijozni tanlang"]], String(state.clientId || ""), { required: true })}
+  return `${selectSearch("client_id", "Mijoz nomi yoki STIR bo'yicha qidiring")}${selectField("client_id", "Mijoz", state.clientOptions || [["", "Mijozni tanlang"]], String(state.clientId || ""), { required: true })}
     ${state.client ? `
       ${warnings.length ? workflowWarningsPanel(["Mijoz ma'lumotlari to'liq emas. Shartnoma yaratishdan oldin mijoz rekvizitlarini tekshiring.", ...warnings]) : ""}
       ${summaryCards([
@@ -632,6 +632,8 @@ async function uploadContractWizardDocuments(contractId, state) {
 function bindContractWizard(state, draw) {
   const form = document.querySelector("#contract-wizard-form");
   if (form) bindProductSelects(form);
+  // The wizard redraws itself between steps without going through the router.
+  bindSelectSearch(app);
   if (form?.querySelector("[data-contract-wizard-item]")) updateContractWizardProductTotals(state);
   document.querySelector("[data-contract-wizard-cancel]")?.addEventListener("click", () => navigate("/contracts"));
   form?.elements.client_id?.addEventListener("change", async (event) => {
@@ -868,7 +870,7 @@ async function contractParsedReview(parsedState) {
     ${section("Hisob-kitob", `<div class="grid">${textField("total_without_vat", "QQSsiz umumiy summa", parsed.total_without_vat, "number")}${textField("vat_rate", "QQS stavkasi", parsed.vat_rate || 12, "number")}${textField("vat_amount", "QQS summasi", parsed.vat_amount, "number")}${textField("total_with_vat", "QQS bilan umumiy summa", parsed.total_with_vat, "number")}</div>`)}
     ${section("To'lov shartlari", `<div class="grid">${textField("prepayment_percent", "Oldindan to'lov foizi", parsed.prepayment_percent || 30, "number")}${textField("prepayment_amount", "Oldindan to'lov summasi", parsed.prepayment_amount, "number")}${textField("remaining_payment_percent", "Qolgan to'lov foizi", parsed.remaining_payment_percent || 70, "number")}<label class="checkbox-row"><input type="checkbox" name="transport_cost_separate" ${parsed.transport_cost_separate ? "checked" : ""} /> Transport xarajati alohida hisoblanadi</label>${textArea("payment_terms_text", "To'lov shartlari", parsed.payment_terms_text)}</div>`)}
     ${section("Elektron hujjat identifikatorlari", `<div class="grid">${textField("didox_id", "Didox ID", parsed.didox_id)}${textField("rouming_id", "Rouming ID", parsed.rouming_id)}</div>`)}
-    ${section("Bog'lash", `<div class="grid"><label>Mijoz bilan bog'lash<select name="customer_id"><option value="">Snapshot bo'yicha saqlash</option>${clientOptions}</select></label><label>Talabnoma bilan bog'lash<select name="customer_request_id"><option value="">—</option>${requestOptions}</select></label></div>`)}
+    ${section("Bog'lash", `<div class="grid"><label>Mijoz bilan bog'lash${selectSearch("customer_id", "Mijoz nomi yoki STIR bo'yicha qidiring")}<select name="customer_id"><option value="">Snapshot bo'yicha saqlash</option>${clientOptions}</select></label><label>Talabnoma bilan bog'lash<select name="customer_request_id"><option value="">—</option>${requestOptions}</select></label></div>`)}
     <div class="form-footer"><button type="button" class="btn" data-nav="/contracts">Bekor qilish</button>${parsedState.file_url ? `<a class="btn" target="_blank" href="${esc(parsedState.file_url)}">PDF faylni ko'rish</a>` : ""}<button class="btn primary" type="submit">Shartnomani yaratish</button></div>
   </form>`;
 }
@@ -883,6 +885,8 @@ async function renderContractUpload() {
       const parsedState = response.data;
       document.querySelector("#contract-parse-review").innerHTML = `<div class="page-title"><h1>Shartnoma ma'lumotlarini tekshirish</h1></div>${await contractParsedReview(parsedState)}`;
       setupFormattedNumberInputs(document.querySelector("#contract-parse-review"));
+      // This screen is injected outside the router, so bind the pickers here too.
+      bindSelectSearch(document.querySelector("#contract-parse-review"));
       document.querySelector("#contract-parsed-form").addEventListener("submit", async (submitEvent) => {
         submitEvent.preventDefault();
         try {

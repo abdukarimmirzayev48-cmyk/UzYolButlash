@@ -164,6 +164,7 @@ async function render() {
       await renderClientsList();
     }
     setupFormattedNumberInputs(app);
+    bindSelectSearch(app);
     document.querySelectorAll("[data-nav]").forEach((button) => {
       button.addEventListener("click", () => navigate(button.dataset.nav));
     });

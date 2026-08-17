@@ -5043,3 +5043,36 @@ body.public-layout.sidebar-collapsed .app-shell {
     border-bottom: 1px solid var(--line);
   }
 }
+
+/* ---- ro'yxat ustidagi qidiruv maydoni ---- */
+
+.select-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 5px;
+}
+
+.select-search input[type="search"] {
+  flex: 1;
+  height: 32px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface);
+  font-size: 13px;
+  font-weight: 400;
+}
+
+.select-search input[type="search"]:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: -1px;
+}
+
+.select-search-count {
+  flex: 0 0 auto;
+  color: var(--muted);
+  font-size: 11.5px;
+  font-weight: 600;
+  white-space: nowrap;
+}
