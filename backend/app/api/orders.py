@@ -131,24 +131,46 @@ def calculate_item(item: OrderItem) -> None:
     item.total_with_vat = money(item.subtotal + item.vat_amount)
 
 
+MAX_MARKUP_PERCENT = Decimal("999.99")
+
+
 def apply_defaults(order: Order) -> None:
-    if order.source_type == SourceType.russia_direct and order.markup_percent in (None, Decimal("0")):
-        order.markup_percent = Decimal("5")
     if order.fulfillment_type == FulfillmentType.direct_supplier_to_customer:
         order.logistics_price = Decimal("0")
     if order.markup_percent is None:
         order.markup_percent = Decimal("0")
+    if order.markup_amount is None:
+        order.markup_amount = Decimal("0")
     if order.logistics_price is None:
         order.logistics_price = Decimal("0")
 
 
-def recalculate_order(db: Session, order: Order) -> None:
+def apply_markup(order: Order, from_percent: bool = False) -> None:
+    """The markup is a sum; the stored percent is only its share of the goods.
+
+    from_percent is a one-shot conversion for callers that still speak in
+    percent (the older order form, the russia_direct default). Outside that,
+    the sum is authoritative -- deriving it from the percent on every save made
+    it impossible to clear a markup, because a zero would immediately be
+    recomputed from the percent left over from the previous value.
+    """
+    subtotal = order.product_subtotal or Decimal("0")
+    if from_percent:
+        order.markup_amount = money(subtotal * (order.markup_percent or Decimal("0")) / Decimal("100"))
+    order.markup_amount = money(order.markup_amount or Decimal("0"))
+    if subtotal:
+        order.markup_percent = min(money(order.markup_amount / subtotal * Decimal("100")), MAX_MARKUP_PERCENT)
+    else:
+        order.markup_percent = Decimal("0")
+
+
+def recalculate_order(db: Session, order: Order, markup_from_percent: bool = False) -> None:
     apply_defaults(order)
     for item in order.items:
         calculate_item(item)
     order.product_subtotal = money(sum((item.subtotal for item in order.items), Decimal("0")))
     order.vat_amount = money(sum((item.vat_amount for item in order.items), Decimal("0")))
-    order.markup_amount = money(order.product_subtotal * order.markup_percent / Decimal("100"))
+    apply_markup(order, from_percent=markup_from_percent)
     order.total_amount = money(order.product_subtotal + order.vat_amount + order.markup_amount + order.logistics_price)
     db.flush()
 
@@ -408,6 +430,15 @@ def create_order(payload: OrderCreate, db: Session = Depends(get_db)):
         data.pop(protected_field, None)
     data["client_id"] = contract.client_id
     order = Order(**data)
+    # Default markup for Russian direct supply, applied only when the caller
+    # expressed no preference at all -- otherwise an explicit "no markup"
+    # would be overwritten on every save.
+    # `is None` on purpose: an explicit 0 means "no markup" and must not be
+    # overwritten by the default.
+    markup_from_percent = payload.markup_amount is None and payload.markup_percent is not None
+    if order.source_type == SourceType.russia_direct and payload.markup_amount is None and payload.markup_percent is None:
+        order.markup_percent = Decimal("5")
+        markup_from_percent = True
     apply_defaults(order)
     db.add(order)
     db.flush()
@@ -425,7 +456,7 @@ def create_order(payload: OrderCreate, db: Session = Depends(get_db)):
         db.add(OrderNote(order_id=order.id, **payload.initial_note.model_dump()))
     db.flush()
     db.refresh(order)
-    recalculate_order(db, order)
+    recalculate_order(db, order, markup_from_percent=markup_from_percent)
     if order.source_type != SourceType.supplier_held_stock:
         ensure_procurement_for_order(db, order)
     sync_order_status(order, db=db)
@@ -460,6 +491,9 @@ def update_order(order_id: int, payload: OrderUpdate, db: Session = Depends(get_
             raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Buyurtmada kamida bitta mahsulot bo'lishi kerak.")
         validate_items_against_contract(db, contract, payload.items, exclude_order_id=order.id)
     data = payload.model_dump(exclude_unset=True, exclude={"items"})
+    # Only convert when the caller sent a percent and no sum -- the older order
+    # form still speaks in percent.
+    markup_from_percent = "markup_amount" not in data and data.get("markup_percent") is not None
     for protected_field in ("status", "supplier_id", "supplier_name", "supplier_status"):
         data.pop(protected_field, None)
     if "contract_id" in data:
@@ -472,7 +506,7 @@ def update_order(order_id: int, payload: OrderUpdate, db: Session = Depends(get_
         db.flush()
         for item_payload in payload.items:
             order.items.append(build_order_item(contract_items[item_payload.contract_item_id], item_payload))
-    recalculate_order(db, order)
+    recalculate_order(db, order, markup_from_percent=markup_from_percent)
     if order.source_type != SourceType.supplier_held_stock:
         ensure_procurement_for_order(db, order)
         sync_procurement_items_from_order(db, order.procurement)

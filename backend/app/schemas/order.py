@@ -155,6 +155,7 @@ class OrderBase(BaseModel):
     supplier_notes: str | None = None
     currency: str = "UZS"
     markup_percent: Decimal | None = Field(default=None, ge=0)
+    markup_amount: Decimal | None = Field(default=None, ge=0)
     logistics_price: Decimal | None = Field(default=Decimal("0"), ge=0)
     notes: str | None = None
     created_by: str | None = None
@@ -181,6 +182,7 @@ class OrderUpdate(BaseModel):
     supplier_notes: str | None = None
     currency: str | None = None
     markup_percent: Decimal | None = Field(default=None, ge=0)
+    markup_amount: Decimal | None = Field(default=None, ge=0)
     logistics_price: Decimal | None = Field(default=None, ge=0)
     notes: str | None = None
     created_by: str | None = None

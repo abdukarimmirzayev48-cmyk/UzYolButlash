@@ -56,10 +56,10 @@ function calculateOrderForm(form, contractItems = [], balances = []) {
   });
   const sourceType = form.elements.source_type?.value;
   const fulfillmentType = form.elements.fulfillment_type?.value;
-  if (sourceType === "russia_direct" && !form.elements.markup_percent.value) {
-    form.elements.markup_percent.value = 5;
+  if (sourceType === "russia_direct" && !form.elements.markup_amount.value) {
+    form.elements.markup_amount.value = formatNumberInputValue(Math.round(subtotal * 0.05));
   }
-  const markupPercent = numberValue(form.elements.markup_percent?.value);
+  const markup = numberValue(form.elements.markup_amount?.value);
   const logisticsInput = form.elements.logistics_price;
   if (fulfillmentType === "direct_supplier_to_customer") {
     logisticsInput.value = 0;
@@ -67,7 +67,6 @@ function calculateOrderForm(form, contractItems = [], balances = []) {
   } else {
     logisticsInput.disabled = false;
   }
-  const markup = subtotal * markupPercent / 100;
   const logistics = fulfillmentType === "direct_supplier_to_customer" ? 0 : numberValue(logisticsInput.value);
   const total = subtotal + vat + markup + logistics;
   form.querySelector("[data-order-quantity]").textContent = fmtQty(quantity);
@@ -99,7 +98,7 @@ function collectOrderPayload(form) {
     supplier_name: field(form, "supplier_name"),
     supplier_status: field(form, "supplier_status") || "not_selected",
     supplier_notes: field(form, "supplier_notes"),
-    markup_percent: field(form, "markup_percent") || null,
+    markup_amount: field(form, "markup_amount") || 0,
     logistics_price: field(form, "fulfillment_type") === "direct_supplier_to_customer" ? 0 : (field(form, "logistics_price") || 0),
     notes: field(form, "notes"),
     created_by: field(form, "created_by"),
@@ -168,7 +167,7 @@ async function orderForm(order = null) {
           <div class="grid">
             ${selectField("source_type", "Manba", sourceTypes, sourceDefault)}
             ${selectField("fulfillment_type", "Yetkazib berish modeli", fulfillmentTypes, order?.fulfillment_type || "direct_supplier_to_customer")}
-            ${textField("markup_percent", "Ustama foizi", order?.markup_percent ?? "", "number")}
+            ${moneyInputField("markup_amount", "Ustama summasi", order?.markup_amount ?? "")}
             <div class="total-box"><span>Ustama summasi</span><strong data-order-markup>${dash}</strong></div>
           </div>
         `)}
@@ -369,8 +368,8 @@ function orderWizardTotals(state) {
     vat += vatAmount;
     selected.push({ ...balance, quantity: amount, subtotal: rowSubtotal, vat_amount: vatAmount, total_with_vat: rowSubtotal + vatAmount });
   });
-  const markupPercent = numberValue(state.markupPercent);
-  const markupAmount = subtotal * markupPercent / 100;
+  const markupAmount = numberValue(state.markupAmount);
+  const markupPercent = subtotal ? (markupAmount / subtotal) * 100 : 0;
   const logistics = state.fulfillmentType === "company_managed_delivery" ? numberValue(state.logisticsPrice) : 0;
   return { quantity, subtotal, vat, markupPercent, markupAmount, logistics, total: subtotal + vat + markupAmount + logistics, selected };
 }
@@ -421,13 +420,32 @@ function updateOrderWizardProductTotals(state, input) {
   if (afterNode) afterNode.textContent = `Keyingi qoldiq: ${fmtQty(after, balance.unit)}`;
 }
 
+// The sum is what gets charged; the percent is shown only so the user can
+// sanity-check it against the goods total.
+function orderMarkupNote(totals) {
+  if (!totals.subtotal) return "";
+  if (!totals.markupAmount) {
+    return `<p class="helper-text">Ustama qo'shilmasa bo'sh qoldiring.</p>`;
+  }
+  return `<p class="helper-text"><span>Mahsulot summasi:</span> <b data-noloc>${fmtMoney(totals.subtotal)}</b> · <span>ustama ulushi:</span> <b data-noloc>${totals.markupPercent.toFixed(2)}%</b></p>`;
+}
+
+function refreshOrderMarkupNote(state) {
+  const note = orderMarkupNote(orderWizardTotals(state));
+  document.querySelectorAll("[data-markup-note]").forEach((holder) => {
+    holder.innerHTML = note;
+    localizeDom(holder);
+  });
+}
+
 function orderWizardSourcePanel(state) {
   const sourceHelp = state.sourceType === "supplier_held_stock"
     ? "Mahsulot bizga tegishli, lekin ta'minotchi omborida turadi. Keyingi bosqichda mavjud zaxiradan ajratiladi."
     : state.fulfillmentType === "company_managed_delivery"
       ? "Yetkazib berish kompaniya tomonidan boshqariladi. Partiya yaratilganda logistika yozuvi avtomatik ochiladi."
       : "Mahsulot ta'minotchidan mijozga to'g'ridan-to'g'ri yetkaziladi.";
-  return `<div class="grid">${selectField("source_type", "Manba turi", sourceTypes, state.sourceType, { required: true })}${selectField("fulfillment_type", "Yetkazib berish modeli", fulfillmentTypes, state.fulfillmentType, { required: true })}${textField("markup_percent", "Ustama foizi", state.markupPercent, "number")}</div><div class="empty compact">${sourceHelp}</div>`;
+  const totals = orderWizardTotals(state);
+  return `<div class="grid">${selectField("source_type", "Manba turi", sourceTypes, state.sourceType, { required: true })}${selectField("fulfillment_type", "Yetkazib berish modeli", fulfillmentTypes, state.fulfillmentType, { required: true })}${moneyInputField("markup_amount", "Ustama summasi", state.markupAmount)}</div><div data-markup-note>${orderMarkupNote(totals)}</div><div class="empty compact">${sourceHelp}</div>`;
 }
 
 function orderWizardStockPanel(state) {
@@ -444,7 +462,7 @@ function orderWizardPricePanel(state) {
   const logisticsInput = state.fulfillmentType === "direct_supplier_to_customer"
     ? `<label>Logistika narxi<input name="logistics_price" value="0" disabled /></label>`
     : textField("logistics_price", "Logistika narxi", state.logisticsPrice, "number");
-  return `<div class="grid">${textField("markup_percent", "Ustama foizi", state.markupPercent, "number")}${logisticsInput}${textArea("notes", "Izoh", state.notes || "")}</div>${summaryCards([["Mahsulot oraliq summasi", fmtMoney(totals.subtotal)], ["QQS", fmtMoney(totals.vat)], ["Ustama foizi", `${fmt(totals.markupPercent)}%`], ["Ustama summasi", fmtMoney(totals.markupAmount)], ["Logistika narxi", state.fulfillmentType === "direct_supplier_to_customer" ? dash : fmtMoney(totals.logistics)], ["Jami summa", fmtMoney(totals.total)]])}<p class="helper-text">Logistika yozuvi partiya yaratilgandan keyin ochiladi.</p>`;
+  return `<div class="grid">${moneyInputField("markup_amount", "Ustama summasi", state.markupAmount)}${logisticsInput}${textArea("notes", "Izoh", state.notes || "")}</div><div data-markup-note>${orderMarkupNote(totals)}</div>${summaryCards([["Mahsulot oraliq summasi", fmtMoney(totals.subtotal)], ["QQS", fmtMoney(totals.vat)], ["Ustama summasi", fmtMoney(totals.markupAmount)], ["Logistika narxi", state.fulfillmentType === "direct_supplier_to_customer" ? dash : fmtMoney(totals.logistics)], ["Jami summa", fmtMoney(totals.total)]])}<p class="helper-text">Logistika yozuvi partiya yaratilgandan keyin ochiladi.</p>`;
 }
 
 function orderWizardConfirmPanel(state) {
@@ -455,7 +473,7 @@ function orderWizardConfirmPanel(state) {
   return `<div class="confirm-grid">
     ${section("Shartnoma", detailList([["Shartnoma raqami", state.contract?.contract_number], ["Mijoz", state.contract?.client?.name], ["Amal qilish muddati", state.contract?.valid_until]]))}
     ${section("Mahsulot", detailList([["Mahsulot", productText], ["Miqdor", fmtQty(totals.quantity, totals.selected?.[0]?.unit)], ["Jami summa", fmtMoney(totals.subtotal + totals.vat)], ["Saqlangandan keyingi qoldiq", remainingText]]))}
-    ${section("Manba va model", detailList([["Manba", optionLabel(sourceTypes, state.sourceType)], ["Yetkazib berish modeli", optionLabel(fulfillmentTypes, state.fulfillmentType)], ["Ustama foizi", `${state.markupPercent}%`], ["Ustama summasi", fmtMoney(totals.markupAmount)]]))}
+    ${section("Manba va model", detailList([["Manba", optionLabel(sourceTypes, state.sourceType)], ["Yetkazib berish modeli", optionLabel(fulfillmentTypes, state.fulfillmentType)], ["Ustama summasi", fmtMoney(totals.markupAmount)]]))}
     ${section("Zaxira / Xarid", state.sourceType === "supplier_held_stock" ? detailList([["Zaxira partiyasi", lot?.ticket_number], ["Ta'minotchi", lot?.supplier_name], ["Ticket", lot?.ticket_number], ["Ajratilgan miqdor", fmtQty(state.stockAllocatedQuantity, lot?.unit)], ["Birlik xarid narxi", fmtMoney(lot?.unit_cost)]]) : `<div class="empty">Xarid jarayoni avtomatik ochiladi. Supplier status: Tanlanmagan.</div>`)}
     ${section("Narx", detailList([["Mahsulot summasi", fmtMoney(totals.subtotal)], ["QQS", fmtMoney(totals.vat)], ["Logistika narxi", state.fulfillmentType === "direct_supplier_to_customer" ? dash : fmtMoney(totals.logistics)], ["Jami summa", fmtMoney(totals.total)]]))}
   </div>`;
@@ -588,7 +606,7 @@ function collectOrderWizardPayload(state) {
     required_date: state.requiredDate,
     fulfillment_type: state.fulfillmentType,
     source_type: state.sourceType,
-    markup_percent: normalizeNumberInputValue(state.markupPercent || "0"),
+    markup_amount: normalizeNumberInputValue(state.markupAmount || "0"),
     logistics_price: state.fulfillmentType === "direct_supplier_to_customer" ? 0 : normalizeNumberInputValue(state.logisticsPrice || 0),
     notes: state.notes || null,
     items: totals.selected.map((item) => ({
@@ -608,7 +626,7 @@ async function renderOrderWizard() {
     orderDate: new Date().toISOString().slice(0, 10),
     sourceType: params.get("source_type") || "other",
     fulfillmentType: "direct_supplier_to_customer",
-    markupPercent: "0",
+    markupAmount: "",
     logisticsPrice: "0",
     stockLots: [],
     preselectedStockLotId: params.get("stock_lot_id") || "",
@@ -661,7 +679,11 @@ async function renderOrderWizard() {
 
     form.elements.source_type?.addEventListener("change", async () => {
       state.sourceType = form.elements.source_type.value;
-      if (state.sourceType === "russia_direct" && !numberValue(state.markupPercent)) state.markupPercent = "5";
+      // Russian direct supply carries a 5% markup by default; offered as a
+      // ready-made sum so the user can still overwrite it.
+      if (state.sourceType === "russia_direct" && !numberValue(state.markupAmount)) {
+        state.markupAmount = String(Math.round(orderWizardTotals(state).subtotal * 0.05));
+      }
       if (state.sourceType === "supplier_held_stock") await loadStockLots();
       await draw();
     });
@@ -670,7 +692,10 @@ async function renderOrderWizard() {
       if (state.fulfillmentType === "direct_supplier_to_customer") state.logisticsPrice = "0";
       await draw();
     });
-    form.elements.markup_percent?.addEventListener("input", () => { state.markupPercent = form.elements.markup_percent.value; });
+    form.elements.markup_amount?.addEventListener("input", () => {
+      state.markupAmount = form.elements.markup_amount.value;
+      refreshOrderMarkupNote(state);
+    });
     form.querySelectorAll("[name='stock_lot_id']").forEach((input) => input.addEventListener("change", () => { state.stockLotId = input.value; }));
     form.elements.stock_allocated_quantity?.addEventListener("input", () => { state.stockAllocatedQuantity = form.elements.stock_allocated_quantity.value; });
     form.elements.logistics_price?.addEventListener("input", () => { state.logisticsPrice = form.elements.logistics_price.value; });
