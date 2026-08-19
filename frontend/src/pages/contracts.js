@@ -1135,9 +1135,49 @@ function bindContractStatusActions(contract) {
   });
 }
 
+// The terms said "10 kun"; nobody turned that into a date, so nothing could
+// tell whether it had passed. Each row now carries the date it is due and how
+// far past it is.
+function paymentScheduleHtml(contract) {
+  const rows = contract.summary?.payment_schedule || [];
+  if (!rows.length) return `<div class="empty">To'lov muddatlari hisoblanmadi — to'lov shartlari kiritilmagan.</div>`;
+  return tableOrEmpty(
+    rows,
+    ["To'lov", "Muddat", "Summa", "To'langan", "Qoldiq", "Holat"],
+    (item) => {
+      const state = item.is_overdue
+        ? statusChip({ label: `${item.overdue_days} kun kechikdi`, tone: "danger" })
+        : Number(item.outstanding) <= 0
+          ? statusChip({ label: "To'langan", tone: "success" })
+          : statusChip({ label: "Kutilmoqda", tone: "warning" });
+      return `<tr class="${item.is_overdue ? "row-overdue" : ""}">
+        <td>${fmt(item.label)}</td>
+        <td data-noloc>${item.due_date ? fmtDayOnly(item.due_date) : dash}</td>
+        <td>${fmtMoney(item.amount)}</td>
+        <td>${fmtMoney(item.paid_amount)}</td>
+        <td>${fmtMoney(item.outstanding)}</td>
+        <td>${state}</td>
+      </tr>`;
+    },
+    "To'lov muddatlari yo'q."
+  );
+}
+
 function contractHeader(contract) {
   const warnings = [];
-  if (numberValue(contract.summary?.paid_amount) <= 0 && numberValue(contract.summary?.advance_amount) > 0) warnings.push("Avans to'lovi hali kelmagan.");
+  // The old rule was "nothing paid and an advance exists", which says the same
+  // mild thing on day one and on day two hundred. The deadline decides now.
+  const overdueCount = Number(contract.summary?.overdue_count || 0);
+  if (overdueCount) {
+    // One template literal on one line, so the dictionary can match it as a
+    // "{n} ..." pattern; split across lines it matches nothing.
+    warnings.push(`${overdueCount} ta to'lov muddati o'tgan, jami ${fmtMoney(contract.summary.overdue_amount)}, eng kechikkani ${contract.summary.max_overdue_days} kun.`);
+  } else if (numberValue(contract.summary?.advance_amount) > 0 && numberValue(contract.summary?.paid_amount) <= 0) {
+    const advance = (contract.summary?.payment_schedule || []).find((item) => item.kind === "advance");
+    warnings.push(advance?.due_date
+      ? `Avans to'lovi hali kelmagan. Muddat: ${fmtDayOnly(advance.due_date)}.`
+      : "Avans to'lovi hali kelmagan.");
+  }
   if (numberValue(contract.summary?.remaining_quantity) > 0) warnings.push("Shartnoma bo'yicha yetkazilmagan qoldiq mavjud.");
   if (!hasDocs(contract)) warnings.push("Shartnoma hujjatlari to'liq emas.");
   // Parser warnings belong on the contract, not only on the review screen that
@@ -1195,7 +1235,8 @@ function contractGeneralTab(contract) {
         ["Yangilangan", fmtDate(contract.updated_at)],
       ].map(([label, value]) => `<div class="detail-item"><span>${label}</span><strong>${fmt(value)}</strong></div>`).join("")}
     </div>
-  `) + (canEdit("sotuv") ? section("Holatni o'zgartirish", contractTransitionsHtml(contract)) : "")
+  `) + section("To'lov muddatlari", paymentScheduleHtml(contract))
+  + (canEdit("sotuv") ? section("Holatni o'zgartirish", contractTransitionsHtml(contract)) : "")
   + section("Holat tarixi", tableOrEmpty(contract.status_history, ["Sana", "Oldingi holat", "Yangi holat", "Izoh", "Kim"], (item) => `
       <tr><td>${fmtDate(item.created_at)}</td><td>${fmt(item.old_status_label)}</td><td>${fmt(item.new_status_label)}</td><td>${fmt(item.comment)}</td><td>${fmt(item.changed_by)}</td></tr>
     `, "Holat tarixi mavjud emas."))

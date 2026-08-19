@@ -1262,6 +1262,10 @@ function workflowStatusGrid(items) {
 // catalog code would turn evidence into nonsense.
 function warningParts(message) {
   const text = String(message ?? "");
+  // If the dictionary already knows the whole sentence, leave it whole --
+  // splitting it first was hiding messages that would have translated fine,
+  // because any colon in the text broke the lookup.
+  if (localizeText(text) !== text) return `<span>${esc(text)}</span>`;
   const at = text.indexOf(": ");
   if (at < 0) return `<span>${esc(text)}</span>`;
   return `<span>${esc(text.slice(0, at))}</span><span data-noloc>: ${esc(text.slice(at + 2))}</span>`;

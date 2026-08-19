@@ -35,6 +35,98 @@ def _notify_once(db: Session, task: Task, user_ids: set[int | None], kind: str, 
             notify(db, user_id, title, None, kind, task.id)
 
 
+MSG_PAYMENT_OVERDUE = "Shartnoma bo'yicha to'lov muddati o'tdi"
+
+
+def _has_link_notification(db: Session, user_id: int, kind: str, link_path: str) -> bool:
+    """Dedup for notifications about something other than a task.
+
+    has_notification() keys on task_id, which is null here, so it would treat
+    every contract alike and send one notice for all of them.
+    """
+    return (
+        db.query(Notification.id)
+        .filter(
+            Notification.user_id == user_id,
+            Notification.kind == kind,
+            Notification.link_path == link_path,
+        )
+        .first()
+        is not None
+    )
+
+
+def sweep_overdue_contract_payments(db: Session) -> int:
+    """Tell the people who can act about contract money that is past due.
+
+    The payment terms said "advance within 10 days" and nothing ever compared
+    that to the calendar, so an advance of 1 428 000 000 so'm sat 196 days late
+    with only a mild "not arrived yet" note on the card. Now it reaches whoever
+    holds the sotuv rights, once per contract.
+    """
+    # Imported here: notifications is loaded early by the scheduler, and the
+    # contract API pulls in most of the app.
+    from datetime import date
+
+    from backend.app.models.contract import Contract, ContractStatus
+    from backend.app.models.finance import CustomerInvoice, InvoiceStatus
+    from backend.app.models.user import User
+    from backend.app.services import contract_payment_schedule
+
+    recipients = [
+        user.id
+        for user in db.query(User).filter(User.is_active.is_(True)).all()
+        if user.is_admin or "sotuv" in (user.edit_modules or [])
+    ]
+    if not recipients:
+        return 0
+
+    sent = 0
+    contracts = (
+        db.query(Contract)
+        .filter(Contract.status.notin_([ContractStatus.completed, ContractStatus.cancelled]))
+        .all()
+    )
+    for contract in contracts:
+        terms = contract.payment_terms
+        invoices = (
+            db.query(CustomerInvoice)
+            .filter(
+                CustomerInvoice.contract_id == contract.id,
+                CustomerInvoice.status != InvoiceStatus.cancelled,
+            )
+            .all()
+        )
+        items = contract_payment_schedule.build_schedule(
+            contract_date=contract.contract_date,
+            advance_due_days=terms.advance_due_days if terms else None,
+            advance_amount=terms.advance_amount if terms else 0,
+            invoices=[
+                {
+                    "number": invoice.invoice_number,
+                    "type": invoice.invoice_type.value,
+                    "due_date": invoice.due_date,
+                    "amount": invoice.total_amount,
+                    "paid_amount": invoice.paid_amount,
+                }
+                for invoice in invoices
+            ],
+            today=date.today(),
+        )
+        overdue = [item for item in items if item.is_overdue]
+        if not overdue:
+            continue
+        worst = max(overdue, key=lambda item: item.overdue_days)
+        link = f"/contracts/{contract.id}"
+        body = f"{contract.contract_number}: {worst.label} — {worst.overdue_days} kun"
+        for user_id in recipients:
+            if _has_link_notification(db, user_id, "contract_payment_overdue", link):
+                continue
+            notify(db, user_id, MSG_PAYMENT_OVERDUE, body, "contract_payment_overdue", None, link)
+            sent += 1
+    return sent
+
+
 def run_reminder_sweep(db: Session) -> None:
     """Deadline reminders (1 day / 1 hour out) and an overdue sweep for non-terminal tasks.
 

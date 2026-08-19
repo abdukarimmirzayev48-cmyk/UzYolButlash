@@ -246,6 +246,17 @@ class ContractUpdate(BaseModel):
     transport_terms: ContractTransportTermsCreate | None = None
 
 
+class PaymentDueItem(BaseModel):
+    kind: str
+    label: str
+    due_date: date | None = None
+    amount: Decimal
+    paid_amount: Decimal
+    outstanding: Decimal
+    overdue_days: int
+    is_overdue: bool
+
+
 class ContractSummary(BaseModel):
     subtotal_amount: Decimal
     vat_amount: Decimal
@@ -259,6 +270,12 @@ class ContractSummary(BaseModel):
     paid_amount: Decimal
     unpaid_amount: Decimal
     transport_expense_total: Decimal
+    # When the money is actually due, and what is late. The terms held the
+    # numbers ("10 kun") and nobody ever turned them into a date.
+    payment_schedule: list[PaymentDueItem] = Field(default_factory=list)
+    overdue_count: int = 0
+    overdue_amount: Decimal = Decimal("0")
+    max_overdue_days: int = 0
 
 
 class ContractRead(ContractBase):

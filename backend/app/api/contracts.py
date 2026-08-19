@@ -1,5 +1,5 @@
 import json
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal, ROUND_HALF_UP
 from pathlib import Path
 from shutil import copyfileobj
@@ -39,6 +39,7 @@ from backend.app.schemas.contract import (
     ContractCreate,
     CONTRACT_STATUS_LABELS,
     ContractDetail,
+    PaymentDueItem,
     ContractStatusChange,
     ContractStatusHistoryRead,
     ContractStatusTransition,
@@ -70,7 +71,7 @@ from backend.app.services.client_matching import (
     find_client_by_inn,
     find_registry_by_inn,
 )
-from backend.app.services import contract_workflow
+from backend.app.services import contract_payment_schedule, contract_workflow
 from backend.app.services.auth import get_current_user, require_edit
 from backend.app.services.contract_pdf_parser import PARSER_VERSION, parse_contract_pdf
 
@@ -420,6 +421,49 @@ def customer_invoice_totals_for_contract(db: Session, contract_id: int) -> tuple
     return money(row[0] or Decimal("0")), money(row[1] or Decimal("0"))
 
 
+def payment_schedule_for(db: Session, contract: Contract, advance_amount: Decimal) -> dict:
+    """Due dates and lateness for everything owed on this contract."""
+    invoices = db.scalars(
+        select(CustomerInvoice).where(
+            CustomerInvoice.contract_id == contract.id,
+            CustomerInvoice.status != InvoiceStatus.cancelled,
+        )
+    ).all()
+    terms = contract.payment_terms
+    items = contract_payment_schedule.build_schedule(
+        contract_date=contract.contract_date,
+        advance_due_days=terms.advance_due_days if terms else None,
+        advance_amount=advance_amount,
+        invoices=[
+            {
+                "number": invoice.invoice_number,
+                "type": invoice.invoice_type.value,
+                "due_date": invoice.due_date,
+                "amount": money(invoice.total_amount),
+                "paid_amount": money(invoice.paid_amount),
+            }
+            for invoice in invoices
+        ],
+        today=date.today(),
+    )
+    return {
+        "payment_schedule": [
+            PaymentDueItem(
+                kind=item.kind,
+                label=item.label,
+                due_date=item.due_date,
+                amount=item.amount,
+                paid_amount=item.paid_amount,
+                outstanding=item.outstanding,
+                overdue_days=item.overdue_days,
+                is_overdue=item.is_overdue,
+            )
+            for item in items
+        ],
+        **contract_payment_schedule.overdue_summary(items),
+    }
+
+
 def summary_for(db: Session, contract: Contract) -> ContractSummary:
     total_quantity = qty(sum((item.quantity for item in contract.items), Decimal("0")))
     delivered_quantity = delivered_quantity_for_contract(db, contract.id)
@@ -439,6 +483,7 @@ def summary_for(db: Session, contract: Contract) -> ContractSummary:
         paid_amount=paid_amount,
         unpaid_amount=unpaid_amount,
         transport_expense_total=transport_expense_for_contract(db, contract.id),
+        **payment_schedule_for(db, contract, advance_amount),
     )
 
 

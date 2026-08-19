@@ -1632,6 +1632,16 @@ tr:last-child td {
   color: #8a4f00;
 }
 
+/* "danger" was used by callers but never defined, so an overdue payment came
+   out in the neutral default colour -- the one state that must not look
+   neutral. */
+.status-badge.danger,
+.status-badge.overdue {
+  border-color: #e6b4ad;
+  background: #fdece9;
+  color: #a5342a;
+}
+
 .status-badge.muted,
 .status-badge.waiting,
 .status-badge.partial {
@@ -5778,4 +5788,14 @@ body.public-layout.sidebar-collapsed .app-shell {
 .clist-range {
   color: var(--muted);
   font-size: 13.5px;
+}
+
+/* A payment past its due date. The row is tinted rather than only the chip:
+   the number that matters is the amount, and it sits three columns away. */
+.row-overdue > td {
+  background: #fdf1ef;
+}
+
+.row-overdue > td:first-child {
+  box-shadow: inset 3px 0 0 #d9534f;
 }
