@@ -11,7 +11,7 @@ function generatedInvoiceNumber(contractNumber = "", batchNumber = "") {
   const now = new Date();
   const today = now.toISOString().slice(0, 10).replaceAll("-", "");
   const time = now.toTimeString().slice(0, 8).replaceAll(":", "");
-  const source = batchNumber || contractNumber || "MANUAL";
+  const source = batchNumber || contractNumber || "Qo'lda";
   return `CINV-${source}-${today}${time}`;
 }
 

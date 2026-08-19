@@ -322,6 +322,38 @@ def main() -> None:
     # into nonsense. Widening the boundary is not safe -- short entries like
     # "ID" would then swallow the start of ordinary words -- so instead say so
     # loudly and let the caller reword the string.
+    # A string that is actually English gets transliterated as though it were
+    # Uzbek and lands on screen as nonsense -- "First contact" was rendering as
+    # "Фирст контакт" because it was not a key in the legacy English dictionary
+    # and so nothing stopped it. These words do not occur in Uzbek UI text, so
+    # seeing one means the source string should be rewritten in Uzbek.
+    english_only = {
+        "first", "basic", "information", "full", "name", "address", "account",
+        "number", "select", "supplier", "invoice", "payment", "item", "items",
+        "unit", "price", "quantity", "remove", "cancel", "save", "back", "add",
+        "open", "leave", "manual", "allocation", "allocate", "documents",
+        "method", "reference", "region", "district", "position", "comment",
+        "notes", "type", "date", "due", "procurement", "edit", "new", "total",
+        "description", "product", "search", "filter", "with", "the", "and",
+        "contact", "amount", "code", "value", "list", "row",
+        # "bank" and "status" are spelled the same in Uzbek, so they are not
+        # evidence of anything.
+    }
+    def english_words(text: str) -> set[str]:
+        return {word.strip(".,:;!?()").lower() for word in text.split()} & english_only
+
+    # Two English words together is unambiguous. A single one counts too:
+    # strings that are keys of the legacy English dictionary never reach
+    # `mapping`, so anything here is text nothing else protects.
+    latin_english = sorted(
+        text
+        for text in mapping
+        if not re.search(r"[Ѐ-ӿ]", text)
+        and (len(english_words(text)) >= 2 or (len(text.split()) == 1 and english_words(text)))
+    )
+    for text in latin_english:
+        print(f"  OGOHLANTIRISH: '{text}' -> '{mapping[text]}' (inglizcha matn o'zbekchadek o'girildi)")
+
     suffixed = sorted(
         {
             text

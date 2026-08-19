@@ -15,7 +15,13 @@ function hasUnsavedInput() {
     [...form.elements].some((element) => {
       if (element.disabled || element.readOnly) return false;
       if (element.type === "checkbox" || element.type === "radio") return element.checked !== element.defaultChecked;
-      if (element.tagName === "SELECT") return element.selectedIndex !== element.querySelector("[selected]")?.index ?? false;
+      if (element instanceof HTMLSelectElement) {
+        // With no option carrying `selected`, the browser picks the first one
+        // itself -- that is the untouched state, not a change the user made.
+        const options = [...element.options];
+        if (!options.some((option) => option.defaultSelected)) return element.selectedIndex > 0;
+        return options.some((option) => option.selected !== option.defaultSelected);
+      }
       if (["hidden", "submit", "button", "file"].includes(element.type)) return false;
       return typeof element.value === "string" && element.value !== element.defaultValue;
     })
