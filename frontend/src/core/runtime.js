@@ -1091,8 +1091,8 @@ function quantityDisplay(value, unit = "") {
   return value === null || value === undefined || value === "" ? dash : fmtQty(value, unit);
 }
 
-function opsListPage({ className = "", title, tabs = [], createPath, createLabel = "Yaratish", clearPath, counter = "", statCards = [], formId, filters = "", headers = [], rows = "", emptyText = "Ma'lumot topilmadi.", colspan = headers.length, footer = "" }) {
-  return `<div class="page ops-page ${className}"><div class="ops-titlebar"><div class="ops-title-left"><button class="ops-menu-btn" type="button" aria-label="Menyu">=</button><h1>${title}</h1></div>${tabs.length ? `<nav class="ops-tabs" aria-label="${title} ko'rinishlari">${tabs.map((tab) => `<button class="${tab.active ? "active" : ""}" type="button" ${tab.path ? `data-nav="${tab.path}"` : ""}>${tab.label}</button>`).join("")}</nav>` : ""}</div>${statCards.length ? summaryCards(statCards.map((c) => [c.label, c.value, c.cls])) : ""}<div class="ops-commandbar"><div class="ops-command-left">${createPath ? `<button class="btn primary" data-nav="${createPath}">${createLabel}</button>` : ""}${clearPath ? `<button class="btn" type="button" data-nav="${clearPath}">Tozalash</button>` : ""}${counter ? `<span class="ops-counter">${counter}</span>` : ""}</div>${formId ? `<form class="ops-search" id="${formId}">${filters}<button class="ops-tool-btn" type="submit">Saralash</button>${clearPath ? `<button class="ops-tool-btn" type="button" data-nav="${clearPath}">Yangilash</button>` : ""}</form>` : ""}</div><section class="ops-table-card"><table class="ops-table"><thead><tr>${headers.map((head) => `<th>${head}</th>`).join("")}</tr></thead><tbody>${rows || `<tr><td colspan="${colspan}"><div class="empty">${emptyText}</div></td></tr>`}</tbody></table></section>${footer}</div>`;
+function opsListPage({ className = "", title, tabs = [], createPath, createLabel = "Yaratish", clearPath, counter = "", statCards = [], formId, filters = "", extraActions = "", beforeTable = "", headers = [], rows = "", emptyText = "Ma'lumot topilmadi.", colspan = headers.length, footer = "" }) {
+  return `<div class="page ops-page ${className}"><div class="ops-titlebar"><div class="ops-title-left"><button class="ops-menu-btn" type="button" aria-label="Menyu">=</button><h1>${title}</h1></div>${tabs.length ? `<nav class="ops-tabs" aria-label="${title} ko'rinishlari">${tabs.map((tab) => `<button class="${tab.active ? "active" : ""}" type="button" ${tab.path ? `data-nav="${tab.path}"` : ""}>${tab.label}</button>`).join("")}</nav>` : ""}</div>${statCards.length ? summaryCards(statCards.map((c) => [c.label, c.value, c.cls])) : ""}<div class="ops-commandbar"><div class="ops-command-left">${createPath ? `<button class="btn primary" data-nav="${createPath}">${createLabel}</button>` : ""}${clearPath ? `<button class="btn" type="button" data-nav="${clearPath}">Tozalash</button>` : ""}${counter ? `<span class="ops-counter">${counter}</span>` : ""}${extraActions}</div>${formId ? `<form class="ops-search" id="${formId}">${filters}<button class="ops-tool-btn primary" type="submit">Qidirish</button></form>` : ""}</div>${beforeTable}<section class="ops-table-card"><table class="ops-table"><thead><tr>${headers.map((head) => `<th>${head}</th>`).join("")}</tr></thead><tbody>${rows || `<tr><td colspan="${colspan}"><div class="empty">${emptyText}</div></td></tr>`}</tbody></table></section>${footer}</div>`;
 }
 
 function paginationChevron(direction) {
@@ -1126,11 +1126,17 @@ function opsFooter(data, pageKey) {
   </div></div>`;
 }
 
-function bindOpsSearch(formId, basePath, keys) {
+function bindOpsSearch(formId, basePath, keys, keep = ["sort", "order"]) {
   document.querySelector(`#${formId}`)?.addEventListener("submit", (event) => {
     event.preventDefault();
     const form = event.currentTarget;
     const next = new URLSearchParams();
+    // The form only knows about its own fields, so a submit used to throw away
+    // the chosen sort column and silently drop the list back to default order.
+    const current = new URLSearchParams(location.search);
+    keep.forEach((key) => {
+      if (current.get(key)) next.set(key, current.get(key));
+    });
     keys.forEach((key) => {
       const control = form.elements[key];
       if (control?.type === "checkbox" && !control.checked) return;

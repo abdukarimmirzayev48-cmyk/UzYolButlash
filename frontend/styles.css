@@ -1739,6 +1739,19 @@ tr:last-child td {
   gap: 8px;
 }
 
+/* Without wrapping, a narrow screen squeezed every field in the filter bar
+   until the two selects were 22px wide and the buttons pushed off screen.
+   Wrapping is the only behaviour that keeps each control readable. */
+.ops-commandbar,
+.ops-command-left,
+.ops-search {
+  flex-wrap: wrap;
+}
+
+.ops-search {
+  row-gap: 10px;
+}
+
 .ops-command-left .btn.primary {
   min-height: 34px;
   border-color: #1db9b1;
@@ -1783,8 +1796,193 @@ tr:last-child td {
 .ops-search input,
 .ops-search select {
   min-height: 34px;
+  min-width: 150px;
   border-radius: 4px;
   background: #ffffff;
+}
+
+/* 6.9 -- a labelled filter field. A placeholder vanishes as soon as something
+   is typed, leaving a value with nothing saying which field it belongs to. */
+.ops-field {
+  display: grid;
+  gap: 3px;
+  width: auto;
+}
+
+.ops-field-label {
+  color: var(--muted);
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.ops-field input,
+.ops-field select {
+  width: 100%;
+}
+
+.ops-field:has(input[name="name"]) {
+  min-width: min(280px, 100%);
+}
+
+/* Sortable column heading: label plus a direction arrow. */
+.ops-sort {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.ops-sort:hover {
+  color: var(--brand, #176b5b);
+}
+
+.ops-sort-arrow {
+  color: #9aa6b2;
+  font-size: 11px;
+  line-height: 1;
+}
+
+.ops-sort.active,
+.ops-sort.active .ops-sort-arrow {
+  color: var(--brand, #176b5b);
+}
+
+/* 6.4 -- bulk action bar, shown only while something is selected. */
+.ops-bulkbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin: 10px 0 0;
+  padding: 10px 14px;
+  border: 1px solid #bfe3dc;
+  border-radius: 6px;
+  background: #eefaf7;
+}
+
+.ops-bulkbar[hidden] {
+  display: none;
+}
+
+.ops-bulkbar-count {
+  font-size: 13.5px;
+}
+
+.ops-bulkbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.ops-bulkbar .btn.danger {
+  border-color: #e6b4ad;
+  background: #fdece9;
+  color: #a5342a;
+}
+
+.ops-bulkbar .btn.ghost {
+  border-color: transparent;
+  background: none;
+  color: var(--muted);
+}
+
+.ops-table td.ops-pick,
+.ops-table th:has(#clients-pick-all) {
+  width: 34px;
+  padding-right: 0;
+  text-align: center;
+}
+
+.ops-table tr.picked > td {
+  background: #f2fbf8;
+}
+
+.ops-table td.ops-num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+
+
+/* The actions column is already pinned to the right edge by the shared
+   `.ops-table td:last-child` rule, so it only needs the selected-row colour
+   here -- the shared rule repaints its own background and would otherwise
+   leave the pinned cell white in a highlighted row. */
+.ops-table tbody tr.picked > td:last-child,
+.ops-table tbody tr.picked:nth-child(even) > td:last-child {
+  background: #f2fbf8;
+}
+
+/* Column widths are stated rather than derived, because the free-text columns
+   grew with their content until the table outran the card and the pinned
+   actions column came to rest on top of the last heading. `max-width` is only
+   advisory under the default auto layout, so the widths have to be fixed for
+   the browser to honour them. Headings wrap here for the same reason. */
+.clients-ops-page .ops-table {
+  table-layout: fixed;
+  width: 100%;
+  /* The shared rule pins every list table to 1420px, which is what pushed this
+     one past the card at any normal window size. With the widths stated above
+     the table no longer needs that floor; 980px is where the columns stop being
+     readable and a horizontal scroll is genuinely the right answer. */
+  min-width: 980px;
+}
+
+.clients-ops-page .ops-table th {
+  white-space: normal;
+  vertical-align: bottom;
+}
+
+.clients-ops-page .ops-sort {
+  white-space: normal;
+  text-align: left;
+}
+
+.clients-ops-page .ops-table th:nth-child(1) { width: 36px; }
+.clients-ops-page .ops-table th:nth-child(2) { width: 21%; }
+.clients-ops-page .ops-table th:nth-child(3) { width: 112px; }
+.clients-ops-page .ops-table th:nth-child(4) { width: 112px; }
+.clients-ops-page .ops-table th:nth-child(5) { width: 132px; }
+.clients-ops-page .ops-table th:nth-child(7) { width: 124px; }
+.clients-ops-page .ops-table th:nth-child(8) { width: 118px; }
+.clients-ops-page .ops-table th:nth-child(9) { width: 96px; }
+
+.clients-ops-page .ops-table td {
+  overflow-wrap: anywhere;
+}
+
+/* Counts read down the column, so both the number and the heading above it
+   line up on the right. */
+.clients-ops-page .ops-table th:nth-child(7) .ops-sort,
+.clients-ops-page .ops-table th:nth-child(8) .ops-sort {
+  justify-content: flex-end;
+  text-align: right;
+  width: 100%;
+}
+
+/* Labels made the filter fields two lines tall; without this the submit button
+   floats against their tops instead of sitting on the same baseline. */
+.clients-ops-page .ops-commandbar {
+  align-items: flex-end;
+}
+
+.clients-ops-page .ops-search {
+  align-items: flex-end;
+}
+
+.clients-ops-page .ops-command-left {
+  align-items: center;
+  padding-bottom: 2px;
 }
 
 .ops-tool-btn:disabled {

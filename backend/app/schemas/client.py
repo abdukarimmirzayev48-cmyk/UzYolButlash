@@ -16,6 +16,12 @@ class Page(BaseModel, Generic[T]):
     page_size: int
 
 
+class ClientBulkDelete(BaseModel):
+    """Ids for a bulk delete. Capped so a stray request cannot walk the table."""
+
+    ids: list[int] = Field(min_length=1, max_length=200)
+
+
 class ClientContactBase(BaseModel):
     full_name: str = Field(min_length=1, max_length=255)
     position: str | None = None

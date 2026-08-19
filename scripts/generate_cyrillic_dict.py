@@ -308,6 +308,22 @@ def main() -> None:
         + JS_TRANSLITERATOR.replace("__PAIRS__", pairs).replace("__PROTECTED__", protected),
         encoding="utf-8",
     )
+    # A protected brand only keeps its Latin form on a word boundary, so an
+    # Uzbek suffix glued to it ("Excelga") slips past and gets transliterated
+    # into nonsense. Widening the boundary is not safe -- short entries like
+    # "ID" would then swallow the start of ordinary words -- so instead say so
+    # loudly and let the caller reword the string.
+    suffixed = sorted(
+        {
+            text
+            for text in mapping
+            for brand in PROTECTED
+            if re.search(rf"{re.escape(brand)}[a-z]", text) and brand not in mapping[text]
+        }
+    )
+    for text in suffixed:
+        print(f"  OGOHLANTIRISH: '{text}' -> '{mapping[text]}' (brend qo'shimcha bilan buzildi)")
+
     print(f"{len(mapping)} strings + {len(pattern_map)} patterns -> {OUT.relative_to(ROOT)}")
 
 

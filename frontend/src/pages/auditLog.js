@@ -83,7 +83,7 @@ async function renderAuditLog() {
           <label class="ops-date-filter">Sana (dan)<input type="date" name="date_from" value="${esc(params.get("date_from") || "")}" /></label>
           <label class="ops-date-filter">Sana (gacha)<input type="date" name="date_to" value="${esc(params.get("date_to") || "")}" /></label>
           <label class="inline-check"><input type="checkbox" name="failed_only" value="true" ${params.get("failed_only") === "true" ? "checked" : ""} /> Faqat bajarilmaganlar</label>
-          <button class="ops-tool-btn" type="submit">Saralash</button>
+          <button class="ops-tool-btn primary" type="submit">Qidirish</button>
           <button class="ops-tool-btn" type="button" data-nav="/audit-log">Tozalash</button>
         </form>
       </div>

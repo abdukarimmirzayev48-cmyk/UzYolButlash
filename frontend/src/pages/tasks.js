@@ -812,7 +812,7 @@ async function renderTasksList() {
           <label class="ops-date-filter">Muddat (gacha)<input type="date" name="deadline_to" value="${esc(params.get("deadline_to") || "")}" /></label>
           <input type="hidden" name="sort" value="${esc(params.get("sort") || "")}" />
           <input type="hidden" name="order" value="${esc(params.get("order") || "")}" />
-          <button class="ops-tool-btn" type="submit">Saralash</button>
+          <button class="ops-tool-btn primary" type="submit">Qidirish</button>
         </form>
       </div>
       ${taskQuickFilterBar(params, isManager)}

@@ -1,7 +1,10 @@
+from datetime import date
 from typing import Any
+from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
-from sqlalchemy import func, or_, select
+from fastapi.responses import StreamingResponse
+from sqlalchemy import func, nullslast, or_, select, true
 from sqlalchemy.orm import Session, selectinload
 
 from backend.app.db.session import get_db
@@ -18,6 +21,7 @@ from backend.app.models.contract import Contract
 from backend.app.models.delivery import DeliveryBatch
 from backend.app.models.finance import CustomerInvoice, CustomerPayment
 from backend.app.models.order import Order
+from backend.app.services import client_export
 from backend.app.schemas.client import (
     ClientAddressCreate,
     ClientAddressRead,
@@ -25,6 +29,7 @@ from backend.app.schemas.client import (
     ClientBankAccountCreate,
     ClientBankAccountRead,
     ClientBankAccountUpdate,
+    ClientBulkDelete,
     ClientContactCreate,
     ClientContactRead,
     ClientContactUpdate,
@@ -147,6 +152,60 @@ def client_filters(
     return filters
 
 
+# The region shown in a row is the legal address, falling back to the first
+# address -- the sort has to pick the same one or the column would order by a
+# value the user cannot see.
+REGION_EXPR = (
+    select(ClientAddress.region)
+    .where(ClientAddress.client_id == Client.id)
+    .order_by(ClientAddress.address_type != AddressType.legal, ClientAddress.id)
+    .limit(1)
+    .scalar_subquery()
+)
+ACTIVE_CONTRACTS_EXPR = (
+    select(func.count(Contract.id))
+    .where(Contract.client_id == Client.id, Contract.status.in_(ACTIVE_CONTRACT_STATUSES))
+    .scalar_subquery()
+)
+ACTIVE_ORDERS_EXPR = (
+    select(func.count(Order.id))
+    .where(Order.client_id == Client.id, Order.status.notin_(CLOSED_ORDER_STATUSES))
+    .scalar_subquery()
+)
+SORTABLE_COLUMNS = {
+    "name": func.lower(Client.name),
+    "inn": Client.inn,
+    "phone": Client.phone,
+    "region": REGION_EXPR,
+    "active_contracts": ACTIVE_CONTRACTS_EXPR,
+    "active_orders": ACTIVE_ORDERS_EXPR,
+    "created_at": Client.created_at,
+}
+DEFAULT_SORT = "created_at"
+
+
+def selected_client_ids(filters: list):
+    """Ids of the clients the filters select.
+
+    The filters reach through to contacts and addresses, so a client with two
+    addresses would otherwise come back twice. Collapsing to distinct ids here
+    and selecting the rows by id keeps the outer query free of DISTINCT, which
+    is what lets it be ordered by a subquery (region, contract counts).
+    """
+    stmt = select(Client.id).outerjoin(ClientContact).outerjoin(ClientAddress).distinct()
+    return stmt.where(*filters) if filters else stmt
+
+
+def apply_client_sort(stmt, sort: str | None, order: str | None):
+    column = SORTABLE_COLUMNS.get(sort or DEFAULT_SORT, SORTABLE_COLUMNS[DEFAULT_SORT])
+    descending = (order or "").lower() == "desc"
+    direction = column.desc() if descending else column.asc()
+    # Rows with no value belong at the end either way -- sorting by region
+    # otherwise opens with a block of dashes, which reads as broken.
+    # Client.id last so equal values keep a stable order across pages.
+    return stmt.order_by(nullslast(direction), Client.id.asc())
+
+
 @router.get("", response_model=Page[ClientListItem])
 def list_clients(
     db: Session = Depends(get_db),
@@ -158,29 +217,27 @@ def list_clients(
     contact_person: str | None = None,
     region: str | None = None,
     search: str | None = None,
+    sort: str | None = Query(default=None),
+    order: str | None = Query(default=None),
 ):
-    stmt = (
+    filters = client_filters(
+        search=search, name=name, inn=inn, phone=phone, contact_person=contact_person, region=region
+    )
+    ids = selected_client_ids(filters)
+    total = db.scalar(select(func.count()).select_from(ids.subquery())) or 0
+    stmt = apply_client_sort(
         select(Client)
-        .outerjoin(ClientContact)
-        .outerjoin(ClientAddress)
+        .where(Client.id.in_(ids))
         .options(
             selectinload(Client.contacts),
             selectinload(Client.addresses),
             selectinload(Client.contracts),
             selectinload(Client.orders),
-        )
-        .distinct()
+        ),
+        sort,
+        order or ("desc" if not sort else "asc"),
     )
-    filters = client_filters(
-        search=search, name=name, inn=inn, phone=phone, contact_person=contact_person, region=region
-    )
-    if filters:
-        stmt = stmt.where(*filters)
-
-    total = db.scalar(select(func.count()).select_from(stmt.subquery())) or 0
-    clients = db.scalars(
-        stmt.order_by(Client.created_at.desc()).offset((page - 1) * page_size).limit(page_size)
-    ).unique()
+    clients = db.scalars(stmt.offset((page - 1) * page_size).limit(page_size)).unique()
     return Page(items=[serialize_list_item(client) for client in clients], total=total, page=page, page_size=page_size)
 
 
@@ -210,9 +267,7 @@ def clients_overview(
     filters = client_filters(
         search=search, name=name, inn=inn, phone=phone, contact_person=contact_person, region=region
     )
-    selected_ids = select(Client.id).outerjoin(ClientContact).outerjoin(ClientAddress).distinct()
-    if filters:
-        selected_ids = selected_ids.where(*filters)
+    selected_ids = selected_client_ids(filters)
 
     total = db.scalar(select(func.count()).select_from(selected_ids.subquery())) or 0
     active_contracts = db.scalar(
@@ -243,6 +298,85 @@ def clients_overview(
             "contacts": [c for c in contacts if c and c.strip()],
         },
     }
+
+
+EXPORT_MEDIA_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
+
+@router.get("/export.xlsx")
+def export_clients(
+    db: Session = Depends(get_db),
+    name: str | None = None,
+    inn: str | None = None,
+    phone: str | None = None,
+    contact_person: str | None = None,
+    region: str | None = None,
+    search: str | None = None,
+    sort: str | None = Query(default=None),
+    order: str | None = Query(default=None),
+    ids: str | None = Query(default=None, description="Vergul bilan ajratilgan id lar"),
+    lang: str = Query(default="cyr"),
+    filter_note: str = Query(default="", max_length=500),
+):
+    """The current selection as a spreadsheet -- every filtered row, not a page.
+
+    Takes the same filter and sort parameters as the list, so whatever is on
+    screen is exactly what lands in the file. `ids` narrows it further to a
+    hand-picked set, which is what the row checkboxes send.
+    """
+    filters = client_filters(
+        search=search, name=name, inn=inn, phone=phone, contact_person=contact_person, region=region
+    )
+    picked = [int(part) for part in (ids or "").split(",") if part.strip().isdigit()]
+    stmt = apply_client_sort(
+        select(Client)
+        .where(Client.id.in_(selected_client_ids(filters)))
+        .where(Client.id.in_(picked) if picked else true())
+        .options(
+            selectinload(Client.contacts),
+            selectinload(Client.addresses),
+            selectinload(Client.contracts),
+            selectinload(Client.orders),
+        ),
+        sort,
+        order or ("desc" if not sort else "asc"),
+    )
+    items = [serialize_list_item(client) for client in db.scalars(stmt).unique()]
+    stream = client_export.build_workbook(items, lang, filter_note)
+    filename = f"mijozlar_{date.today():%Y-%m-%d}.xlsx"
+    return StreamingResponse(
+        stream,
+        media_type=EXPORT_MEDIA_TYPE,
+        headers={"Content-Disposition": f"attachment; filename={filename}; filename*=UTF-8''{quote(filename)}"},
+    )
+
+
+@router.post("/bulk-delete", dependencies=[Depends(require_edit("sotuv"))])
+def bulk_delete_clients(payload: ClientBulkDelete, db: Session = Depends(get_db)):
+    """Delete several clients, reporting each one separately.
+
+    A client that already has contracts, orders, batches, invoices or payments
+    cannot be deleted -- the same rule the single delete enforces. Rather than
+    failing the whole request on the first such client, each id is committed on
+    its own and the blocked ones come back with their reason, so the user can
+    see which of their selection survived and why.
+    """
+    deleted: list[int] = []
+    blocked: list[dict] = []
+    for client_id in dict.fromkeys(payload.ids):  # keep order, drop repeats
+        client = db.get(Client, client_id)
+        if client is None:
+            blocked.append({"id": client_id, "name": None, "reason": "Mijoz topilmadi."})
+            continue
+        try:
+            ensure_client_has_no_activity(db, client_id)
+        except HTTPException as error:
+            blocked.append({"id": client_id, "name": client.name, "reason": error.detail})
+            continue
+        db.delete(client)
+        db.commit()
+        deleted.append(client_id)
+    return {"deleted": deleted, "blocked": blocked}
 
 
 def ensure_inn_available(db: Session, inn: str | None, exclude_client_id: int | None = None) -> None:

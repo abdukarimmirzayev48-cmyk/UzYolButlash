@@ -827,7 +827,7 @@ async function renderContractsList() {
             <span class="clist-label">Status</span>
             <select name="status"><option value="">Status</option>${contractStatuses.map(([key, label]) => `<option value="${key}" ${params.get("status") === key ? "selected" : ""}>${label}</option>`).join("")}</select>
           </label>
-          <button class="clist-apply" type="submit" title="Saralash" aria-label="Saralash">${contractListIcon("sliders", 18)}</button>
+          <button class="clist-apply" type="submit" title="Qidirish" aria-label="Qidirish">${contractListIcon("sliders", 18)}</button>
         </div>
         <div class="clist-filter-foot"><button type="button" class="link-btn" data-nav="/contracts">Tozalash</button></div>
       </form>

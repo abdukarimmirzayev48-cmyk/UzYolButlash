@@ -7,9 +7,186 @@ async function clientsOverview(params) {
   return api(`/api/clients/overview?${params.toString()}`);
 }
 
+// Columns the server can order by. Anything not listed here is display-only
+// (the legal address is long free text, so sorting it helps nobody).
+const CLIENT_SORT_COLUMNS = [
+  ["name", "Mijoz nomi"],
+  ["inn", "STIR"],
+  ["phone", "Telefon"],
+  ["region", "Hudud"],
+  ["active_contracts", "Faol shartnomalar"],
+  ["active_orders", "Faol buyurtmalar"],
+];
+
+function clientSortHeader(key, label, params) {
+  const active = (params.get("sort") || "") === key;
+  const currentOrder = active && params.get("order") === "desc" ? "desc" : "asc";
+  const nextOrder = active && currentOrder === "asc" ? "desc" : "asc";
+  // The arrow sits in its own span with data-noloc: the Cyrillic dictionary
+  // matches whole text nodes, and a label glued to a glyph matches nothing.
+  const arrow = active ? (currentOrder === "desc" ? "\u2193" : "\u2191") : "\u21C5";
+  return `<button type="button" class="ops-sort${active ? " active" : ""}" data-client-sort="${key}" data-client-order="${nextOrder}">
+    <span>${label}</span><span class="ops-sort-arrow" data-noloc>${arrow}</span>
+  </button>`;
+}
+
+// Every filter field gets a visible label. A placeholder disappears the moment
+// something is typed, which left the user staring at a value with no idea which
+// field it belonged to.
+function clientFilterField(label, control) {
+  return `<label class="ops-field"><span class="ops-field-label">${label}</span>${control}</label>`;
+}
+
+function clientsFiltersHtml(params, regionOptions, contactOptions) {
+  const currentRegion = params.get("region") || "";
+  const currentContact = params.get("contact_person") || "";
+  const option = (value, current) =>
+    `<option value="${esc(value)}" ${current === value ? "selected" : ""}>${esc(value)}</option>`;
+  return [
+    clientFilterField(
+      "Mijoz nomi",
+      `<input name="name" placeholder="Nomi bo'yicha qidirish" value="${esc(params.get("name") || "")}" />`
+    ),
+    clientFilterField("STIR", `<input name="inn" placeholder="STIR raqami" value="${esc(params.get("inn") || "")}" />`),
+    clientFilterField(
+      "Hudud",
+      `<select name="region"><option value="">Barcha hududlar</option>${regionOptions.map((r) => option(r, currentRegion)).join("")}</select>`
+    ),
+    clientFilterField(
+      "Kontakt shaxs",
+      `<select name="contact_person"><option value="">Barcha kontaktlar</option>${contactOptions.map((c) => option(c, currentContact)).join("")}</select>`
+    ),
+  ].join("");
+}
+
+// A filter change should swap the rows, not blank the whole page. Wiping app
+// took the title, tabs, stat cards and the filter form the user was still
+// looking at, and rebuilt them a moment later -- a full flash on every search.
+function clientsShowTableLoading(colspan) {
+  const tbody = app.querySelector(".clients-ops-page .ops-table tbody");
+  if (!tbody) return false;
+  tbody.innerHTML = `<tr><td colspan="${colspan}"><div class="empty">Mijozlar yuklanmoqda...</div></td></tr>`;
+  localizeDom(tbody);
+  return true;
+}
+
+function clientsSelectedLabel(count) {
+  return `${count} ta mijoz tanlandi`;
+}
+
+function clientsSelectionBar(editable) {
+  if (!editable) return "";
+  return `<div class="ops-bulkbar" id="clients-bulkbar" hidden>
+    <span class="ops-bulkbar-count" id="clients-selected-count">${clientsSelectedLabel(0)}</span>
+    <div class="ops-bulkbar-actions">
+      <button type="button" class="btn" data-client-bulk="export">Tanlanganlarni yuklash (XLSX)</button>
+      <button type="button" class="btn danger" data-client-bulk="delete">Tanlanganlarni o'chirish</button>
+      <button type="button" class="btn ghost" data-client-bulk="clear">Bekor qilish</button>
+    </div>
+  </div>`;
+}
+
+function clientsExportUrl(params, extra = {}) {
+  const next = new URLSearchParams(params.toString());
+  next.delete("page");
+  next.set("lang", currentLang());
+  Object.entries(extra).forEach(([key, value]) => next.set(key, value));
+  const note = ["name", "inn", "region", "contact_person", "search"]
+    .map((key) => (params.get(key) ? `${key}=${params.get(key)}` : null))
+    .filter(Boolean)
+    .join(", ");
+  if (note) next.set("filter_note", note);
+  return `/api/clients/export.xlsx?${next.toString()}`;
+}
+
+function bindClientsListActions(params, editable) {
+  document.querySelectorAll("[data-client-sort]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const next = new URLSearchParams(location.search);
+      next.set("sort", button.dataset.clientSort);
+      next.set("order", button.dataset.clientOrder);
+      next.delete("page"); // a re-sort starts from the first page again
+      navigate(`/clients?${next}`);
+    });
+  });
+
+  document.querySelector("[data-client-export]")?.addEventListener("click", () => {
+    window.location.href = clientsExportUrl(params);
+  });
+
+  if (!editable) return;
+
+  const boxes = [...document.querySelectorAll("[data-client-pick]")];
+  const all = document.querySelector("#clients-pick-all");
+  const bar = document.querySelector("#clients-bulkbar");
+  const counter = document.querySelector("#clients-selected-count");
+  const selected = () => boxes.filter((box) => box.checked).map((box) => box.dataset.clientPick);
+
+  const sync = () => {
+    const picked = selected();
+    // Written as one string so the Cyrillic dictionary can match it as a
+    // "{n} ta ..." pattern -- a number split into its own element is a text
+    // node of digits, which no dictionary entry can translate.
+    counter.textContent = clientsSelectedLabel(picked.length);
+    localizeDom(counter);
+    bar.hidden = picked.length === 0;
+    if (all) {
+      all.checked = picked.length > 0 && picked.length === boxes.length;
+      all.indeterminate = picked.length > 0 && picked.length < boxes.length;
+    }
+    boxes.forEach((box) => box.closest("tr")?.classList.toggle("picked", box.checked));
+  };
+
+  boxes.forEach((box) => box.addEventListener("change", sync));
+  all?.addEventListener("change", () => {
+    boxes.forEach((box) => {
+      box.checked = all.checked;
+    });
+    sync();
+  });
+
+  document.querySelector('[data-client-bulk="clear"]')?.addEventListener("click", () => {
+    boxes.forEach((box) => {
+      box.checked = false;
+    });
+    sync();
+  });
+
+  document.querySelector('[data-client-bulk="export"]')?.addEventListener("click", () => {
+    const picked = selected();
+    if (!picked.length) return;
+    window.location.href = clientsExportUrl(params, { ids: picked.join(",") });
+  });
+
+  document.querySelector('[data-client-bulk="delete"]')?.addEventListener("click", async () => {
+    const picked = selected();
+    if (!picked.length) return;
+    if (!confirmMsg(`${picked.length} ta mijoz o'chiriladi. Davom etasizmi?`)) return;
+    try {
+      const result = await api("/api/clients/bulk-delete", {
+        method: "POST",
+        body: JSON.stringify({ ids: picked.map(Number) }),
+      });
+      // Clients with contracts or orders are refused one by one, so a partial
+      // result is normal -- say plainly what went through and what did not.
+      if (result.deleted.length) showToast(`${result.deleted.length} ta mijoz o'chirildi.`);
+      if (result.blocked.length) {
+        showToast(result.blocked[0].reason, true);
+      }
+      render();
+    } catch (error) {
+      showToast(error.message, true);
+    }
+  });
+}
+
 async function renderClientsList() {
-  app.innerHTML = `<div class="page ops-page"><div class="empty">Mijozlar yuklanmoqda...</div></div>`;
   const params = new URLSearchParams(location.search);
+  const editable = canEdit("sotuv");
+  const colspan = editable ? 9 : 8;
+  if (!clientsShowTableLoading(colspan)) {
+    app.innerHTML = `<div class="page ops-page"><div class="empty">Mijozlar yuklanmoqda...</div></div>`;
+  }
 
   const [data, overview] = await Promise.all([
     api(`/api/clients?${params.toString()}`),
@@ -23,7 +200,19 @@ async function renderClientsList() {
   const currentContact = params.get("contact_person") || "";
   if (currentRegion && !regionOptions.includes(currentRegion)) regionOptions.unshift(currentRegion);
   if (currentContact && !contactOptions.includes(currentContact)) contactOptions.unshift(currentContact);
-  const editable = canEdit("sotuv");
+
+  const sortable = Object.fromEntries(CLIENT_SORT_COLUMNS.map(([key, label]) => [key, clientSortHeader(key, label, params)]));
+  const headers = [
+    ...(editable ? [`<input type="checkbox" id="clients-pick-all" aria-label="Barchasini tanlash" />`] : []),
+    sortable.name,
+    sortable.inn,
+    sortable.phone,
+    sortable.region,
+    "Yuridik manzil",
+    sortable.active_contracts,
+    sortable.active_orders,
+    "Amallar",
+  ];
 
   app.innerHTML = opsListPage({
     className: "clients-ops-page",
@@ -39,24 +228,28 @@ async function renderClientsList() {
       { label: "Faol buyurtmalar", value: stats ? fmt(stats.active_orders) : dash },
     ],
     formId: "clients-search-form",
-    filters: `<input name="name" placeholder="Mijoz nomi bo'yicha qidirish" value="${esc(params.get("name") || "")}" /><input name="inn" placeholder="STIR kiriting" value="${esc(params.get("inn") || "")}" /><select name="region"><option value="">Barcha hududlar</option>${regionOptions.map((region) => `<option value="${esc(region)}" ${currentRegion === region ? "selected" : ""}>${esc(region)}</option>`).join("")}</select><select name="contact_person"><option value="">Barcha kontaktlar</option>${contactOptions.map((person) => `<option value="${esc(person)}" ${currentContact === person ? "selected" : ""}>${esc(person)}</option>`).join("")}</select>`,
-    headers: ["Mijoz nomi", "STIR", "Telefon", "Hudud", "Yuridik manzil", "Faol shartnomalar", "Faol buyurtmalar", ""],
+    filters: clientsFiltersHtml(params, regionOptions, contactOptions),
+    extraActions: `<button type="button" class="btn" data-client-export>Excel (XLSX)</button>`,
+    beforeTable: clientsSelectionBar(editable),
+    headers,
     rows: data.items.map((client) => `<tr>
-      <td><button class="ops-primary-link" data-nav="/clients/${client.id}">${fmt(client.name)}</button></td>
+      ${editable ? `<td class="ops-pick"><input type="checkbox" data-client-pick="${client.id}" aria-label="${esc(client.name || "")}" /></td>` : ""}
+      <td><a class="ops-primary-link" href="/clients/${client.id}" data-nav="/clients/${client.id}">${fmt(client.name)}</a></td>
       <td>${fmt(client.inn)}</td>
       <td>${fmt(client.phone)}</td>
       <td>${fmt(client.primary_region)}</td>
       <td>${fmt(client.legal_address)}</td>
-      <td>${fmt(client.active_contracts)}</td>
-      <td>${fmt(client.active_orders)}</td>
-      <td><div class="ops-row-actions"><button class="link-btn" data-nav="/clients/${client.id}">Ko'rish</button>${editable ? `<button class="link-btn" data-nav="/clients/${client.id}/edit">Tahrirlash</button>` : ""}</div></td>
+      <td class="ops-num">${fmt(client.active_contracts)}</td>
+      <td class="ops-num">${fmt(client.active_orders)}</td>
+      <td><div class="ops-row-actions">${editable ? `<a class="link-btn" href="/clients/${client.id}/edit" data-nav="/clients/${client.id}/edit">Tahrirlash</a>` : `<a class="link-btn" href="/clients/${client.id}" data-nav="/clients/${client.id}">Ko'rish</a>`}</div></td>
     </tr>`).join(""),
     emptyText: "Mijozlar topilmadi.",
-    colspan: 8,
+    colspan,
     footer: opsFooter(data, "client"),
   });
   bindOpsSearch("clients-search-form", "/clients", ["name", "inn", "region", "contact_person"]);
   bindOpsPagination("client", "/clients");
+  bindClientsListActions(params, editable);
 }
 
 async function renderNewClient() {

@@ -168,8 +168,16 @@ async function render() {
     setupFormattedNumberInputs(app);
     bindSelectSearch(app);
     bindRuDateFields(app);
-    document.querySelectorAll("[data-nav]").forEach((button) => {
-      button.addEventListener("click", () => navigate(button.dataset.nav));
+    document.querySelectorAll("[data-nav]").forEach((element) => {
+      element.addEventListener("click", (event) => {
+        // Rows link to their record with a real <a href> so the address can be
+        // copied and Ctrl/Cmd-clicked into a new tab -- comparing two records
+        // side by side is everyday work here. Those clicks belong to the
+        // browser; everything else stays a single-page navigation.
+        if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+        if (element.tagName === "A") event.preventDefault();
+        navigate(element.dataset.nav);
+      });
     });
   } catch (error) {
     app.innerHTML = `<div class="page"><div class="empty error">${esc(error.message)}</div></div>`;
