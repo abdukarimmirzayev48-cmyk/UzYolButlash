@@ -216,10 +216,15 @@ function bindSelectSearch(root = app) {
     const select = root.querySelector(`select[name="${search.dataset.selectFilter}"]`);
     if (!select) return;
     const counter = search.parentElement.querySelector("[data-select-count]");
-    const all = [...select.options].map((option) => ({
+    // Keep the original <option> nodes, not just their text. Rebuilding them
+    // with new Option() dropped every data-* attribute and flattened the
+    // optgroups -- which silently broke selects whose options carry data the
+    // form depends on (the product picker filled in nothing at all).
+    const all = [...select.querySelectorAll("option")].map((option) => ({
+      node: option.cloneNode(true),
       value: option.value,
-      text: option.text,
-      haystack: option.text.toLowerCase(),
+      haystack: option.textContent.toLowerCase(),
+      group: option.parentElement.tagName === "OPTGROUP" ? option.parentElement.label : null,
     }));
     const real = all.filter((option) => option.value).length;
 
@@ -230,11 +235,28 @@ function bindSelectSearch(root = app) {
       // filter can never hide the value the form is about to submit.
       const shown = all.filter((option) => !option.value || !query || option.haystack.includes(query) || option.value === chosen);
       select.innerHTML = "";
-      shown.forEach((option) => select.add(new Option(option.text, option.value, false, option.value === chosen)));
+      let groupName = null;
+      let groupEl = null;
+      shown.forEach((option) => {
+        const node = option.node.cloneNode(true);
+        node.selected = option.value === chosen;
+        if (option.group) {
+          if (option.group !== groupName) {
+            groupEl = document.createElement("optgroup");
+            groupEl.label = option.group;
+            select.appendChild(groupEl);
+            groupName = option.group;
+          }
+          groupEl.appendChild(node);
+        } else {
+          groupName = null;
+          select.appendChild(node);
+        }
+      });
       select.value = chosen;
       if (counter) {
         const matched = shown.filter((option) => option.value).length;
-        counter.textContent = query ? localizeText(`${matched} / ${real}`) : localizeText(`${real} ta`);
+        counter.textContent = localizeText(query ? `${matched} / ${real}` : `${real} ta`);
       }
     };
     search.addEventListener("input", apply);
