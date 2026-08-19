@@ -5227,3 +5227,9 @@ body.public-layout.sidebar-collapsed .app-shell {
   background: #fdf6f5;
 }
 
+
+.choice-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}

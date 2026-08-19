@@ -58,6 +58,13 @@ class StockMovementType(str, Enum):
     adjustment = "adjustment"
 
 
+class ExchangeTicketPaymentType(str, Enum):
+    """Spot settles within days; forward is the deferred birja term."""
+
+    spot = "spot"
+    forward = "forward"
+
+
 class ExchangeTicket(Base, TimestampMixin):
     __tablename__ = "exchange_tickets"
 
@@ -75,6 +82,9 @@ class ExchangeTicket(Base, TimestampMixin):
     vat_rate: Mapped[Decimal] = mapped_column(Numeric(5, 2), default=12, nullable=False)
     vat_amount: Mapped[Decimal] = mapped_column(Numeric(18, 2), default=0, nullable=False)
     total_amount: Mapped[Decimal] = mapped_column(Numeric(18, 2), default=0, nullable=False)
+    payment_type: Mapped[ExchangeTicketPaymentType] = mapped_column(
+        SAEnum(ExchangeTicketPaymentType), default=ExchangeTicketPaymentType.forward, nullable=False, index=True
+    )
     payment_term_days: Mapped[int] = mapped_column(default=90, nullable=False)
     due_date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
     status: Mapped[ExchangeTicketStatus] = mapped_column(

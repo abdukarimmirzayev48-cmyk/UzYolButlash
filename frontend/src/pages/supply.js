@@ -92,8 +92,8 @@ async function renderExchangeTicketsList() {
     counter: `${fmt(data.total)} ta ticket`,
     formId: "exchange-ticket-search-form",
     filters: `<input name="search" placeholder="Ticket, ta'minotchi, mahsulot" value="${esc(params.get("search") || "")}" /><select name="status"><option value="">Status</option>${exchangeTicketStatuses.map(([key, label]) => `<option value="${key}" ${params.get("status") === key ? "selected" : ""}>${label}</option>`).join("")}</select><label class="inline-check"><input type="checkbox" name="overdue_only" value="true" ${params.get("overdue_only") === "true" ? "checked" : ""} /> Muddati o'tgan</label>`,
-    headers: ["Ticket №", "Sana", "Ta'minotchi", "Mahsulot", "Miqdor", "Birlik narxi", "Jami summa", "To'lov muddati", "Qoldiq kun", "Status", ""],
-    rows: data.items.map((ticket) => `<tr><td><button class="ops-primary-link" data-nav="/exchange-tickets/${ticket.id}">${fmt(ticket.ticket_number)}</button></td><td>${fmt(ticket.ticket_date)}</td><td>${fmt(ticket.supplier_name)}</td><td>${fmt(ticket.product_name)}</td><td>${fmtQty(ticket.quantity, ticket.unit)}</td><td class="ops-money">${fmtMoney(ticket.unit_price)}</td><td class="ops-money">${fmtMoney(ticket.total_amount)}</td><td>${fmt(ticket.due_date)}</td><td>${fmt(daysUntil(ticket.due_date))}</td><td>${statusBadge(ticket.status)}</td><td><div class="ops-row-actions"><button class="link-btn" data-nav="/exchange-tickets/${ticket.id}">Ochish</button>${ticket.stock_lot ? `<button class="link-btn" data-nav="/stock/${ticket.stock_lot.id}">Zaxira</button>` : ""}</div></td></tr>`).join(""),
+    headers: ["Ticket №", "Sana", "Ta'minotchi", "Mahsulot", "Miqdor", "Birlik narxi", "Jami summa", "To'lov turi", "To'lov muddati", "Qoldiq kun", "Status", ""],
+    rows: data.items.map((ticket) => `<tr><td><button class="ops-primary-link" data-nav="/exchange-tickets/${ticket.id}">${fmt(ticket.ticket_number)}</button></td><td>${fmt(ticket.ticket_date)}</td><td>${fmt(ticket.supplier_name)}</td><td>${fmt(ticket.product_name)}</td><td>${fmtQty(ticket.quantity, ticket.unit)}</td><td class="ops-money">${fmtMoney(ticket.unit_price)}</td><td class="ops-money">${fmtMoney(ticket.total_amount)}</td><td>${fmt(optionLabel(ticketPaymentTypes, ticket.payment_type))}</td><td>${fmt(ticket.due_date)}</td><td>${fmt(daysUntil(ticket.due_date))}</td><td>${statusBadge(ticket.status)}</td><td><div class="ops-row-actions"><button class="link-btn" data-nav="/exchange-tickets/${ticket.id}">Ochish</button>${ticket.stock_lot ? `<button class="link-btn" data-nav="/stock/${ticket.stock_lot.id}">Zaxira</button>` : ""}</div></td></tr>`).join(""),
     emptyText: "Birja ticketlari topilmadi.",
     colspan: 11,
     footer: opsFooter(data, "exchange-ticket"),
@@ -115,11 +115,33 @@ function exchangeTicketPayload(form) {
     quantity: field(form, "quantity"),
     unit_price: field(form, "unit_price") || "0",
     vat_rate: field(form, "vat_rate") || "12",
+    payment_type: field(form, "payment_type") || "forward",
     payment_term_days: Number(field(form, "payment_term_days") || 90),
     notes: field(form, "notes"),
     created_by: field(form, "created_by"),
     open_immediately: true,
   };
+}
+
+// Spot settles almost immediately, forward is the deferred birja term. The
+// day counts are starting points, not rules -- both stay editable, because a
+// negotiated term is the normal case.
+const TICKET_PAYMENT_TYPES = [
+  ["spot", "Spot", 5],
+  ["forward", "Forward", 90],
+];
+
+function bindTicketPaymentType(form) {
+  const hidden = form.elements.payment_type;
+  const days = form.elements.payment_term_days;
+  form.querySelectorAll("[data-payment-type]").forEach((button) => button.addEventListener("click", () => {
+    hidden.value = button.dataset.paymentType;
+    days.value = button.dataset.days;
+    form.querySelectorAll("[data-payment-type]").forEach((other) => {
+      other.classList.toggle("active", other.dataset.paymentType === hidden.value);
+    });
+    updateExchangeTicketTotals(form);
+  }));
 }
 
 function exchangeTicketProductOptions(products) {
@@ -161,6 +183,7 @@ function validateExchangeTicketForm(form) {
   if (numberValue(field(form, "quantity")) <= 0) errors.push("Miqdor 0 dan katta bo'lishi kerak.");
   if (numberValue(field(form, "unit_price")) < 0) errors.push("Birlik narxi manfiy bo'lishi mumkin emas.");
   if (numberValue(field(form, "vat_rate") || 0) < 0) errors.push("QQS foizi manfiy bo'lishi mumkin emas.");
+  if (!field(form, "payment_type")) errors.push("To'lov turini tanlang.");
   if (Number(field(form, "payment_term_days") || 0) < 0) errors.push("To'lov muddati manfiy bo'lishi mumkin emas.");
   return errors;
 }
@@ -191,10 +214,16 @@ async function renderNewExchangeTicket() {
   // a hand-typed name that nothing else in the system can match.
   const productOptions = exchangeTicketProductOptions(products);
   const today = new Date().toISOString().slice(0, 10);
-  app.innerHTML = `<div class="page"><div class="page-header"><div class="page-title"><h1>Yangi birja ticketi</h1><p>Ticket ochilganda ta'minotchi omboridagi kompaniya zaxirasi yaratiladi.</p></div><div class="actions"><button class="btn" data-nav="/exchange-tickets">Orqaga</button></div></div><form id="exchange-ticket-form">${section("Ticket ma'lumotlari", `<div class="grid">${textField("ticket_number", "Ticket raqami")}${textField("ticket_date", "Ticket sanasi", today, "date")}<label>Ta'minotchi<select name="supplier_id"><option value="">Tanlang</option>${supplierOptions}</select></label><label>Mahsulot <span class="required-mark" aria-hidden="true">*</span>${selectSearch("product_id", "Mahsulot nomi bo'yicha qidiring")}<select name="product_id" data-ticket-product required><option value="">Mahsulotni tanlang</option>${productOptions}</select></label><input type="hidden" name="product_name" value="" />${textField("quantity", "Miqdor", "", "number")}${textField("unit", "Birlik", "tonna")}${textField("unit_price", "Birlik narxi", "", "number")}${textField("vat_rate", "QQS %", 12, "number")}${textField("payment_term_days", "To'lov muddati, kun", 90, "number")}${readonlyField("due_date_preview", "To'lov muddati", "")}${textField("created_by", "Yaratgan")}${textArea("notes", "Izoh")}</div>`)}${section("Hisob-kitob", summaryCards([["To'lov muddati", `<span data-ticket-due>${dash}</span>`], ["Oraliq summa", `<span data-ticket-subtotal>${dash}</span>`], ["QQS", `<span data-ticket-vat>${dash}</span>`], ["Jami summa", `<span data-ticket-total>${dash}</span>`]]))}<div class="form-footer"><button class="btn" type="button" data-nav="/exchange-tickets">Bekor qilish</button><button class="btn primary">Ticketni ochish</button></div></form></div>`;
+  app.innerHTML = `<div class="page"><div class="page-header"><div class="page-title"><h1>Yangi birja ticketi</h1><p>Ticket ochilganda ta'minotchi omboridagi kompaniya zaxirasi yaratiladi.</p></div><div class="actions"><button class="btn" data-nav="/exchange-tickets">Orqaga</button></div></div><form id="exchange-ticket-form">${section("Ticket ma'lumotlari", `<div class="grid">${textField("ticket_number", "Ticket raqami")}${textField("ticket_date", "Ticket sanasi", today, "date")}<label>Ta'minotchi<select name="supplier_id"><option value="">Tanlang</option>${supplierOptions}</select></label><label><span class="field-label-text">Mahsulot <span class="required-mark" aria-hidden="true">*</span></span>${selectSearch("product_id", "Mahsulot nomi bo'yicha qidiring")}<select name="product_id" data-ticket-product required><option value="">Mahsulotni tanlang</option>${productOptions}</select></label><input type="hidden" name="product_name" value="" />${textField("quantity", "Miqdor", "", "number")}${textField("unit", "Birlik", "tonna")}${textField("unit_price", "Birlik narxi", "", "number")}${textField("vat_rate", "QQS %", 12, "number")}<label><span class="field-label-text">To'lov turi <span class="required-mark" aria-hidden="true">*</span></span>
+      <div class="choice-row">
+        ${TICKET_PAYMENT_TYPES.map(([key, label, days]) => `<button type="button" class="task-chip ${key === "forward" ? "active" : ""}" data-payment-type="${key}" data-days="${days}">${label}</button>`).join("")}
+      </div>
+      <input type="hidden" name="payment_type" value="forward" />
+    </label>${textField("payment_term_days", "To'lov muddati, kun", 90, "number")}${readonlyField("due_date_preview", "To'lov muddati", "")}${textField("created_by", "Yaratgan")}${textArea("notes", "Izoh")}</div>`)}${section("Hisob-kitob", summaryCards([["To'lov muddati", `<span data-ticket-due>${dash}</span>`], ["Oraliq summa", `<span data-ticket-subtotal>${dash}</span>`], ["QQS", `<span data-ticket-vat>${dash}</span>`], ["Jami summa", `<span data-ticket-total>${dash}</span>`]]))}<div class="form-footer"><button class="btn" type="button" data-nav="/exchange-tickets">Bekor qilish</button><button class="btn primary">Ticketni ochish</button></div></form></div>`;
   const form = document.querySelector("#exchange-ticket-form");
   bindSelectSearch(form);
   bindExchangeTicketProduct(form);
+  bindTicketPaymentType(form);
   form.addEventListener("input", () => updateExchangeTicketTotals(form));
   form.addEventListener("change", () => updateExchangeTicketTotals(form));
   updateExchangeTicketTotals(form);
@@ -222,7 +251,7 @@ async function renderExchangeTicketDetail(id) {
   const dueDays = daysUntil(ticket.due_date);
   if (typeof dueDays === "number" && dueDays <= 7 && !["paid", "closed", "cancelled"].includes(ticket.status)) warnings.push(`Ticket to'lov muddati tugashiga ${dueDays} kun qoldi.`);
   if (!lot) warnings.push("Zaxira partiyasi hali yaratilmagan.");
-  app.innerHTML = `<div class="page">${workflowHeader({ title: ticket.ticket_number, subtitle: `${fmt(ticket.supplier_name)} · ${fmt(ticket.product_name)} · ${fmt(ticket.ticket_date)}`, backPath: "/exchange-tickets", actions: [{ label: "Zaxirani ko'rish", path: lot ? `/stock/${lot.id}` : "/stock", primary: Boolean(lot) }, { label: "Hujjat yuklash", path: `/exchange-tickets/${ticket.id}#documents` }] })}${workflowStatusGrid([["Ticket holati", statusBadge(ticket.status)], ["Zaxira holati", lot ? statusBadge(lot.stock_status) : statusChip({ label: "Yaratilmagan", tone: "warning" })], ["To'lov holati", statusChip({ label: optionLabel(exchangeTicketStatuses, ticket.status), tone: dueDays < 0 ? "warning" : "muted" })], ["Hujjat holati", statusChip({ label: "Keyingi bosqich", tone: "muted" })]])}${summaryCards([["Miqdor", fmtQty(ticket.quantity, ticket.unit)], ["Birlik narxi", fmtMoney(ticket.unit_price)], ["Jami summa", fmtMoney(ticket.total_amount)], ["To'lov muddati", fmt(ticket.due_date)], ["Qoldiq kun", fmt(dueDays)], ["Mavjud zaxira", lot ? fmtQty(lot.quantity_available, lot.unit) : dash]])}${workflowWarningsPanel(warnings)}${workflowNextActionPanel(!lot ? { title: "Ticketni oching", button: "Ticketni ochish", path: `/exchange-tickets/${ticket.id}` } : { title: "Zaxira buyurtmaga ajratishga tayyor", button: "Zaxirani ko'rish", path: `/stock/${lot.id}`, done: true })}${workflowTabs("general", [["general", "Umumiy"], ["product", "Mahsulot"], ["stock", "Zaxira"], ["finance", "Moliya"], ["documents", "Hujjatlar"], ["history", "Tarix"]], "exchange-ticket-tab")}${section("Umumiy", detailList([["Ticket raqami", ticket.ticket_number], ["Ticket sanasi", ticket.ticket_date], ["Ta'minotchi", ticket.supplier_name], ["Status", optionLabel(exchangeTicketStatuses, ticket.status)], ["Izoh", ticket.notes]]))}${section("Mahsulot", detailList([["Mahsulot", ticket.product_name], ["Miqdor", fmtQty(ticket.quantity, ticket.unit)], ["Birlik narxi", fmtMoney(ticket.unit_price)], ["Oraliq summa", fmtMoney(ticket.subtotal_amount)], ["QQS", fmtMoney(ticket.vat_amount)], ["Jami summa", fmtMoney(ticket.total_amount)]]))}${section("Zaxira", lot ? detailList([["Zaxira partiyasi", lot.ticket_number], ["Joylashuv", lot.location_name], ["Manzil", lot.location_address], ["Dastlabki miqdor", fmtQty(lot.quantity_initial, lot.unit)], ["Mavjud miqdor", fmtQty(lot.quantity_available, lot.unit)], ["Band qilingan", fmtQty(lot.quantity_reserved, lot.unit)], ["Status", optionLabel(stockStatuses, lot.stock_status)]]) : `<div class="empty">Zaxira partiyasi hali yaratilmagan.</div>`)}${section("Moliya", detailList([["To'lov muddati, kun", ticket.payment_term_days], ["To'lov muddati", ticket.due_date], ["Qoldiq kun", dueDays], ["Kreditor summa", fmtMoney(ticket.total_amount)]]))}${section("Hujjatlar", `<div class="empty" id="documents">Ticket hujjatlari keyingi bosqichda ulanadi.</div>`)}${section("Tarix", workflowTimeline([["Yaratildi", fmtDate(ticket.created_at)], ["Status", optionLabel(exchangeTicketStatuses, ticket.status)], ["Yangilandi", fmtDate(ticket.updated_at)]]))}</div>`;
+  app.innerHTML = `<div class="page">${workflowHeader({ title: ticket.ticket_number, subtitle: `${fmt(ticket.supplier_name)} · ${fmt(ticket.product_name)} · ${fmt(ticket.ticket_date)}`, backPath: "/exchange-tickets", actions: [{ label: "Zaxirani ko'rish", path: lot ? `/stock/${lot.id}` : "/stock", primary: Boolean(lot) }, { label: "Hujjat yuklash", path: `/exchange-tickets/${ticket.id}#documents` }] })}${workflowStatusGrid([["Ticket holati", statusBadge(ticket.status)], ["Zaxira holati", lot ? statusBadge(lot.stock_status) : statusChip({ label: "Yaratilmagan", tone: "warning" })], ["To'lov holati", statusChip({ label: optionLabel(exchangeTicketStatuses, ticket.status), tone: dueDays < 0 ? "warning" : "muted" })], ["Hujjat holati", statusChip({ label: "Keyingi bosqich", tone: "muted" })]])}${summaryCards([["Miqdor", fmtQty(ticket.quantity, ticket.unit)], ["Birlik narxi", fmtMoney(ticket.unit_price)], ["Jami summa", fmtMoney(ticket.total_amount)], ["To'lov muddati", fmt(ticket.due_date)], ["Qoldiq kun", fmt(dueDays)], ["Mavjud zaxira", lot ? fmtQty(lot.quantity_available, lot.unit) : dash]])}${workflowWarningsPanel(warnings)}${workflowNextActionPanel(!lot ? { title: "Ticketni oching", button: "Ticketni ochish", path: `/exchange-tickets/${ticket.id}` } : { title: "Zaxira buyurtmaga ajratishga tayyor", button: "Zaxirani ko'rish", path: `/stock/${lot.id}`, done: true })}${workflowTabs("general", [["general", "Umumiy"], ["product", "Mahsulot"], ["stock", "Zaxira"], ["finance", "Moliya"], ["documents", "Hujjatlar"], ["history", "Tarix"]], "exchange-ticket-tab")}${section("Umumiy", detailList([["Ticket raqami", ticket.ticket_number], ["Ticket sanasi", ticket.ticket_date], ["Ta'minotchi", ticket.supplier_name], ["Status", optionLabel(exchangeTicketStatuses, ticket.status)], ["Izoh", ticket.notes]]))}${section("Mahsulot", detailList([["Mahsulot", ticket.product_name], ["Miqdor", fmtQty(ticket.quantity, ticket.unit)], ["Birlik narxi", fmtMoney(ticket.unit_price)], ["Oraliq summa", fmtMoney(ticket.subtotal_amount)], ["QQS", fmtMoney(ticket.vat_amount)], ["Jami summa", fmtMoney(ticket.total_amount)]]))}${section("Zaxira", lot ? detailList([["Zaxira partiyasi", lot.ticket_number], ["Joylashuv", lot.location_name], ["Manzil", lot.location_address], ["Dastlabki miqdor", fmtQty(lot.quantity_initial, lot.unit)], ["Mavjud miqdor", fmtQty(lot.quantity_available, lot.unit)], ["Band qilingan", fmtQty(lot.quantity_reserved, lot.unit)], ["Status", optionLabel(stockStatuses, lot.stock_status)]]) : `<div class="empty">Zaxira partiyasi hali yaratilmagan.</div>`)}${section("Moliya", detailList([["To'lov turi", optionLabel(ticketPaymentTypes, ticket.payment_type)], ["To'lov muddati, kun", ticket.payment_term_days], ["To'lov muddati", ticket.due_date], ["Qoldiq kun", dueDays], ["Kreditor summa", fmtMoney(ticket.total_amount)]]))}${section("Hujjatlar", `<div class="empty" id="documents">Ticket hujjatlari keyingi bosqichda ulanadi.</div>`)}${section("Tarix", workflowTimeline([["Yaratildi", fmtDate(ticket.created_at)], ["Status", optionLabel(exchangeTicketStatuses, ticket.status)], ["Yangilandi", fmtDate(ticket.updated_at)]]))}</div>`;
 }
 
 async function renderStockList() {

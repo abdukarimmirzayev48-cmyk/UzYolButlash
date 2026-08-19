@@ -82,6 +82,11 @@ const stockLocationTypes = [
   ["other", "Boshqa"],
 ];
 
+const ticketPaymentTypes = [
+  ["spot", "Spot"],
+  ["forward", "Forward"],
+];
+
 const stockStatuses = [
   ["available", "Mavjud"],
   ["reserved", "Band qilingan"],

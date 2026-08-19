@@ -220,6 +220,7 @@ def ticket_read(ticket: ExchangeTicket) -> ExchangeTicketRead:
         vat_rate=money(ticket.vat_rate),
         vat_amount=money(ticket.vat_amount),
         total_amount=money(ticket.total_amount),
+        payment_type=ticket.payment_type,
         payment_term_days=ticket.payment_term_days,
         due_date=ticket.due_date,
         status=ticket.status,

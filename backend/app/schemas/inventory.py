@@ -4,6 +4,7 @@ from decimal import Decimal
 from pydantic import BaseModel, ConfigDict, Field
 
 from backend.app.models.inventory import (
+    ExchangeTicketPaymentType,
     ExchangeTicketStatus,
     OwnershipStatus,
     StockAllocationStatus,
@@ -37,6 +38,7 @@ class ExchangeTicketBase(BaseModel):
     quantity: Decimal = Field(gt=0)
     unit_price: Decimal = Field(ge=0)
     vat_rate: Decimal = Field(default=Decimal("12"), ge=0)
+    payment_type: ExchangeTicketPaymentType = ExchangeTicketPaymentType.forward
     payment_term_days: int = Field(default=90, ge=0)
     notes: str | None = None
     created_by: str | None = None
@@ -56,6 +58,7 @@ class ExchangeTicketUpdate(BaseModel):
     quantity: Decimal | None = Field(default=None, gt=0)
     unit_price: Decimal | None = Field(default=None, ge=0)
     vat_rate: Decimal | None = Field(default=None, ge=0)
+    payment_type: ExchangeTicketPaymentType | None = None
     payment_term_days: int | None = Field(default=None, ge=0)
     status: ExchangeTicketStatus | None = None
     notes: str | None = None
@@ -103,6 +106,7 @@ class ExchangeTicketRead(BaseModel):
     vat_rate: Decimal
     vat_amount: Decimal
     total_amount: Decimal
+    payment_type: ExchangeTicketPaymentType
     payment_term_days: int
     due_date: date
     status: ExchangeTicketStatus
