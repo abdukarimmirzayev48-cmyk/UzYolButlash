@@ -746,29 +746,133 @@ async function renderContractWizard() {
   await draw();
 }
 
+const CONTRACT_LIST_ICONS = {
+  search: '<circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>',
+  sliders: '<line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/>',
+  eye: '<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/>',
+  dots: '<circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/>',
+  plus: '<line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>',
+};
+
+function contractListIcon(name, size = 16) {
+  return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${CONTRACT_LIST_ICONS[name] || ""}</svg>`;
+}
+
+// The row menu holds the actions that are not the obvious one. "Ko'rish" earns
+// its own icon because it is what people do nine times out of ten; editing and
+// opening the PDF sit behind the dots so the column stays quiet.
+function contractRowActions(contract, editable) {
+  const items = [];
+  if (editable) items.push(`<button type="button" data-nav="/contracts/${contract.id}/edit">Tahrirlash</button>`);
+  if (contract.source_file_path) items.push(`<a target="_blank" href="/api/contracts/${contract.id}/file">Faylni ko'rish</a>`);
+  return `<div class="clist-actions">
+    <button type="button" class="clist-icon-btn" data-nav="/contracts/${contract.id}" title="Ko'rish" aria-label="Ko'rish">${contractListIcon("eye", 18)}</button>
+    ${items.length ? `<div class="clist-menu" data-clist-menu>
+      <button type="button" class="clist-icon-btn" data-clist-toggle aria-label="Boshqa amallar">${contractListIcon("dots", 18)}</button>
+      <div class="clist-menu-list" hidden>${items.join("")}</div>
+    </div>` : ""}
+  </div>`;
+}
+
 async function renderContractsList() {
   app.innerHTML = `<div class="page ops-page"><div class="empty">Shartnomalar yuklanmoqda...</div></div>`;
   const params = new URLSearchParams(location.search);
   const data = await api(`/api/contracts?${params.toString()}`);
   const editable = canEdit("sotuv");
-  app.innerHTML = opsListPage({
-    className: "contracts-ops-page",
-    title: "Shartnomalar",
-    tabs: [{ label: "Mijozlar", path: "/clients" }, { label: "Shartnomalar", active: true }, { label: "Buyurtmalar", path: "/orders" }],
-    createPath: editable ? "/contracts/upload" : null,
-    createLabel: "PDF orqali yaratish",
-    clearPath: "/contracts",
-    counter: `${editable ? `<button class="btn" data-nav="/contracts/new">Yangi shartnoma</button>` : ""}<span>${fmt(data.total)} ta shartnoma</span>`,
-    formId: "contract-search-form",
-    filters: `<input name="contract_number" placeholder="Shartnoma raqami" value="${esc(params.get("contract_number") || "")}" /><input name="client_name" placeholder="Mijoz" value="${esc(params.get("client_name") || "")}" /><input name="inn" placeholder="STIR" value="${esc(params.get("inn") || "")}" /><input name="product_name" placeholder="Mahsulot" value="${esc(params.get("product_name") || "")}" /><select name="status"><option value="">Status</option>${contractStatuses.map(([key, label]) => `<option value="${key}" ${params.get("status") === key ? "selected" : ""}>${label}</option>`).join("")}</select>`,
-    headers: ["Shartnoma raqami", "Sana", "Amal qilish muddati", "Buyurtmachi", "STIR", "Umumiy summa", "Status", "Amallar"],
-    rows: data.items.map((contract) => `<tr><td><button class="ops-primary-link" data-nav="/contracts/${contract.id}">${fmt(contract.contract_number)}</button></td><td>${fmt(contract.contract_date)}</td><td>${fmt(contract.valid_until)}</td><td>${fmt(contract.customer_name || contract.client?.name)}</td><td>${fmt(contract.customer_inn || contract.client?.inn)}</td><td class="ops-money">${fmtMoney(contract.total_amount)}</td><td>${statusBadge(contract.status)}</td><td><div class="ops-row-actions"><button class="link-btn" data-nav="/contracts/${contract.id}">Ko'rish</button>${editable ? `<button class="link-btn" data-nav="/contracts/${contract.id}/edit">Tahrirlash</button>` : ""}${contract.source_file_path ? `<a class="link-btn" target="_blank" href="/api/contracts/${contract.id}/file">Faylni ko'rish</a>` : ""}</div></td></tr>`).join(""),
-    emptyText: "Shartnomalar topilmadi.",
-    colspan: 12,
-    footer: opsFooter(data, "contract"),
-  });
-  bindOpsSearch("contract-search-form", "/contracts", ["contract_number", "client_name", "inn", "product_name", "status"]);
+  const rows = data.items.map((contract) => `<tr>
+    <td><button class="clist-number" data-nav="/contracts/${contract.id}">${fmt(contract.contract_number)}</button></td>
+    <td>${fmt(contract.contract_date)}</td>
+    <td>${fmt(contract.valid_until)}</td>
+    <td class="clist-customer">${fmt(contract.customer_name || contract.client?.name)}</td>
+    <td>${fmt(contract.customer_inn || contract.client?.inn)}</td>
+    <td class="clist-amount">${fmtMoney(contract.total_amount)}</td>
+    <td>${statusBadge(contract.status)}</td>
+    <td>${contractRowActions(contract, editable)}</td>
+  </tr>`).join("");
+
+  app.innerHTML = `
+    <div class="page contracts-list-page">
+      <header class="clist-head">
+        <div class="clist-title">
+          <h1>Shartnomalar</h1>
+          <span class="clist-count">${fmt(data.total)} ta shartnoma</span>
+        </div>
+        ${editable ? `<div class="clist-head-actions">
+          <button class="btn primary clist-create" data-nav="/contracts/new">${contractListIcon("plus", 16)}<span>Yangi shartnoma</span></button>
+          <button class="btn" type="button" data-nav="/contracts/upload">PDF orqali yaratish</button>
+        </div>` : ""}
+      </header>
+
+      <nav class="clist-tabs" aria-label="Sotuv bo'limlari">
+        <button type="button" data-nav="/clients">Mijozlar</button>
+        <button type="button" class="active" aria-current="page">Shartnomalar</button>
+        <button type="button" data-nav="/orders">Buyurtmalar</button>
+      </nav>
+
+      <form class="clist-filters" id="contract-search-form">
+        <div class="clist-filter-row">
+          <label class="clist-field clist-field-search">
+            <span class="clist-search-icon">${contractListIcon("search", 16)}</span>
+            <input name="search" placeholder="Shartnoma raqami yoki mijoz" value="${esc(params.get("search") || "")}" />
+          </label>
+          <label class="clist-field">
+            <span class="clist-label">STIR</span>
+            <input name="inn" placeholder="STIR" value="${esc(params.get("inn") || "")}" />
+          </label>
+          <label class="clist-field">
+            <span class="clist-label">Mahsulot</span>
+            <input name="product_name" placeholder="Mahsulot" value="${esc(params.get("product_name") || "")}" />
+          </label>
+          <label class="clist-field">
+            <span class="clist-label">Status</span>
+            <select name="status"><option value="">Status</option>${contractStatuses.map(([key, label]) => `<option value="${key}" ${params.get("status") === key ? "selected" : ""}>${label}</option>`).join("")}</select>
+          </label>
+          <button class="clist-apply" type="submit" title="Saralash" aria-label="Saralash">${contractListIcon("sliders", 18)}</button>
+        </div>
+        <div class="clist-filter-foot"><button type="button" class="link-btn" data-nav="/contracts">Tozalash</button></div>
+      </form>
+
+      <section class="clist-card">
+        <table class="clist-table">
+          <thead><tr>
+            <th>Shartnoma raqami</th><th>Sana</th><th>Amal qilish muddati</th><th>Buyurtmachi</th>
+            <th>STIR</th><th>Umumiy summa</th><th>Status</th><th>Amallar</th>
+          </tr></thead>
+          <tbody>${rows || `<tr><td colspan="8"><div class="empty">Shartnomalar topilmadi.</div></td></tr>`}</tbody>
+        </table>
+      </section>
+
+      <div class="clist-foot">
+        <span class="clist-range" data-noloc>${data.total ? `${(data.page - 1) * data.page_size + 1}–${Math.min(data.page * data.page_size, data.total)}` : 0} / ${data.total}</span>
+        <div class="ops-pagination">${contractsPaginationHtml(data)}</div>
+      </div>
+    </div>
+  `;
+
+  bindOpsSearch("contract-search-form", "/contracts", ["search", "inn", "product_name", "status"]);
   bindOpsPagination("contract", "/contracts");
+  bindContractRowMenus();
+}
+
+function contractsPaginationHtml(data) {
+  const current = Number(data.page || 1);
+  const totalPages = Math.max(1, Math.ceil((data.total || 0) / (data.page_size || 20)));
+  const end = Math.min(current * (data.page_size || 20), data.total);
+  return `<button type="button" class="ops-page-btn" data-contract-page="${current - 1}" ${current <= 1 ? "disabled" : ""} aria-label="Oldingi">${paginationChevron("left")}</button>
+    ${paginationPageList(current, totalPages).map((p) => (p === "..." ? `<span class="ops-page-btn ellipsis">…</span>` : `<button type="button" class="ops-page-btn ${p === current ? "active" : ""}" data-contract-page="${p}">${fmt(p)}</button>`)).join("")}
+    <button type="button" class="ops-page-btn" data-contract-page="${current + 1}" ${end >= data.total ? "disabled" : ""} aria-label="Keyingi">${paginationChevron("right")}</button>`;
+}
+
+function bindContractRowMenus() {
+  const closeAll = () => document.querySelectorAll("[data-clist-menu] .clist-menu-list").forEach((menu) => { menu.hidden = true; });
+  document.querySelectorAll("[data-clist-toggle]").forEach((button) => button.addEventListener("click", (event) => {
+    event.stopPropagation();
+    const list = button.parentElement.querySelector(".clist-menu-list");
+    const wasHidden = list.hidden;
+    closeAll();
+    list.hidden = !wasHidden;
+  }));
+  document.addEventListener("click", closeAll);
 }
 
 function parsedItemRow(item = {}, index = 0, products = []) {

@@ -5233,3 +5233,349 @@ body.public-layout.sidebar-collapsed .app-shell {
   flex-wrap: wrap;
   gap: 6px;
 }
+
+/* ---- Shartnomalar ro'yxati (alohida dizayn) ----
+   Scoped to this page on purpose: opsListPage is shared by a dozen other
+   lists, so restyling it would silently redesign all of them. */
+
+.contracts-list-page {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.clist-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px 16px;
+  margin-bottom: 18px;
+}
+
+.clist-title {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.clist-title h1 {
+  margin: 0;
+  font-size: 30px;
+  font-weight: 700;
+  letter-spacing: -0.4px;
+}
+
+.clist-count {
+  padding: 5px 12px;
+  border-radius: 999px;
+  background: #eef2f5;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.clist-head-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.clist-head-actions .btn {
+  height: 42px;
+  padding: 0 18px;
+  border-radius: 9px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.clist-create {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* ---- tabs ---- */
+
+.clist-tabs {
+  display: flex;
+  gap: 26px;
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 20px;
+}
+
+.clist-tabs button {
+  position: relative;
+  padding: 0 0 12px;
+  border: 0;
+  background: none;
+  color: var(--muted);
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.clist-tabs button:hover {
+  color: var(--text);
+}
+
+.clist-tabs button.active {
+  color: var(--text);
+  font-weight: 700;
+}
+
+.clist-tabs button.active::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -1px;
+  height: 2px;
+  border-radius: 2px 2px 0 0;
+  background: var(--accent);
+}
+
+/* ---- filter card ---- */
+
+.clist-filters {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+  padding: 18px 20px 12px;
+  margin-bottom: 18px;
+}
+
+.clist-filter-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.clist-field {
+  display: grid;
+  gap: 6px;
+  flex: 1 1 150px;
+  min-width: 140px;
+}
+
+.clist-field-search {
+  position: relative;
+  flex: 2 1 320px;
+}
+
+.clist-label {
+  color: var(--muted);
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.clist-field input,
+.clist-field select {
+  height: 44px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 400;
+  width: 100%;
+}
+
+.clist-field-search input {
+  padding-left: 40px;
+}
+
+.clist-search-icon {
+  position: absolute;
+  left: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+  pointer-events: none;
+}
+
+.clist-field input:focus,
+.clist-field select:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: -1px;
+}
+
+.clist-apply {
+  flex: 0 0 auto;
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--surface);
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.clist-apply:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.clist-filter-foot {
+  display: flex;
+  justify-content: flex-end;
+  padding-top: 10px;
+}
+
+.clist-filter-foot .link-btn {
+  font-size: 13.5px;
+  font-weight: 600;
+}
+
+/* ---- table ---- */
+
+.clist-card {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+  overflow: auto;
+}
+
+.clist-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.clist-table th {
+  padding: 15px 18px;
+  border-bottom: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 600;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.clist-table td {
+  padding: 15px 18px;
+  border-bottom: 1px solid #eef2f5;
+  vertical-align: middle;
+  color: var(--text);
+}
+
+.clist-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.clist-table tbody tr:hover td {
+  background: #f6fbf9;
+}
+
+.clist-number {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.clist-number:hover {
+  text-decoration: underline;
+}
+
+.clist-customer {
+  min-width: 260px;
+}
+
+.clist-amount {
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+/* ---- row actions ---- */
+
+.clist-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.clist-icon-btn {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border: 0;
+  border-radius: 7px;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.clist-icon-btn:hover {
+  background: #eef2f5;
+  color: var(--accent);
+}
+
+.clist-menu {
+  position: relative;
+}
+
+.clist-menu-list {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 4px);
+  z-index: 30;
+  display: grid;
+  min-width: 168px;
+  padding: 6px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--surface);
+  box-shadow: 0 12px 28px rgba(16, 24, 40, 0.14);
+}
+
+/* display:grid above beats the [hidden] attribute's own display:none, so every
+   row menu rendered open until this was added. */
+.clist-menu-list[hidden] {
+  display: none;
+}
+
+.clist-menu-list button,
+.clist-menu-list a {
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: var(--text);
+  font-size: 13.5px;
+  text-align: left;
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.clist-menu-list button:hover,
+.clist-menu-list a:hover {
+  background: var(--surface-soft);
+  color: var(--accent);
+}
+
+/* ---- footer ---- */
+
+.clist-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px 2px 0;
+}
+
+.clist-range {
+  color: var(--muted);
+  font-size: 13.5px;
+}
