@@ -1,5 +1,5 @@
 import json
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from decimal import Decimal, ROUND_HALF_UP
 from pathlib import Path
 from shutil import copyfileobj
@@ -71,7 +71,7 @@ from backend.app.services.client_matching import (
     find_client_by_inn,
     find_registry_by_inn,
 )
-from backend.app.services import contract_payment_schedule, contract_workflow
+from backend.app.services import contract_payment_schedule, contract_workflow, notifications
 from backend.app.services.auth import get_current_user, require_edit
 from backend.app.services.contract_pdf_parser import PARSER_VERSION, parse_contract_pdf
 
@@ -875,6 +875,7 @@ def list_contracts(
     date_to: str | None = None,
     valid_from: str | None = None,
     valid_to: str | None = None,
+    expiry: str | None = Query(default=None, description="expired | soon | valid"),
 ):
     stmt = (
         select(Contract)
@@ -909,6 +910,20 @@ def list_contracts(
         filters.append(ContractItem.product_name.ilike(f"%{product_name}%"))
     if contract_date:
         filters.append(func.cast(Contract.contract_date, String).ilike(f"%{contract_date}%"))
+    if expiry:
+        # A date question, not a status one: a contract can be marked active and
+        # still be out of date, which is exactly the case this filter exists to
+        # find. EXPIRY_WARNING_DAYS keeps "soon" the same span the notification
+        # uses, so the list and the alert never disagree.
+        today = date.today()
+        soon_limit = today + timedelta(days=notifications.EXPIRY_WARNING_DAYS)
+        if expiry == "expired":
+            filters.append(Contract.valid_until < today)
+        elif expiry == "soon":
+            filters.append(Contract.valid_until >= today)
+            filters.append(Contract.valid_until <= soon_limit)
+        elif expiry == "valid":
+            filters.append(Contract.valid_until > soon_limit)
     if status_filter:
         filters.append(Contract.status == status_filter)
     if client_id:

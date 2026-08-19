@@ -11,6 +11,10 @@ screen and the rule on the server cannot drift apart.
 
     draft -> signed -> active -> completed
 
+An active contract that passes its valid_until becomes `expired` on its own --
+the nightly sweep records it like any other change, with a reason. Extending it
+is the way back to active.
+
 Anything not yet finished can be cancelled, and a cancelled contract can be
 reopened as a draft. Each step also has a way back, because correcting a
 mis-click is ordinary work -- but going back is deliberate and has to say why.
@@ -21,6 +25,7 @@ from backend.app.models.contract import ContractStatus as S
 # Written on the one opening entry each existing contract got when history
 # started. Declared here as MSG_* so the Cyrillic dictionary picks it up -- it
 # is stored in the database and read back like any other comment.
+MSG_EXPIRED_AUTOMATICALLY = "Amal qilish muddati tugadi."
 MSG_HISTORY_BASELINE = "Tarix yuritish boshlangunga qadar mavjud holat."
 
 
@@ -29,6 +34,9 @@ FORWARD: dict[S, tuple[S, ...]] = {
     S.signed: (S.active,),
     S.active: (S.completed,),
     S.completed: (),
+    # An expired contract can still be closed out -- the goods may have been
+    # delivered before the date ran out.
+    S.expired: (S.completed,),
     S.cancelled: (),
 }
 
@@ -39,10 +47,13 @@ BACKWARD: dict[S, tuple[S, ...]] = {
     # Reopening a completed contract is a real correction, not an oddity: a
     # delivery that turns out to be short puts it back into active.
     S.completed: (S.active,),
+    # Putting an expired contract back to active is how an extension is
+    # recorded: the reason field says until when and on what basis.
+    S.expired: (S.active,),
     S.cancelled: (S.draft,),
 }
 
-CANCELLABLE = (S.draft, S.signed, S.active)
+CANCELLABLE = (S.draft, S.signed, S.active, S.expired)
 
 
 def transitions_from(current: S) -> list[dict]:

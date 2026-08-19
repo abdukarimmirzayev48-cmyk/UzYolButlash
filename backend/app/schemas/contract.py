@@ -2,7 +2,7 @@ import json
 from datetime import date, datetime
 from decimal import Decimal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from backend.app.models.contract import (
     ContractDocumentType,
@@ -161,6 +161,27 @@ class ContractNoteRead(ContractNoteBase):
     created_at: datetime
 
 
+class ContractDateRules(BaseModel):
+    """Date sanity, mixed into the write shapes only.
+
+    Never into ContractBase: the Read schemas extend it, and a rule applied on
+    the way out makes the three zero-day contracts already on file unreadable
+    -- a 500 on the very records that need correcting. Input refuses bad data;
+    output shows what is stored.
+    """
+
+    @model_validator(mode="after")
+    def _valid_until_after_contract_date(self):
+        # A contract that expires the day it is signed is a data-entry slip, not
+        # a business arrangement -- the three on file all came from the PDF
+        # parser filling the field in from the contract date.
+        contract_date = getattr(self, "contract_date", None)
+        valid_until = getattr(self, "valid_until", None)
+        if valid_until and contract_date and valid_until <= contract_date:
+            raise ValueError("Amal qilish muddati shartnoma sanasidan keyin bo'lishi kerak.")
+        return self
+
+
 class ContractBase(BaseModel):
     client_id: int | None = None
     contract_number: str = Field(min_length=1, max_length=128)
@@ -195,7 +216,7 @@ class ContractBase(BaseModel):
     rouming_id: str | None = None
 
 
-class ContractCreate(ContractBase):
+class ContractCreate(ContractBase, ContractDateRules):
     items: list[ContractItemCreate] = Field(min_length=1)
     payment_terms: ContractPaymentTermsCreate | None = None
     transport_terms: ContractTransportTermsCreate | None = None
@@ -203,7 +224,7 @@ class ContractCreate(ContractBase):
     initial_note: ContractNoteCreate | None = None
 
 
-class ContractUpdate(BaseModel):
+class ContractUpdate(ContractDateRules):
     """Everything on a contract except its status.
 
     Status moves through POST /contracts/{id}/status, which checks the move is
@@ -326,6 +347,7 @@ CONTRACT_STATUS_LABELS = {
     "signed": "Imzolangan",
     "active": "Faol",
     "completed": "Yakunlangan",
+    "expired": "Muddati tugagan",
     "cancelled": "Bekor qilingan",
 }
 

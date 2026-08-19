@@ -117,6 +117,35 @@ def get_contract_or_400(db: Session, contract_id: int) -> Contract:
     return contract
 
 
+def ensure_contract_in_force(contract) -> None:
+    """Refuse to open new work on a contract that is no longer in force.
+
+    One of the expired contracts already had a delivery booked against it,
+    which is how this was noticed. Extending the contract -- putting it back to
+    active with a reason -- is the way to carry on.
+    """
+    from datetime import date
+
+    from backend.app.models.contract import ContractStatus
+
+    if contract.status in {ContractStatus.expired, ContractStatus.cancelled}:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=(
+                "Bu shartnoma bo'yicha yangi buyurtma ochib bo'lmaydi: shartnoma amalda emas. "
+                "Muddatini uzaytiring yoki yangi shartnoma tuzing."
+            ),
+        )
+    if contract.valid_until and contract.valid_until < date.today():
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=(
+                f"Shartnoma amal qilish muddati {contract.valid_until} da tugagan. "
+                "Yangi buyurtma ochish uchun muddatini uzaytiring."
+            ),
+        )
+
+
 def ensure_contract_has_client(contract: Contract) -> None:
     if contract.client_id is None:
         raise HTTPException(
@@ -424,6 +453,7 @@ def list_orders(
 def create_order(payload: OrderCreate, db: Session = Depends(get_db)):
     contract = get_contract_or_400(db, payload.contract_id)
     ensure_contract_has_client(contract)
+    ensure_contract_in_force(contract)
     contract_items = validate_items_against_contract(db, contract, payload.items)
     data = payload.model_dump(exclude={"items", "supplier_options", "documents", "initial_note"})
     for protected_field in ("status", "supplier_id", "supplier_name", "supplier_status"):

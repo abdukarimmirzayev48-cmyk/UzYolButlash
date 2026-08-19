@@ -127,6 +127,89 @@ def sweep_overdue_contract_payments(db: Session) -> int:
     return sent
 
 
+MSG_CONTRACT_EXPIRED = "Shartnoma muddati tugadi"
+MSG_CONTRACT_EXPIRING = "Shartnoma muddati tugayapti"
+
+# How far ahead to warn. A month is enough notice to start an extension.
+EXPIRY_WARNING_DAYS = 30
+
+
+def sweep_expired_contracts(db: Session) -> int:
+    """Move contracts past their valid_until to `expired`, and warn about the
+    ones about to get there.
+
+    A contract that ran out ten weeks ago was still labelled "Faol", and one of
+    them had a delivery booked against it. The status is written through the
+    same history table as a manual change, so the card shows when it happened
+    and that the system did it.
+    """
+    from datetime import date, timedelta
+
+    from backend.app.models.contract import Contract, ContractStatus, ContractStatusHistory
+    from backend.app.models.user import User
+    from backend.app.services.contract_workflow import MSG_EXPIRED_AUTOMATICALLY
+
+    today = date.today()
+    changed = 0
+
+    running = (
+        db.query(Contract)
+        .filter(
+            Contract.status.in_([ContractStatus.signed, ContractStatus.active]),
+            Contract.valid_until.isnot(None),
+            Contract.valid_until < today,
+        )
+        .all()
+    )
+    for contract in running:
+        db.add(
+            ContractStatusHistory(
+                contract_id=contract.id,
+                old_status=contract.status,
+                new_status=ContractStatus.expired,
+                # No username: the system did this, and saying so is clearer
+                # than attributing it to whoever happened to be signed in.
+                changed_by=None,
+                comment=MSG_EXPIRED_AUTOMATICALLY,
+            )
+        )
+        contract.status = ContractStatus.expired
+        changed += 1
+    if running:
+        db.commit()
+
+    recipients = [
+        user.id
+        for user in db.query(User).filter(User.is_active.is_(True)).all()
+        if user.is_admin or "sotuv" in (user.edit_modules or [])
+    ]
+    if not recipients:
+        return changed
+
+    soon = (
+        db.query(Contract)
+        .filter(
+            Contract.status.in_([ContractStatus.signed, ContractStatus.active]),
+            Contract.valid_until.isnot(None),
+            Contract.valid_until >= today,
+            Contract.valid_until <= today + timedelta(days=EXPIRY_WARNING_DAYS),
+        )
+        .all()
+    )
+    for contract, title, body in [
+        (c, MSG_CONTRACT_EXPIRED, f"{c.contract_number}: {c.valid_until}") for c in running
+    ] + [
+        (c, MSG_CONTRACT_EXPIRING, f"{c.contract_number}: {(c.valid_until - today).days} kun") for c in soon
+    ]:
+        link = f"/contracts/{contract.id}"
+        for user_id in recipients:
+            kind = "contract_expired" if title == MSG_CONTRACT_EXPIRED else "contract_expiring"
+            if _has_link_notification(db, user_id, kind, link):
+                continue
+            notify(db, user_id, title, body, kind, None, link)
+    return changed
+
+
 def run_reminder_sweep(db: Session) -> None:
     """Deadline reminders (1 day / 1 hour out) and an overdue sweep for non-terminal tasks.
 

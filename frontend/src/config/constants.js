@@ -22,6 +22,7 @@ const contractStatuses = [
   ["signed", "Imzolangan"],
   ["active", "Faol"],
   ["completed", "Yakunlangan"],
+  ["expired", "Muddati tugagan"],
   ["cancelled", "Bekor qilingan"],
 ];
 

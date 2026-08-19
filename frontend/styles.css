@@ -2166,6 +2166,12 @@ tr:last-child td {
   color: #465563;
 }
 
+.status-badge.expired {
+  border-color: #e8c9a6;
+  background: #fdf3e6;
+  color: #8a5a1c;
+}
+
 .status-badge.cancelled {
   background: #fff1f0;
   color: var(--danger);

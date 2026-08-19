@@ -848,7 +848,7 @@ async function renderContractsList() {
           </label>
           <label class="clist-field">
             <span class="clist-label">Status</span>
-            <select name="status"><option value="">Status</option>${contractStatuses.map(([key, label]) => `<option value="${key}" ${params.get("status") === key ? "selected" : ""}>${label}</option>`).join("")}</select>
+            <select name="status"><option value="">Status</option>${contractStatuses.map(([key, label]) => `<option value="${key}" ${params.get("status") === key ? "selected" : ""}>${label}</option>`).join("")}</select><select name="expiry"><option value="">Amal muddati</option>${[["expired", "Muddati tugagan"], ["soon", "30 kun ichida tugaydi"], ["valid", "Amaldagi"]].map(([key, label]) => `<option value="${key}" ${params.get("expiry") === key ? "selected" : ""}>${label}</option>`).join("")}</select>
           </label>
           <button class="clist-apply" type="submit" title="Qidirish" aria-label="Qidirish">${contractListIcon("sliders", 18)}</button>
         </div>
@@ -872,7 +872,7 @@ async function renderContractsList() {
     </div>
   `;
 
-  bindOpsSearch("contract-search-form", "/contracts", ["search", "inn", "product_name", "status"]);
+  bindOpsSearch("contract-search-form", "/contracts", ["search", "inn", "product_name", "status", "expiry"]);
   bindOpsPagination("contract", "/contracts");
   bindContractRowMenus();
 }
@@ -1138,6 +1138,16 @@ function bindContractStatusActions(contract) {
 // The terms said "10 kun"; nobody turned that into a date, so nothing could
 // tell whether it had passed. Each row now carries the date it is due and how
 // far past it is.
+// Whole days from today; negative once the date has passed.
+function daysUntilDate(value) {
+  if (!value) return null;
+  const target = new Date(`${String(value).slice(0, 10)}T00:00:00`);
+  if (Number.isNaN(target.getTime())) return null;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return Math.round((target - today) / 86400000);
+}
+
 function paymentScheduleHtml(contract) {
   const rows = contract.summary?.payment_schedule || [];
   if (!rows.length) return `<div class="empty">To'lov muddatlari hisoblanmadi — to'lov shartlari kiritilmagan.</div>`;
@@ -1167,6 +1177,14 @@ function contractHeader(contract) {
   const warnings = [];
   // The old rule was "nothing paid and an advance exists", which says the same
   // mild thing on day one and on day two hundred. The deadline decides now.
+  // Expiry is the first thing to say: everything else on the card is about a
+  // contract that may no longer be in force.
+  const daysLeft = daysUntilDate(contract.valid_until);
+  if (daysLeft !== null && daysLeft < 0) {
+    warnings.push(`Shartnoma muddati ${-daysLeft} kun oldin tugagan.`);
+  } else if (daysLeft !== null && daysLeft <= 30) {
+    warnings.push(`Shartnoma muddati ${daysLeft} kundan keyin tugaydi.`);
+  }
   const overdueCount = Number(contract.summary?.overdue_count || 0);
   if (overdueCount) {
     // One template literal on one line, so the dictionary can match it as a

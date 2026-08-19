@@ -34,7 +34,11 @@ from backend.app.core.paths import FRONTEND_DIR, UPLOADS_DIR
 from backend.app.db.session import SessionLocal
 from backend.app.services.audit import AuditMiddleware
 from backend.app.services.auth import get_current_user
-from backend.app.services.notifications import run_reminder_sweep, sweep_overdue_contract_payments
+from backend.app.services.notifications import (
+    run_reminder_sweep,
+    sweep_expired_contracts,
+    sweep_overdue_contract_payments,
+)
 from backend.app.services.telegram_bot import start_bot, stop_bot
 
 
@@ -125,6 +129,7 @@ def _run_reminder_sweep_job() -> None:
     try:
         run_reminder_sweep(db)
         sweep_overdue_contract_payments(db)
+        sweep_expired_contracts(db)
     finally:
         db.close()
 

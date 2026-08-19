@@ -15,6 +15,11 @@ class ContractStatus(str, Enum):
     signed = "signed"
     active = "active"
     completed = "completed"
+    # Reached its valid_until without being extended or fulfilled. A separate
+    # status rather than a derived flag, because "faol" on a contract that ran
+    # out ten weeks ago is simply untrue -- and neither "completed" (fulfilled)
+    # nor "cancelled" (terminated) describes it either.
+    expired = "expired"
     cancelled = "cancelled"
 
 
