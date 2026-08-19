@@ -204,15 +204,21 @@ class ContractCreate(ContractBase):
 
 
 class ContractUpdate(BaseModel):
+    """Everything on a contract except its status.
+
+    Status moves through POST /contracts/{id}/status, which checks the move is
+    legal and records who made it. Leaving it here as well meant the edit form
+    could put a draft straight into "completed" with no trail -- the rule and
+    the history would exist and be trivially bypassed.
+    """
+
     client_id: int | None = None
     contract_number: str | None = Field(default=None, min_length=1, max_length=128)
     contract_date: date | None = None
     valid_until: date | None = None
     title: str | None = None
-    status: ContractStatus | None = None
     currency: str | None = None
     notes: str | None = None
-    created_by: str | None = None
     customer_request_id: int | None = None
     place: str | None = None
     customer_name: str | None = None
@@ -298,6 +304,40 @@ class ContractListItem(ContractRead):
     last_activity: datetime | None = None
 
 
+CONTRACT_STATUS_LABELS = {
+    "draft": "Qoralama",
+    "signed": "Imzolangan",
+    "active": "Faol",
+    "completed": "Yakunlangan",
+    "cancelled": "Bekor qilingan",
+}
+
+
+class ContractStatusTransition(BaseModel):
+    status: str
+    label: str
+    direction: str
+    requires_comment: bool
+
+
+class ContractStatusChange(BaseModel):
+    status: str
+    comment: str | None = Field(default=None, max_length=1000)
+
+
+class ContractStatusHistoryRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    old_status: str | None = None
+    new_status: str
+    old_status_label: str | None = None
+    new_status_label: str | None = None
+    changed_by: str | None = None
+    comment: str | None = None
+    created_at: datetime
+
+
 class ContractDetail(ContractRead):
     client: ClientRead | None = None
     items: list[ContractItemRead] = Field(default_factory=list)
@@ -305,6 +345,10 @@ class ContractDetail(ContractRead):
     transport_terms: ContractTransportTermsRead | None = None
     documents: list[ContractDocumentRead] = Field(default_factory=list)
     notes_history: list[ContractNoteRead] = Field(default_factory=list)
+    status_history: list[ContractStatusHistoryRead] = Field(default_factory=list)
+    # Which moves are legal from where this contract stands, so the buttons on
+    # screen are exactly what the API will accept.
+    available_transitions: list[ContractStatusTransition] = Field(default_factory=list)
     summary: ContractSummary | None = None
 
 

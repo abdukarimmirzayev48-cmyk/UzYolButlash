@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session, selectinload
 from backend.app.db.session import get_db
 from backend.app.core.paths import PROJECT_ROOT, UPLOADS_DIR
 from backend.app.models.client import Client
+from backend.app.models.user import User
 from backend.app.models.contract import (
     Contract,
     ContractDocument,
@@ -25,6 +26,7 @@ from backend.app.models.contract import (
     ContractParseSession,
     ContractParseSessionStatus,
     ContractStatus,
+    ContractStatusHistory,
     ContractTransportTerms,
 )
 from backend.app.models.customer_request import CustomerRequest
@@ -35,7 +37,11 @@ from backend.app.models.finance import CustomerInvoice, InvoiceStatus
 from backend.app.schemas.client import Page
 from backend.app.schemas.contract import (
     ContractCreate,
+    CONTRACT_STATUS_LABELS,
     ContractDetail,
+    ContractStatusChange,
+    ContractStatusHistoryRead,
+    ContractStatusTransition,
     ContractDocumentCreate,
     ContractDocumentRead,
     ContractDocumentUpdate,
@@ -64,7 +70,8 @@ from backend.app.services.client_matching import (
     find_client_by_inn,
     find_registry_by_inn,
 )
-from backend.app.services.auth import require_edit
+from backend.app.services import contract_workflow
+from backend.app.services.auth import get_current_user, require_edit
 from backend.app.services.contract_pdf_parser import PARSER_VERSION, parse_contract_pdf
 
 
@@ -557,7 +564,9 @@ def get_parse_session_file(session_id: int, db: Session = Depends(get_db)):
 
 
 @router.post("/from-parsed", response_model=ContractDetail, status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_edit("sotuv"))])
-def create_contract_from_parsed(payload: ContractFromParsedCreate, db: Session = Depends(get_db)):
+def create_contract_from_parsed(
+    payload: ContractFromParsedCreate, db: Session = Depends(get_db), user: User = Depends(get_current_user)
+):
     session = db.get(ContractParseSession, payload.parse_session_id)
     if not session:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tahlil sessiyasi topilmadi.")
@@ -596,6 +605,7 @@ def create_contract_from_parsed(payload: ContractFromParsedCreate, db: Session =
         subtotal_amount=payload.total_without_vat or Decimal("0"),
         vat_amount=payload.vat_amount or Decimal("0"),
         total_amount=payload.total_with_vat or Decimal("0"),
+        created_by=user.username,
         parser_version=PARSER_VERSION,
         parse_confidence=session.confidence,
         parse_warnings=json.dumps(warnings, ensure_ascii=False),
@@ -625,6 +635,7 @@ def create_contract_from_parsed(payload: ContractFromParsedCreate, db: Session =
     )
     db.add(contract)
     db.flush()
+    record_status_change(db, contract, None, contract.status, "Shartnoma PDF orqali yaratildi.", user)
     for item_payload in payload.items:
         if not item_payload.quantity or item_payload.quantity <= 0:
             raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Miqdor 0 dan katta bo‘lishi kerak.")
@@ -678,12 +689,80 @@ def create_contract_from_parsed(payload: ContractFromParsedCreate, db: Session =
     return get_contract_detail(contract.id, db)
 
 
-@router.post("/{contract_id}/cancel", response_model=ContractDetail, dependencies=[Depends(require_edit("sotuv"))])
-def cancel_contract(contract_id: int, db: Session = Depends(get_db)):
+def serialize_status_history(entry: ContractStatusHistory) -> ContractStatusHistoryRead:
+    return ContractStatusHistoryRead(
+        id=entry.id,
+        old_status=entry.old_status.value if entry.old_status else None,
+        new_status=entry.new_status.value,
+        old_status_label=CONTRACT_STATUS_LABELS.get(entry.old_status.value) if entry.old_status else None,
+        new_status_label=CONTRACT_STATUS_LABELS.get(entry.new_status.value),
+        changed_by=entry.changed_by,
+        comment=entry.comment,
+        created_at=entry.created_at,
+    )
+
+
+def record_status_change(
+    db: Session, contract: Contract, old_status, new_status, comment: str | None, user: User
+) -> None:
+    db.add(
+        ContractStatusHistory(
+            contract_id=contract.id,
+            old_status=old_status,
+            new_status=new_status,
+            # Taken from the session, never from the request body: an audit
+            # trail somebody can type into is not an audit trail.
+            changed_by=user.username,
+            comment=comment,
+        )
+    )
+
+
+@router.post("/{contract_id}/status", response_model=ContractDetail, dependencies=[Depends(require_edit("sotuv"))])
+def change_contract_status(
+    contract_id: int,
+    payload: ContractStatusChange,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
     contract = get_contract_or_404(db, contract_id)
-    contract.status = ContractStatus.cancelled
+    try:
+        target = ContractStatus(payload.status)
+    except ValueError:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Status qiymati noto'g'ri.") from None
+    kind = contract_workflow.transition_kind(contract.status, target)
+    if kind is None:
+        # Names where the contract actually is: the usual cause is a page left
+        # open while somebody else moved it on.
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=(
+                f"«{CONTRACT_STATUS_LABELS.get(contract.status.value, contract.status.value)}» holatidan "
+                f"«{CONTRACT_STATUS_LABELS.get(target.value, target.value)}» holatiga o'tib bo'lmaydi. "
+                "Sahifani yangilang."
+            ),
+        )
+    comment = (payload.comment or "").strip()
+    if kind in {"backward", "cancel"} and not comment:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Bekor qilish sababi majburiy." if kind == "cancel" else "Orqaga qaytarish sababi majburiy.",
+        )
+    old_status = contract.status
+    contract.status = target
+    record_status_change(db, contract, old_status, target, comment or None, user)
     db.commit()
     return get_contract_detail(contract.id, db)
+
+
+@router.post("/{contract_id}/cancel", response_model=ContractDetail, dependencies=[Depends(require_edit("sotuv"))])
+def cancel_contract(
+    contract_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)
+):
+    """Kept for the existing button; the rule and the trail are the same."""
+    return change_contract_status(
+        contract_id, ContractStatusChange(status=ContractStatus.cancelled.value, comment="Bekor qilindi."), db, user
+    )
 
 
 @router.post("/{contract_id}/link-new-client", response_model=ContractDetail, dependencies=[Depends(require_edit("sotuv"))])
@@ -831,12 +910,21 @@ def get_next_contract_number(db: Session = Depends(get_db)):
 
 
 @router.post("", response_model=ContractDetail, status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_edit("sotuv"))])
-def create_contract(payload: ContractCreate, db: Session = Depends(get_db)):
+def create_contract(
+    payload: ContractCreate, db: Session = Depends(get_db), user: User = Depends(get_current_user)
+):
     ensure_optional_client_exists(db, payload.client_id)
-    data = payload.model_dump(exclude={"items", "payment_terms", "transport_terms", "documents", "initial_note"})
+    data = payload.model_dump(
+        exclude={"items", "payment_terms", "transport_terms", "documents", "initial_note", "created_by"}
+    )
+    # The author comes from the session. It used to be a text box on the form,
+    # so whoever edited a contract could put any name in it -- on a legal
+    # document that is not an author field, it is a guess.
+    data["created_by"] = user.username
     contract = Contract(**data)
     db.add(contract)
     db.flush()
+    record_status_change(db, contract, None, contract.status, "Shartnoma yaratildi.", user)
     for item_payload in payload.items:
         item = ContractItem(contract_id=contract.id, **item_payload.model_dump())
         apply_product_fields(db, item)
@@ -858,7 +946,21 @@ def create_contract(payload: ContractCreate, db: Session = Depends(get_db)):
 @router.get("/{contract_id}", response_model=ContractDetail)
 def get_contract_detail(contract_id: int, db: Session = Depends(get_db)):
     contract = load_contract_detail(db, contract_id)
-    return ContractDetail.model_validate(contract).model_copy(update={"summary": summary_for(db, contract)})
+    return ContractDetail.model_validate(contract).model_copy(
+        update={
+            "summary": summary_for(db, contract),
+            "status_history": [serialize_status_history(entry) for entry in contract.status_history],
+            "available_transitions": [
+                ContractStatusTransition(
+                    status=move["status"],
+                    label=CONTRACT_STATUS_LABELS.get(move["status"], move["status"]),
+                    direction=move["direction"],
+                    requires_comment=move["requires_comment"],
+                )
+                for move in contract_workflow.transitions_from(contract.status)
+            ],
+        }
+    )
 
 
 @router.patch("/{contract_id}", response_model=ContractDetail, dependencies=[Depends(require_edit("sotuv"))])

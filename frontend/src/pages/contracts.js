@@ -149,7 +149,6 @@ function collectContractPayload(form) {
     status: field(form, "status") || "draft",
     currency: "UZS",
     notes: field(form, "notes"),
-    created_by: field(form, "created_by"),
     items: collectContractItems(form),
     payment_terms: {
       advance_percent: field(form, "advance_percent") || "30",
@@ -194,8 +193,8 @@ async function contractForm(contract = null) {
             ${textField("valid_until", "Valid until", contract?.valid_until || oneYearLater, "date")}
             <label>Client${selectSearch("client_id", "Mijoz nomi yoki STIR bo'yicha qidiring")}<select name="client_id"><option value="">Select client</option>${clientOptions}</select></label>
             ${textField("title", "Title", contract?.title)}
-            ${selectField("status", "Status", contractStatuses, contract?.status || "draft")}
-            ${textField("created_by", "Created by", contract?.created_by)}
+            ${contract ? `<label><span class="field-label-text">Status</span><input value="${esc(optionLabel(contractStatuses, contract.status))}" readonly /><small class="field-helper">Holat shartnoma kartochkasidagi tugmalar orqali o'zgartiriladi — shunda kim va nima uchun o'zgartirgani yozib boriladi.</small></label>` : selectField("status", "Status", contractStatuses, "draft")}
+            ${contract?.created_by ? `<label><span class="field-label-text">Kim yaratgan</span><input value="${esc(contract.created_by)}" readonly data-noloc /></label>` : ""}
             ${textArea("notes", "Notes", contract?.notes)}
           </div>
         `)}
@@ -1042,6 +1041,100 @@ async function renderEditContract(id) {
   bindContractForm(contract);
 }
 
+// Buttons come from the server's own description of the flow, so what is on
+// screen is exactly what the API will accept. The card used to offer no status
+// control at all -- the only way was the dropdown on the full edit form, which
+// allowed any jump and recorded nothing.
+const CONTRACT_STATUS_DIALOGS = {
+  forward: {
+    title: "Keyingi holatga o'tkazish",
+    intro: "Shartnoma quyidagi holatga o'tadi. Izoh ixtiyoriy, lekin u tarixda qoladi.",
+    confirmLabel: "O'tkazish", tone: "primary", commentLabel: "Izoh",
+    placeholder: "Nima qilindi?", required: false,
+  },
+  backward: {
+    title: "Oldingi holatga qaytarish",
+    intro: "Shartnoma orqaga qaytariladi. Sabab majburiy — u tarixda qoladi.",
+    confirmLabel: "Qaytarish", tone: "primary", commentLabel: "Qaytarish sababi",
+    placeholder: "Nima noto'g'ri edi?", required: true,
+  },
+  cancel: {
+    title: "Shartnomani bekor qilish",
+    intro: "Shartnoma bekor qilinadi. Sabab majburiy.",
+    confirmLabel: "Bekor qilish", tone: "danger", commentLabel: "Bekor qilish sababi",
+    placeholder: "Nima uchun bekor qilinyapti?", required: true,
+  },
+};
+
+const CONTRACT_BACK_LABEL = "Orqaga qaytarish";
+
+function contractTransitionsHtml(contract) {
+  const moves = contract.available_transitions || [];
+  if (!moves.length) return `<div class="empty">Bu holatdan status o'zgartirilmaydi.</div>`;
+  const order = { forward: 0, backward: 1, cancel: 2 };
+  const buttons = [...moves]
+    .sort((a, b) => order[a.direction] - order[b.direction])
+    .map((move) => {
+      const cls = move.direction === "forward" ? "btn primary" : move.direction === "cancel" ? "btn danger" : "btn";
+      const prefix = move.direction === "backward"
+        ? `<span>${CONTRACT_BACK_LABEL}</span><span data-noloc>\u2190</span>`
+        : "";
+      return `<button class="${cls}" type="button" data-contract-status="${esc(move.status)}" data-contract-direction="${esc(move.direction)}">${prefix}<span>${esc(move.label)}</span></button>`;
+    })
+    .join("");
+  const hint = moves.some((m) => m.direction === "backward" || m.direction === "cancel")
+    ? `<p class="form-hint">Orqaga qaytarish va bekor qilish uchun sabab yozish shart — u tarixda qoladi.</p>`
+    : "";
+  return `${hint}<div class="actions">${buttons}</div>`;
+}
+
+function bindContractStatusActions(contract) {
+  app.querySelectorAll("[data-contract-status]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const direction = button.dataset.contractDirection;
+      const cfg = CONTRACT_STATUS_DIALOGS[direction] || CONTRACT_STATUS_DIALOGS.forward;
+      const target = (button.querySelector("span:last-child") || button).textContent.trim();
+      const { confirmed, comment } = await appDialog({
+        title: cfg.title,
+        intro: cfg.intro,
+        subject: direction === "cancel" ? "" : target,
+        confirmLabel: cfg.confirmLabel,
+        tone: cfg.tone,
+        comment: { label: cfg.commentLabel, placeholder: cfg.placeholder, optional: !cfg.required },
+      });
+      if (!confirmed) return;
+      try {
+        await api(`/api/contracts/${contract.id}/status`, {
+          method: "POST",
+          body: JSON.stringify({ status: button.dataset.contractStatus, comment }),
+        });
+        showToast("Shartnoma holati yangilandi.");
+        render();
+      } catch (error) {
+        showToast(error.message, true);
+      }
+    });
+  });
+
+  app.querySelector("[data-contract-remove]")?.addEventListener("click", async () => {
+    const { confirmed } = await appDialog({
+      title: "Shartnomani o'chirish",
+      intro: "Shartnoma butunlay o'chiriladi. Buyurtmalari yoki partiyalari bo'lsa server ruxsat bermaydi.",
+      subject: contract.contract_number,
+      confirmLabel: "O'chirish",
+      tone: "danger",
+    });
+    if (!confirmed) return;
+    try {
+      await api(`/api/contracts/${contract.id}`, { method: "DELETE" });
+      showToast("Shartnoma o'chirildi.");
+      navigate("/contracts");
+    } catch (error) {
+      showToast(error.message, true);
+    }
+  });
+}
+
 function contractHeader(contract) {
   const warnings = [];
   if (numberValue(contract.summary?.paid_amount) <= 0 && numberValue(contract.summary?.advance_amount) > 0) warnings.push("Avans to'lovi hali kelmagan.");
@@ -1053,7 +1146,7 @@ function contractHeader(contract) {
   const editable = canEdit("sotuv");
   const nextAction = !contract.client_id ? {title:"Shartnoma mijozga bog'lanmagan. Buyurtma yaratishdan oldin mijozni bog'lang.",button:"Mijozni bog'lash",modal:"contract-link-client"} : numberValue(contract.summary?.paid_amount)<=0 && numberValue(contract.summary?.advance_amount)>0 ? {title:"Avans hisob-fakturasini yarating yoki to'lovni kiriting",button:"Hisob yaratish",modal:"contract-invoice-modal"} : numberValue(contract.summary?.remaining_quantity)>0 ? {title:"Shartnoma bo'yicha buyurtma yarating",button:"Buyurtma yaratish",path:`/orders/new?contract_id=${contract.id}`} : {title:"Shartnoma yakunlashga tayyor",button:"Tarix",path:`/contracts/${contract.id}?tab=notes`,done:true};
   return `
-    ${workflowHeader({title:contract.contract_number,subtitle:`${fmt(contract.customer_name || contract.client?.name)} · ${fmt(contract.contract_date)} · ${fmt(contract.valid_until)} gacha · ${fmt(statusLabel(contract.status))}`,backPath:"/contracts",fullEditPath:editable ? `/contracts/${contract.id}/edit` : "",actions: editable ? [...(contract.client_id ? [{label:"Buyurtma yaratish",path:`/orders/new?contract_id=${contract.id}`,primary:true}] : [{label:"Mijozni bog'lash",modal:"contract-link-client",primary:true}]),{label:"Hujjat yuklash",path:`/contracts/${contract.id}?tab=documents`}] : [{label:"Hujjat yuklash",path:`/contracts/${contract.id}?tab=documents`}]})}
+    ${workflowHeader({title:contract.contract_number,subtitle:`<span data-noloc>${fmt(contract.customer_name || contract.client?.name)}</span><span data-noloc> · ${fmtDayOnly(contract.contract_date)} — ${fmtDayOnly(contract.valid_until)} · </span><span>${fmt(statusLabel(contract.status))}</span>`,backPath:"/contracts",fullEditPath:editable ? `/contracts/${contract.id}/edit` : "",actions: editable ? [...(contract.client_id ? [{label:"Buyurtma yaratish",path:`/orders/new?contract_id=${contract.id}`,primary:true}] : [{label:"Mijozni bog'lash",modal:"contract-link-client",primary:true}]),{label:"Hujjat yuklash",path:`/contracts/${contract.id}?tab=documents`},{label:"O'chirish",modal:"contract-remove"}] : [{label:"Hujjat yuklash",path:`/contracts/${contract.id}?tab=documents`}]})}
     ${workflowStatusGrid([["Shartnoma holati",statusBadge(contract.status)],["Buyurtmalar holati",statusChip(numberValue(contract.summary?.remaining_quantity)>0?{label:"Jarayonda",tone:"warning"}:{label:"Yopilgan",tone:"success"})],["To'lov holati",statusChip(numberValue(contract.summary?.remaining_amount)>0?{label:"Qoldiq bor",tone:"warning"}:{label:"Yopilgan",tone:"success"})],["Yetkazib berish holati",statusChip(numberValue(contract.summary?.remaining_quantity)>0?{label:"Qoldiq bor",tone:"warning"}:{label:"To'liq",tone:"success"})]])}
     ${summaryCards([["Jami summa",fmtMoney(contract.summary?.total_amount)],["Jami miqdor",fmtQty(contract.summary?.total_quantity)],["Yetkazilgan",fmtQty(contract.summary?.delivered_quantity)],["Qoldiq",fmtQty(contract.summary?.remaining_quantity)],["Avans summasi",fmtMoney(contract.summary?.advance_amount)],["To'langan summa",fmtMoney(contract.summary?.paid_amount)],["Qolgan to'lov",fmtMoney(contract.summary?.remaining_amount)],["Transport xarajatlari",fmtMoney(contract.summary?.transport_expense_total)]])}
     ${workflowWarningsPanel(warnings)}
@@ -1102,7 +1195,11 @@ function contractGeneralTab(contract) {
         ["Yangilangan", fmtDate(contract.updated_at)],
       ].map(([label, value]) => `<div class="detail-item"><span>${label}</span><strong>${fmt(value)}</strong></div>`).join("")}
     </div>
-  `) + section("Bajaruvchi", detailList([["Bajaruvchi nomi", contract.executor_name], ["Direktor F.I.Sh.", contract.executor_director_full_name], ["STIR", contract.executor_inn], ["OKED", contract.executor_oked], ["Yuridik manzil", contract.executor_legal_address], ["Hisob raqami", contract.executor_bank_account], ["Bank nomi", contract.executor_bank_name], ["MFO", contract.executor_mfo], ["Telefon", contract.executor_phone]])) + section("Buyurtmachi", detailList([["Buyurtmachi nomi", contract.customer_name || contract.client?.name], ["Direktor F.I.Sh.", contract.customer_director_full_name], ["STIR", contract.customer_inn || contract.client?.inn], ["OKED", contract.customer_oked], ["Yuridik manzil", contract.customer_legal_address], ["Hisob raqami", contract.customer_bank_account], ["Bank nomi", contract.customer_bank_name], ["MFO", contract.customer_mfo], ["Telefon", contract.customer_phone]])) + section("Bog'langan obyektlar", `<div class="detail-list">${[["ERP mijoz", contract.client?.name], ["Talabnoma ID", contract.customer_request_id], ["Parser versiyasi", contract.parser_version], ["Aniqlik darajasi", parseConfidenceLabel(contract)]].map(([label, value]) => `<div class="detail-item"><span>${label}</span><strong>${fmt(value)}</strong></div>`).join("")}<div class="detail-item"><span>PDF fayl</span><strong>${contract.source_file_path ? `<a class="link-btn" target="_blank" href="/api/contracts/${contract.id}/file">PDF faylni ko'rish</a>` : dash}</strong></div></div>`);
+  `) + (canEdit("sotuv") ? section("Holatni o'zgartirish", contractTransitionsHtml(contract)) : "")
+  + section("Holat tarixi", tableOrEmpty(contract.status_history, ["Sana", "Oldingi holat", "Yangi holat", "Izoh", "Kim"], (item) => `
+      <tr><td>${fmtDate(item.created_at)}</td><td>${fmt(item.old_status_label)}</td><td>${fmt(item.new_status_label)}</td><td>${fmt(item.comment)}</td><td>${fmt(item.changed_by)}</td></tr>
+    `, "Holat tarixi mavjud emas."))
+  + section("Bajaruvchi", detailList([["Bajaruvchi nomi", contract.executor_name], ["Direktor F.I.Sh.", contract.executor_director_full_name], ["STIR", contract.executor_inn], ["OKED", contract.executor_oked], ["Yuridik manzil", contract.executor_legal_address], ["Hisob raqami", contract.executor_bank_account], ["Bank nomi", contract.executor_bank_name], ["MFO", contract.executor_mfo], ["Telefon", contract.executor_phone]])) + section("Buyurtmachi", detailList([["Buyurtmachi nomi", contract.customer_name || contract.client?.name], ["Direktor F.I.Sh.", contract.customer_director_full_name], ["STIR", contract.customer_inn || contract.client?.inn], ["OKED", contract.customer_oked], ["Yuridik manzil", contract.customer_legal_address], ["Hisob raqami", contract.customer_bank_account], ["Bank nomi", contract.customer_bank_name], ["MFO", contract.customer_mfo], ["Telefon", contract.customer_phone]])) + section("Bog'langan obyektlar", `<div class="detail-list">${[["ERP mijoz", contract.client?.name], ["Talabnoma ID", contract.customer_request_id], ["Parser versiyasi", contract.parser_version], ["Aniqlik darajasi", parseConfidenceLabel(contract)]].map(([label, value]) => `<div class="detail-item"><span>${label}</span><strong>${fmt(value)}</strong></div>`).join("")}<div class="detail-item"><span>PDF fayl</span><strong>${contract.source_file_path ? `<a class="link-btn" target="_blank" href="/api/contracts/${contract.id}/file">PDF faylni ko'rish</a>` : dash}</strong></div></div>`);
 }
 
 function contractSpecificationTab(contract) {
@@ -1593,6 +1690,7 @@ async function renderContractDetail(id) {
   }
   app.innerHTML = `<div class="page">${contractHeader(contract)}${contractTabs(active)}${renderContractActiveTab(contract, active, related)}</div>`;
 
+  bindContractStatusActions(contract);
   document.querySelectorAll("[data-contract-tab]").forEach((button) => {
     button.addEventListener("click", () => navigate(`/contracts/${id}?tab=${button.dataset.contractTab}`));
   });

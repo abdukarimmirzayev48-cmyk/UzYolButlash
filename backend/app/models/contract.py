@@ -18,6 +18,29 @@ class ContractStatus(str, Enum):
     cancelled = "cancelled"
 
 
+class ContractStatusHistory(Base):
+    """Who moved a contract to which status, when, and why.
+
+    A contract is a legal document; "it is active now" without a record of who
+    decided that is not much of an answer. The status used to be an ordinary
+    field on the edit form, so a change left no trace at all -- the same gap the
+    talabnoma module already closed.
+    """
+
+    __tablename__ = "contract_status_history"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    contract_id: Mapped[int] = mapped_column(ForeignKey("contracts.id", ondelete="CASCADE"), index=True)
+    old_status: Mapped[ContractStatus | None] = mapped_column(SAEnum(ContractStatus), nullable=True)
+    new_status: Mapped[ContractStatus] = mapped_column(SAEnum(ContractStatus), nullable=False, index=True)
+    # The signed-in account, recorded by the server -- never typed in.
+    changed_by: Mapped[str | None] = mapped_column(String(255))
+    comment: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now, nullable=False, index=True)
+
+    contract: Mapped["Contract"] = relationship(back_populates="status_history")
+
+
 class ContractParseSessionStatus(str, Enum):
     parsed = "parsed"
     confirmed = "confirmed"
@@ -62,6 +85,9 @@ class Contract(Base, TimestampMixin):
     vat_amount: Mapped[Decimal] = mapped_column(Numeric(18, 2), default=0, nullable=False)
     total_amount: Mapped[Decimal] = mapped_column(Numeric(18, 2), default=0, nullable=False)
     notes: Mapped[str | None] = mapped_column(Text)
+    # Set from the signed-in account when the contract is created. It used to be
+    # a free-text field on the edit form, so the author of a legal document
+    # could be typed over by anyone editing it.
     created_by: Mapped[str | None] = mapped_column(String(255))
     customer_request_id: Mapped[int | None] = mapped_column(
         ForeignKey("customer_requests.id", ondelete="SET NULL"), nullable=True, index=True
@@ -95,6 +121,9 @@ class Contract(Base, TimestampMixin):
     parse_warnings: Mapped[str | None] = mapped_column(Text)
 
     client: Mapped["Client"] = relationship(back_populates="contracts")
+    status_history: Mapped[list["ContractStatusHistory"]] = relationship(
+        back_populates="contract", cascade="all, delete-orphan", order_by="ContractStatusHistory.created_at.desc()"
+    )
     items: Mapped[list["ContractItem"]] = relationship(
         back_populates="contract", cascade="all, delete-orphan", order_by="ContractItem.id"
     )
