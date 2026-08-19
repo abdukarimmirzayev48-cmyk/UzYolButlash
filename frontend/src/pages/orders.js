@@ -474,7 +474,7 @@ function orderWizardConfirmPanel(state) {
     ${section("Shartnoma", detailList([["Shartnoma raqami", state.contract?.contract_number], ["Mijoz", state.contract?.client?.name], ["Amal qilish muddati", state.contract?.valid_until]]))}
     ${section("Mahsulot", detailList([["Mahsulot", productText], ["Miqdor", fmtQty(totals.quantity, totals.selected?.[0]?.unit)], ["Jami summa", fmtMoney(totals.subtotal + totals.vat)], ["Saqlangandan keyingi qoldiq", remainingText]]))}
     ${section("Manba va model", detailList([["Manba", optionLabel(sourceTypes, state.sourceType)], ["Yetkazib berish modeli", optionLabel(fulfillmentTypes, state.fulfillmentType)], ["Ustama summasi", fmtMoney(totals.markupAmount)]]))}
-    ${section("Zaxira / Xarid", state.sourceType === "supplier_held_stock" ? detailList([["Zaxira partiyasi", lot?.ticket_number], ["Ta'minotchi", lot?.supplier_name], ["Ticket", lot?.ticket_number], ["Ajratilgan miqdor", fmtQty(state.stockAllocatedQuantity, lot?.unit)], ["Birlik xarid narxi", fmtMoney(lot?.unit_cost)]]) : `<div class="empty">Xarid jarayoni avtomatik ochiladi. Supplier status: Tanlanmagan.</div>`)}
+    ${section("Zaxira / Xarid", state.sourceType === "supplier_held_stock" ? detailList([["Zaxira partiyasi", lot?.ticket_number], ["Ta'minotchi", lot?.supplier_name], ["Ticket", lot?.ticket_number], ["Ajratilgan miqdor", fmtQty(state.stockAllocatedQuantity, lot?.unit)], ["Birlik xarid narxi", fmtMoney(lot?.unit_cost)]]) : `<div class="empty">Xarid jarayoni avtomatik ochiladi. Ta'minotchi holati: Tanlanmagan.</div>`)}
     ${section("Narx", detailList([["Mahsulot summasi", fmtMoney(totals.subtotal)], ["QQS", fmtMoney(totals.vat)], ["Logistika narxi", state.fulfillmentType === "direct_supplier_to_customer" ? dash : fmtMoney(totals.logistics)], ["Jami summa", fmtMoney(totals.total)]]))}
   </div>`;
 }
@@ -1055,9 +1055,9 @@ async function orderChildForm(order, kind, item = {}) {
     };
   }
   if (kind === "documents") {
-    return { title: item.id ? "Edit document" : "Add document", tab: "documents", path: "documents", body: `<div class="grid">${selectField("document_type", "Document type", orderDocumentTypes, item.document_type || "other")}${textField("title", "Document title", item.title)}${textField("file_url", "File URL", item.file_url)}${textField("uploaded_by", "Uploaded by", item.uploaded_by)}</div>`, payload: (form) => ({ document_type: field(form, "document_type"), title: field(form, "title"), file_url: field(form, "file_url"), uploaded_by: field(form, "uploaded_by") }) };
+    return { title: item.id ? "Hujjatni tahrirlash" : "Hujjat qo'shish", tab: "documents", path: "documents", body: `<div class="grid">${selectField("document_type", "Hujjat turi", orderDocumentTypes, item.document_type || "other")}${textField("title", "Hujjat nomi", item.title)}${textField("file_url", "Fayl havolasi", item.file_url)}${textField("uploaded_by", "Yuklagan", item.uploaded_by)}</div>`, payload: (form) => ({ document_type: field(form, "document_type"), title: field(form, "title"), file_url: field(form, "file_url"), uploaded_by: field(form, "uploaded_by") }) };
   }
-  return { title: "Add note", tab: "notes", path: "notes", body: `<div class="grid">${textArea("note", "Note", item.note)}${textField("created_by", "User", item.created_by)}</div>`, payload: (form) => ({ note: field(form, "note"), created_by: field(form, "created_by") }) };
+  return { title: "Izoh qo'shish", tab: "notes", path: "notes", body: `<div class="grid">${textArea("note", "Izoh", item.note)}${textField("created_by", "Foydalanuvchi", item.created_by)}</div>`, payload: (form) => ({ note: field(form, "note"), created_by: field(form, "created_by") }) };
 }
 
 async function openOrderChildForm(order, kind, item = {}) {

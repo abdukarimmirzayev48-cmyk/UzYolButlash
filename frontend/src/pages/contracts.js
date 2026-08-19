@@ -1161,7 +1161,7 @@ function contractChildForm(kind, item = {}, products = []) {
   }
   if (kind === "payment") {
     return {
-      title: "Edit payment terms",
+      title: "To'lov shartlarini tahrirlash",
       tab: "payment",
       path: "payment-terms",
       method: "PUT",
@@ -1171,7 +1171,7 @@ function contractChildForm(kind, item = {}, products = []) {
   }
   if (kind === "transport") {
     return {
-      title: "Edit transport terms",
+      title: "Transport shartlarini tahrirlash",
       tab: "transport",
       path: "transport-terms",
       method: "PUT",
@@ -1181,7 +1181,7 @@ function contractChildForm(kind, item = {}, products = []) {
   }
   if (kind === "documents") {
     return {
-      title: item.id ? "Edit document" : "Add document",
+      title: item.id ? "Hujjatni tahrirlash" : "Hujjat qo'shish",
       tab: "documents",
       path: "documents",
       multipart: true,
@@ -1202,7 +1202,7 @@ function contractChildForm(kind, item = {}, products = []) {
     title: "Add note",
     tab: "notes",
     path: "notes",
-    body: `<div class="grid">${textArea("note", "Note", item.note)}${textField("created_by", "User", item.created_by)}</div>`,
+    body: `<div class="grid">${textArea("note", "Izoh", item.note)}${textField("created_by", "Foydalanuvchi", item.created_by)}</div>`,
     payload: (form) => ({ note: field(form, "note"), created_by: field(form, "created_by") }),
   };
 }

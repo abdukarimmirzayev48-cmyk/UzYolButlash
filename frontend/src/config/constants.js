@@ -191,7 +191,7 @@ const supplierFinanceDocumentTypes = [["supplier_invoice_file", "Ta'minotchi his
 
 const transportPaymentTypes = [
   ["included", "Shartnoma summasiga kiritilgan"],
-  ["separate_invoice", "Alohida invoice qilinadi"],
+  ["separate_invoice", "Alohida hisob-faktura qilinadi"],
   ["customer_pays_directly", "Mijoz bevosita to'laydi"],
 ];
 

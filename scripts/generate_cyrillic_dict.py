@@ -86,7 +86,10 @@ _REJECT = re.compile(
     r"|^[A-Za-z-]+/[A-Za-z-]+$"               # mime types
     r"|^#[0-9a-fA-F]{3,8}$"                   # hex colour
     r"|^\W+$"
-    r"|\.\w+\("                                # method call: foo.bar(
+    r"|[A-Za-z_]\w*\("                        # any call: numberValue(, Number(row.month)
+    r"|^(?:GET|POST|PATCH|PUT|DELETE|OPTIONS|HEAD)$"  # HTTP verbs from api() calls
+    r"|&&|\|\||=>"                            # expression fragments: a && b.c
+    r"|^[a-z][a-z0-9_]*_\{n\}$"                 # generated field name: quantity_{n}
     r"|^\w+(?:\.\w+){2,}$"                     # dotted path (F.I.Sh. survives: trailing dot)
     r"|^[a-z]+[A-Z]\w*$"                       # camelCase identifier
     r"|^[A-Z][a-z]+(?:[A-Z][a-z]*)+$"          # PascalCase: TaskComment (2-letter codes like NB survive)
@@ -161,6 +164,23 @@ def collect_js(path: Path) -> set[str]:
     return found
 
 
+def pattern_is_code(raw: str, stripped: str) -> bool:
+    """Reject the fragments that reach a pattern collector but are not UI text.
+
+    Two kinds slipped through: generated field names (`quantity_${index}` ->
+    "quantity_{n}") and pieces of expressions that happen to sit between tags
+    (`0 && invoice.due_date`). Both were transliterated into nonsense.
+    """
+    # A generated field name has no space and often an underscore
+    # ("quantity_{n}", "toast{n}"); real UI text has a space around the
+    # placeholder ("{n} kun", "{n} partiya").
+    if "_" in stripped or not re.search(r"\s", raw):
+        return True
+    if re.search(r"&&|\|\||=>|[A-Za-z_]\w*\.[A-Za-z_]", raw):
+        return True
+    return False
+
+
 def collect_js_patterns(path: Path) -> set[str]:
     """Tag text containing ${...} interpolation, normalised to a {n} pattern.
 
@@ -185,6 +205,8 @@ def collect_js_patterns(path: Path) -> set[str]:
         # removed, so their own braces don't disqualify every pattern.
         if _CODEY & set(raw.replace("{n}", "")) or '"' in raw:
             continue
+        if pattern_is_code(raw, stripped):
+            continue
         found.add(raw)
     return found
 
@@ -206,6 +228,8 @@ def collect_tpl_patterns(path: Path) -> set[str]:
         if len(stripped) < 3 or not re.search(r"[a-z]{3,}", stripped):
             continue
         if _CODEY & set(raw.replace("{n}", "")) or '"' in raw or "/" in stripped:
+            continue
+        if pattern_is_code(raw, stripped):
             continue
         found.add(raw)
     return found
