@@ -83,7 +83,16 @@ def check_coordinate(value: str | None, limit: int, label: str) -> str | None:
 
 
 class ClientIdentifiersMixin(BaseModel):
-    """Shared by the create and update shapes of every client-side model."""
+    """Shared by the create and update shapes of every client-side model.
+
+    Deliberately mixed into the Create and Update classes only, never into the
+    Base classes the Read schemas extend. Validating on the way *out* means a
+    row that predates the rule -- or that was written before it existed -- makes
+    its own record unopenable: a 27-digit account number on one client turned
+    GET /api/clients/85 into a 500, so the card could not even be viewed to fix
+    it. Input is the place to refuse bad data; output has to show what is
+    stored, whatever it is.
+    """
 
     @field_validator("inn", "oked", "mfo", "account_number", check_fields=False)
     @classmethod
@@ -112,7 +121,7 @@ class ClientBulkDelete(BaseModel):
     ids: list[int] = Field(min_length=1, max_length=200)
 
 
-class ClientContactBase(ClientIdentifiersMixin):
+class ClientContactBase(BaseModel):
     full_name: str = Field(min_length=1, max_length=255)
     position: str | None = Field(default=None, max_length=120)
     phone: str | None = None
@@ -121,7 +130,7 @@ class ClientContactBase(ClientIdentifiersMixin):
     comment: str | None = None
 
 
-class ClientContactCreate(ClientContactBase):
+class ClientContactCreate(ClientContactBase, ClientIdentifiersMixin):
     pass
 
 
@@ -143,7 +152,7 @@ class ClientContactRead(ClientContactBase):
     updated_at: datetime
 
 
-class ClientAddressBase(ClientIdentifiersMixin):
+class ClientAddressBase(BaseModel):
     address_type: AddressType
     region: str | None = Field(default=None, max_length=120)
     district: str | None = Field(default=None, max_length=120)
@@ -153,7 +162,7 @@ class ClientAddressBase(ClientIdentifiersMixin):
     comment: str | None = None
 
 
-class ClientAddressCreate(ClientAddressBase):
+class ClientAddressCreate(ClientAddressBase, ClientIdentifiersMixin):
     pass
 
 
@@ -176,7 +185,7 @@ class ClientAddressRead(ClientAddressBase):
     updated_at: datetime
 
 
-class ClientBankAccountBase(ClientIdentifiersMixin):
+class ClientBankAccountBase(BaseModel):
     bank_name: str = Field(min_length=1, max_length=255)
     mfo: str | None = None
     account_number: str | None = None
@@ -184,7 +193,7 @@ class ClientBankAccountBase(ClientIdentifiersMixin):
     comment: str | None = None
 
 
-class ClientBankAccountCreate(ClientBankAccountBase):
+class ClientBankAccountCreate(ClientBankAccountBase, ClientIdentifiersMixin):
     pass
 
 
@@ -253,7 +262,7 @@ class ClientNoteRead(ClientNoteBase):
     created_at: datetime
 
 
-class ClientBase(ClientIdentifiersMixin):
+class ClientBase(BaseModel):
     name: str = Field(min_length=1, max_length=255)
     inn: str | None = None
     oked: str | None = None
@@ -262,7 +271,7 @@ class ClientBase(ClientIdentifiersMixin):
     notes: str | None = None
 
 
-class ClientCreate(ClientBase):
+class ClientCreate(ClientBase, ClientIdentifiersMixin):
     first_contact: ClientContactCreate | None = None
     address: ClientAddressCreate | None = None
     bank_account: ClientBankAccountCreate | None = None
