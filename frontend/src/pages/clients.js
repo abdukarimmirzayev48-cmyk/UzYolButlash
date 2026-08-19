@@ -497,34 +497,34 @@ function childForm(kind, item = {}) {
   if (kind === "contacts") {
     return {
       title: item.id ? "Kontaktni tahrirlash" : "Kontakt qo'shish",
-      body: `<div class="grid">${textField("full_name", "F.I.Sh.", item.full_name)}${textField("position", "Lavozimi", item.position)}${textField("phone", "Telefon", item.phone)}${textField("email", "Email", item.email, "email")}${checkField("is_primary", "Asosiy", item.is_primary)}${textArea("comment", "Izoh", item.comment)}</div>`,
+      body: `<div class="grid">${textField("full_name", "F.I.Sh.", item.full_name, "text", { required: true, maxlength: 255, autocomplete: "name" })}${textField("position", "Lavozimi", item.position, "text", { maxlength: 120 })}${textField("phone", "Telefon", item.phone, "tel", CLIENT_FIELD_RULES.phone)}${textField("email", "Email", item.email, "email", CLIENT_FIELD_RULES.email)}${checkField("is_primary", "Asosiy", item.is_primary)}${textArea("comment", "Izoh", item.comment, { maxlength: 1000 })}</div>`,
       payload: (form) => ({ full_name: field(form, "full_name"), position: field(form, "position"), phone: field(form, "phone"), email: field(form, "email"), is_primary: field(form, "is_primary"), comment: field(form, "comment") }),
     };
   }
   if (kind === "addresses") {
     return {
       title: item.id ? "Manzilni tahrirlash" : "Manzil qo'shish",
-      body: `<div class="grid">${selectField("address_type", "Manzil turi", addressTypes, item.address_type || "legal")}${textField("region", "Hudud", item.region)}${textField("district", "Tuman", item.district)}${textField("address", "Manzil", item.address)}${textField("latitude", "Kenglik", item.latitude)}${textField("longitude", "Uzunlik", item.longitude)}${textArea("comment", "Izoh", item.comment)}</div>`,
+      body: `<div class="grid">${selectField("address_type", "Manzil turi", addressTypes, item.address_type || "legal")}${textField("region", "Hudud", item.region, "text", { maxlength: 120 })}${textField("district", "Tuman", item.district, "text", { maxlength: 120 })}${textField("address", "Manzil", item.address, "text", { required: true, maxlength: 255 })}${textField("latitude", "Kenglik", item.latitude, "decimal", CLIENT_FIELD_RULES.latitude)}${textField("longitude", "Uzunlik", item.longitude, "decimal", CLIENT_FIELD_RULES.longitude)}${textArea("comment", "Izoh", item.comment, { maxlength: 1000 })}</div>`,
       payload: (form) => ({ address_type: field(form, "address_type"), region: field(form, "region"), district: field(form, "district"), address: field(form, "address"), latitude: field(form, "latitude"), longitude: field(form, "longitude"), comment: field(form, "comment") }),
     };
   }
   if (kind === "bank") {
     return {
       title: item.id ? "Bank hisobini tahrirlash" : "Bank hisobi qo'shish",
-      body: `<div class="grid">${textField("bank_name", "Bank nomi", item.bank_name)}${textField("mfo", "MFO", item.mfo)}${textField("account_number", "Hisob raqami", item.account_number)}${checkField("is_primary", "Asosiy", item.is_primary)}${textArea("comment", "Izoh", item.comment)}</div>`,
+      body: `<div class="grid">${textField("bank_name", "Bank nomi", item.bank_name, "text", { required: true, maxlength: 160 })}${textField("mfo", "MFO", item.mfo, "text", CLIENT_FIELD_RULES.mfo)}${textField("account_number", "Hisob raqami", item.account_number, "text", CLIENT_FIELD_RULES.account_number)}${checkField("is_primary", "Asosiy", item.is_primary)}${textArea("comment", "Izoh", item.comment, { maxlength: 1000 })}</div>`,
       payload: (form) => ({ bank_name: field(form, "bank_name"), mfo: field(form, "mfo"), account_number: field(form, "account_number"), is_primary: field(form, "is_primary"), comment: field(form, "comment") }),
     };
   }
   if (kind === "documents") {
     return {
       title: item.id ? "Hujjatni tahrirlash" : "Hujjat qo'shish",
-      body: `<div class="grid">${selectField("document_type", "Hujjat turi", documentTypes, item.document_type || "other")}${textField("title", "Hujjat nomi", item.title)}${textField("file_url", "Fayl havolasi", item.file_url)}${textField("uploaded_by", "Yuklagan", item.uploaded_by)}</div>`,
+      body: `<div class="grid">${selectField("document_type", "Hujjat turi", documentTypes, item.document_type || "other")}${textField("title", "Hujjat nomi", item.title, "text", { required: true, maxlength: 255 })}${textField("file_url", "Fayl havolasi", item.file_url, "url", { maxlength: 500, placeholder: "https://..." })}${textField("uploaded_by", "Yuklagan", item.uploaded_by, "text", { maxlength: 120 })}</div>`,
       payload: (form) => ({ document_type: field(form, "document_type"), title: field(form, "title"), file_url: field(form, "file_url"), uploaded_by: field(form, "uploaded_by") }),
     };
   }
   return {
     title: item.id ? "Izohni tahrirlash" : "Izoh qo'shish",
-    body: `<div class="grid">${textArea("note", "Izoh", item.note)}${textField("created_by", "Xodim/Foydalanuvchi", item.created_by)}</div>`,
+    body: `<div class="grid">${textArea("note", "Izoh", item.note, { required: true, maxlength: 2000 })}${textField("created_by", "Xodim/Foydalanuvchi", item.created_by, "text", { maxlength: 120 })}</div>`,
     payload: (form) => ({ note: field(form, "note"), created_by: field(form, "created_by") }),
   };
 }

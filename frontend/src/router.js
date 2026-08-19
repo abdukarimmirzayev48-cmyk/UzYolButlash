@@ -166,6 +166,7 @@ async function render() {
       await renderClientsList();
     }
     setupFormattedNumberInputs(app);
+    setupFieldValidationMessages(app);
     bindSelectSearch(app);
     bindRuDateFields(app);
     document.querySelectorAll("[data-nav]").forEach((element) => {

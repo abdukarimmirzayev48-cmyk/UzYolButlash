@@ -62,7 +62,12 @@ function localizeText(value) {
 // because these strings are always our own copy, never raw table data.
 function localizeMessage(value) {
   const text = localizeText(value);
-  if (currentLang() !== "cyr" || /[Ѐ-ӿ]/.test(text)) return text;
+  // The guard used to be "contains any Cyrillic -> leave alone", which broke on
+  // server messages that interpolate a record name: the name is Cyrillic, so
+  // the Latin sentence around it was left untranslated. Cyrillic characters are
+  // not in the transliteration table and pass through untouched, so the only
+  // thing that has to be true is that there is Latin text to convert at all.
+  if (currentLang() !== "cyr" || !/[A-Za-z]/.test(text)) return text;
   return transliterateToCyrillic(text);
 }
 
@@ -553,15 +558,32 @@ function fieldOptions(options = {}) {
   return typeof options === "boolean" ? { required: options } : options;
 }
 
+// Kept in step with components/FormField.js -- this branch runs only if that
+// script has not loaded, and a field that silently drops its constraints there
+// would be worse than no fallback at all.
+const VALIDATION_ATTRS = ["pattern", "maxlength", "minlength", "inputmode", "placeholder", "title", "autocomplete", "min", "max", "step"];
+
+function validationAttrs(options = {}) {
+  return VALIDATION_ATTRS
+    .filter((key) => options[key] !== undefined && options[key] !== null && options[key] !== "")
+    .map((key) => `${key}="${esc(options[key])}"`)
+    .join(" ");
+}
+
 function textField(name, label, value = "", type = "text", options = {}) {
   const cfg = fieldOptions(options);
   if (window.BitumFrontend?.components?.textField) {
     return window.BitumFrontend.components.textField({ name, label, value, type, ...cfg });
   }
+  const mark = cfg.required ? ' <span class="required-mark">*</span>' : "";
+  const extra = validationAttrs(cfg);
   if (type === "number") {
-    return `<label>${label}${cfg.required ? ' <span class="required-mark">*</span>' : ""}<input type="text" inputmode="decimal" data-format-number name="${name}" value="${esc(formatNumberInputValue(value))}" ${cfg.required ? "required" : ""} /></label>`;
+    return `<label>${label}${mark}<input type="text" inputmode="decimal" data-format-number name="${name}" value="${esc(formatNumberInputValue(value))}" ${extra} ${cfg.required ? "required" : ""} /></label>`;
   }
-  return `<label>${label}${cfg.required ? ' <span class="required-mark">*</span>' : ""}<input type="${type}" ${type === "number" ? 'step="any"' : ""} name="${name}" value="${esc(value ?? "")}" ${cfg.required ? "required" : ""} /></label>`;
+  if (type === "decimal") {
+    return `<label>${label}${mark}<input type="number" data-raw-number ${cfg.step === undefined ? 'step="any"' : ""} name="${name}" value="${esc(value ?? "")}" ${extra} ${cfg.required ? "required" : ""} /></label>`;
+  }
+  return `<label>${label}${mark}<input type="${type}" name="${name}" value="${esc(value ?? "")}" ${extra} ${cfg.required ? "required" : ""} /></label>`;
 }
 
 function readonlyField(name, label, value = "", type = "text", options = {}) {
@@ -600,7 +622,7 @@ function textArea(name, label, value = "", options = {}) {
   if (window.BitumFrontend?.components?.textareaField) {
     return window.BitumFrontend.components.textareaField({ name, label, value, ...cfg });
   }
-  return `<label>${label}${cfg.required ? ' <span class="required-mark">*</span>' : ""}<textarea name="${name}" ${cfg.required ? "required" : ""}>${esc(value ?? "")}</textarea></label>`;
+  return `<label>${label}${cfg.required ? ' <span class="required-mark">*</span>' : ""}<textarea name="${name}" ${validationAttrs(cfg)} ${cfg.required ? "required" : ""}>${esc(value ?? "")}</textarea></label>`;
 }
 
 function selectField(name, label, options, value = "", fieldCfg = {}) {
@@ -656,10 +678,39 @@ function formatNumberInputValue(value, options = {}) {
   return `${negative ? "-" : ""}${grouped}${hasSeparator ? "," : ""}${fraction}`;
 }
 
+// A field that states its rule in `title` should say that rule when it is
+// rejected. Without this the browser shows its own generic message, in its own
+// language -- "Please match the requested format" told nobody what the format
+// was, in an interface that is otherwise entirely in Uzbek.
+function setupFieldValidationMessages(root = document) {
+  const fields = root.querySelectorAll("input[title], textarea[title], select[title]");
+  fields.forEach((field) => {
+    if (field.dataset.validityBound) return;
+    // Only fields that actually carry a constraint -- elsewhere `title` is an
+    // ordinary tooltip and must not be turned into an error.
+    const constrained = ["pattern", "min", "max", "minlength", "maxlength", "step"].some((attr) =>
+      field.hasAttribute(attr)
+    );
+    if (!constrained) return;
+    field.dataset.validityBound = "true";
+    field.addEventListener("invalid", () => {
+      if (field.validity.valid) return;
+      field.setCustomValidity(localizeMessage(field.title));
+    });
+    // Cleared on edit, otherwise the field stays invalid after being corrected.
+    field.addEventListener("input", () => field.setCustomValidity(""));
+  });
+}
+
 function setupFormattedNumberInputs(root = document) {
+  // data-raw-number opts a field out. Thousands grouping is right for money and
+  // destructive for a value whose decimals carry meaning -- a coordinate typed
+  // as 41.311081 would be regrouped and lose its precision, and converting the
+  // input to text silently drops the min/max the browser was enforcing.
+  const selector = "input[data-format-number]:not([data-raw-number]), input[type='number']:not([data-raw-number])";
   const inputs = [
-    ...(root instanceof Element && root.matches("input[data-format-number], input[type='number']") ? [root] : []),
-    ...root.querySelectorAll("input[data-format-number], input[type='number']"),
+    ...(root instanceof Element && root.matches(selector) ? [root] : []),
+    ...root.querySelectorAll(selector),
   ];
   inputs.forEach((input) => {
     if (input.type === "number") input.type = "text";
@@ -741,6 +792,52 @@ function statusBadge(status) {
   return `<span class="status-badge ${esc(status || "")}">${fmt(statusLabel(status))}</span>`;
 }
 
+// Shapes the browser can check. The server enforces the same rules -- these
+// exist so a mistake is caught under the field that caused it, and so a phone
+// or an account number opens a number pad on a touch screen.
+const CLIENT_FIELD_RULES = {
+  name: { required: true, maxlength: 255, autocomplete: "organization" },
+  inn: {
+    required: true,
+    pattern: "[0-9]{9}",
+    maxlength: 9,
+    inputmode: "numeric",
+    placeholder: "123456789",
+    title: "STIR 9 ta raqamdan iborat bo'lishi kerak.",
+  },
+  oked: {
+    pattern: "[0-9]{5}",
+    maxlength: 5,
+    inputmode: "numeric",
+    placeholder: "42110",
+    title: "OKED 5 ta raqamdan iborat bo'lishi kerak.",
+  },
+  phone: {
+    pattern: "\\+998[0-9]{9}",
+    maxlength: 13,
+    inputmode: "tel",
+    placeholder: "+998901234567",
+    title: "Telefon raqami +998 bilan boshlanib, 9 ta raqam bilan davom etishi kerak.",
+  },
+  email: { maxlength: 255, inputmode: "email", placeholder: "info@korxona.uz" },
+  mfo: {
+    pattern: "[0-9]{5}",
+    maxlength: 5,
+    inputmode: "numeric",
+    placeholder: "00014",
+    title: "MFO 5 ta raqamdan iborat bo'lishi kerak.",
+  },
+  account_number: {
+    pattern: "[0-9]{20}",
+    maxlength: 20,
+    inputmode: "numeric",
+    placeholder: "20208000000000000001",
+    title: "Hisob raqami 20 ta raqamdan iborat bo'lishi kerak.",
+  },
+  latitude: { min: -90, max: 90, inputmode: "decimal", placeholder: "41.311081", title: "Kenglik -90 va 90 orasida bo'lishi kerak." },
+  longitude: { min: -180, max: 180, inputmode: "decimal", placeholder: "69.240562", title: "Uzunlik -180 va 180 orasida bo'lishi kerak." },
+};
+
 function clientForm(client = null) {
   const contact = client?.contacts?.[0] || {};
   const address = client?.addresses?.[0] || {};
@@ -758,42 +855,42 @@ function clientForm(client = null) {
       <form id="client-form">
         ${section("Asosiy ma'lumotlar", `
           <div class="grid">
-            ${textField("name", "Mijoz nomi", client?.name)}
-            ${textField("inn", "INN", client?.inn)}
-            ${textField("oked", "OKED", client?.oked)}
-            ${textField("phone", "Telefon", client?.phone)}
-            ${textField("email", "Email", client?.email, "email")}
-            ${textArea("notes", "Izohlar", client?.notes)}
+            ${textField("name", "Mijoz nomi", client?.name, "text", CLIENT_FIELD_RULES.name)}
+            ${textField("inn", "INN", client?.inn, "text", CLIENT_FIELD_RULES.inn)}
+            ${textField("oked", "OKED", client?.oked, "text", CLIENT_FIELD_RULES.oked)}
+            ${textField("phone", "Telefon", client?.phone, "tel", CLIENT_FIELD_RULES.phone)}
+            ${textField("email", "Email", client?.email, "email", CLIENT_FIELD_RULES.email)}
+            ${textArea("notes", "Izohlar", client?.notes, { maxlength: 2000 })}
           </div>
         `)}
         ${section("Birlamchi kontakt shaxs", `
           <div class="grid">
-            ${textField("contact_full_name", "F.I.Sh.", contact.full_name)}
-            ${textField("contact_position", "Lavozimi", contact.position)}
-            ${textField("contact_phone", "Telefon", contact.phone)}
-            ${textField("contact_email", "Email", contact.email, "email")}
+            ${textField("contact_full_name", "F.I.Sh.", contact.full_name, "text", { maxlength: 255, autocomplete: "name" })}
+            ${textField("contact_position", "Lavozimi", contact.position, "text", { maxlength: 120 })}
+            ${textField("contact_phone", "Telefon", contact.phone, "tel", CLIENT_FIELD_RULES.phone)}
+            ${textField("contact_email", "Email", contact.email, "email", CLIENT_FIELD_RULES.email)}
             ${checkField("contact_is_primary", "Asosiy kontakt", contact.is_primary ?? true)}
-            ${textArea("contact_comment", "Izoh", contact.comment)}
+            ${textArea("contact_comment", "Izoh", contact.comment, { maxlength: 1000 })}
           </div>
         `)}
         ${section("Manzil", `
           <div class="grid">
             ${selectField("address_type", "Manzil turi", addressTypes, address.address_type || "legal")}
-            ${textField("region", "Hudud", address.region)}
-            ${textField("district", "Tuman", address.district)}
-            ${textField("address", "Manzil", address.address)}
-            ${textField("latitude", "Kenglik", address.latitude)}
-            ${textField("longitude", "Uzunlik", address.longitude)}
-            ${textArea("address_comment", "Izoh", address.comment)}
+            ${textField("region", "Hudud", address.region, "text", { maxlength: 120 })}
+            ${textField("district", "Tuman", address.district, "text", { maxlength: 120 })}
+            ${textField("address", "Manzil", address.address, "text", { maxlength: 255 })}
+            ${textField("latitude", "Kenglik", address.latitude, "decimal", CLIENT_FIELD_RULES.latitude)}
+            ${textField("longitude", "Uzunlik", address.longitude, "decimal", CLIENT_FIELD_RULES.longitude)}
+            ${textArea("address_comment", "Izoh", address.comment, { maxlength: 1000 })}
           </div>
         `)}
         ${section("Bank hisobi", `
           <div class="grid">
-            ${textField("bank_name", "Bank nomi", account.bank_name)}
-            ${textField("mfo", "MFO", account.mfo)}
-            ${textField("account_number", "Hisob raqami", account.account_number)}
+            ${textField("bank_name", "Bank nomi", account.bank_name, "text", { maxlength: 160 })}
+            ${textField("mfo", "MFO", account.mfo, "text", CLIENT_FIELD_RULES.mfo)}
+            ${textField("account_number", "Hisob raqami", account.account_number, "text", CLIENT_FIELD_RULES.account_number)}
             ${checkField("bank_is_primary", "Asosiy hisob", account.is_primary ?? true)}
-            ${textArea("bank_comment", "Izoh", account.comment)}
+            ${textArea("bank_comment", "Izoh", account.comment, { maxlength: 1000 })}
           </div>
         `)}
         <div class="form-footer">

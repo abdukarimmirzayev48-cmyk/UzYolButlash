@@ -16,14 +16,36 @@
     return new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 2 }).format(Number(normalized));
   }
 
-  function textField({ name, label, value = "", type = "text", required = false, readonly = false, disabled = false, error = "", helperText = "" }) {
-    const inputType = type === "number" ? "text" : type;
+  // Constraints the browser can enforce before anything is sent. They are a
+  // convenience, never the guard -- the server validates the same rules -- but
+  // they are what stops a mistyped 8-digit INN from becoming a round trip, and
+  // inputmode is what gives a phone a number pad instead of a letter keyboard.
+  const VALIDATION_ATTRS = [
+    "pattern", "maxlength", "minlength", "inputmode", "placeholder",
+    "title", "autocomplete", "min", "max", "step",
+  ];
+
+  function validationAttrs(options = {}) {
+    return VALIDATION_ATTRS
+      .filter((key) => options[key] !== undefined && options[key] !== null && options[key] !== "")
+      .map((key) => `${key}="${escapeHtml(options[key])}"`)
+      .join(" ");
+  }
+
+  function textField({ name, label, value = "", type = "text", required = false, readonly = false, disabled = false, error = "", helperText = "", ...rest }) {
+    // "number" runs the thousands formatter, which is right for money and
+    // wrong for anything with meaningful decimals -- "decimal" is a real
+    // number input, left unformatted.
+    const inputType = type === "number" ? "text" : type === "decimal" ? "number" : type;
     const attrs = [
       `type="${escapeHtml(inputType)}"`,
       type === "number" ? 'inputmode="decimal"' : "",
       type === "number" ? 'data-format-number="true"' : "",
+      type === "decimal" ? 'data-raw-number="true"' : "",
+      type === "decimal" && rest.step === undefined ? 'step="any"' : "",
       `name="${escapeHtml(name)}"`,
       `value="${escapeHtml(type === "number" ? formatNumberInputValue(value) : value)}"`,
+      validationAttrs(rest),
       required ? "required" : "",
       readonly ? "readonly" : "",
       disabled ? "disabled" : "",
@@ -31,8 +53,8 @@
     return fieldShell({ label, required, error, helperText, control: `<input ${attrs} />` });
   }
 
-  function textareaField({ name, label, value = "", required = false, readonly = false, disabled = false, error = "", helperText = "" }) {
-    const attrs = [`name="${escapeHtml(name)}"`, required ? "required" : "", readonly ? "readonly" : "", disabled ? "disabled" : ""].filter(Boolean).join(" ");
+  function textareaField({ name, label, value = "", required = false, readonly = false, disabled = false, error = "", helperText = "", ...rest }) {
+    const attrs = [`name="${escapeHtml(name)}"`, validationAttrs(rest), required ? "required" : "", readonly ? "readonly" : "", disabled ? "disabled" : ""].filter(Boolean).join(" ");
     return fieldShell({ label, required, error, helperText, control: `<textarea ${attrs}>${escapeHtml(value)}</textarea>` });
   }
 
