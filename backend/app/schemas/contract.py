@@ -1,7 +1,8 @@
+import json
 from datetime import date, datetime
 from decimal import Decimal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from backend.app.models.contract import (
     ContractDocumentType,
@@ -268,7 +269,24 @@ class ContractRead(ContractBase):
     parsed_text_path: str | None = None
     parser_version: str | None = None
     parse_confidence: Decimal | None = None
-    parse_warnings: str | None = None
+    # Stored as a JSON array; returned as one. Declared as a string it reached
+    # the browser as the text "[]", where .length is 2 and every contract looked
+    # like it had two warnings.
+    parse_warnings: list[str] = Field(default_factory=list)
+
+    @field_validator("parse_warnings", mode="before")
+    @classmethod
+    def _parse_warnings(cls, value):
+        if value in (None, ""):
+            return []
+        if isinstance(value, list):
+            return value
+        try:
+            decoded = json.loads(value)
+        except (TypeError, ValueError):
+            # Older rows may hold a bare sentence rather than JSON.
+            return [str(value)]
+        return decoded if isinstance(decoded, list) else [str(decoded)]
 
 
 class ContractListItem(ContractRead):

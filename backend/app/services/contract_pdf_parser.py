@@ -6,6 +6,8 @@ from datetime import date
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
+from backend.app.services import contract_parse_checks
+
 
 PARSER_VERSION = "rule-based-2026-07-05"
 
@@ -431,22 +433,30 @@ def parse_contract_text(text: str) -> ParsedContractResult:
         "rouming_id": first([r"ID\s+документа\s*\(Rouming\.uz\)\s*[:\-]?\s*([A-ZА-ЯЁЎҚҒҲ0-9\-_/]+)", r"Rouming[^\n:]*[:\-]?\s*([A-ZА-ЯЁЎҚҒҲ0-9\-_/]+)"], normalized),
     }
 
-    required = [
-        ("contract_number", result.contract_number, "Shartnoma raqami aniqlanmadi."),
-        ("contract_date", result.contract_date, "Shartnoma sanasi aniqlanmadi."),
-        ("customer_name", result.customer.get("name"), "Buyurtmachi nomi aniqlanmadi."),
-        ("customer_inn", result.customer.get("inn"), "Buyurtmachi STIR aniqlanmadi."),
-        ("product_name", item.get("product_name"), "Mahsulot nomi aniqlanmadi."),
-        ("quantity", item.get("quantity"), "Mahsulot miqdori aniqlanmadi."),
-        ("unit_price", item.get("unit_price"), "Birlik narxi aniqlanmadi."),
-        ("total_with_vat", result.totals.get("total_with_vat"), "Umumiy summa aniqlanmadi."),
-    ]
-    found = 0
-    for _key, value, warning in required:
-        if value not in (None, ""):
-            found += 1
-        else:
+    # Debris is dropped rather than stored: an operator can fill an empty field,
+    # but has no way of telling that "//my" is not a document id.
+    for party in (result.customer, result.executor):
+        cleaned, warning = contract_parse_checks.clean_party_name(party.get("name"))
+        if cleaned is not None or party.get("name"):
+            party["name"] = cleaned
+        if warning:
             result.warnings.append(warning)
+    for key in ("didox_id", "rouming_id"):
+        cleaned, warning = contract_parse_checks.clean_document_id(result.document_ids.get(key))
+        result.document_ids[key] = cleaned
+        if warning:
+            result.warnings.append(warning)
+    for parsed_item in result.items:
+        for key, label in (("catalog_code", "Katalog kodi"), ("product_code", "Mahsulot kodi")):
+            cleaned, warning = contract_parse_checks.clean_catalog_code(parsed_item.get(key), label)
+            parsed_item[key] = cleaned
+            if warning:
+                result.warnings.append(warning)
+
+    # The score counts fields whose value could be true, not fields that came
+    # back non-empty -- see contract_parse_checks for why.
+    score, field_warnings = contract_parse_checks.confidence_and_warnings(result)
+    result.warnings.extend(field_warnings)
     if len(normalized) < 1000:
         result.warnings.append("PDF matni to‘liq o‘qilmagan bo‘lishi mumkin.")
     result.warnings.extend(calculation_warnings(result))
@@ -456,7 +466,7 @@ def parse_contract_text(text: str) -> ParsedContractResult:
             f"Spetsifikatsiyada {spec_row_count} ta mahsulot qatori borga o‘xshaydi, "
             f"lekin faqat {len(result.items)} tasi avtomatik aniqlandi. Qolganlarini qo‘lda kiriting."
         )
-    result.confidence = (Decimal(found) / Decimal(len(required))).quantize(Decimal("0.01"))
+    result.confidence = score
     return result
 
 

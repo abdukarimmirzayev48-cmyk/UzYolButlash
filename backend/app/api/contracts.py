@@ -581,11 +581,18 @@ def create_contract_from_parsed(payload: ContractFromParsedCreate, db: Session =
         client_id=payload.customer_id,
         contract_number=payload.contract_number,
         contract_date=payload.contract_date,
-        valid_until=payload.valid_until or payload.contract_date,
-        title=payload.customer_name,
+        # Falling back to the contract date made a zero-day contract look
+        # deliberate. Left empty, it shows as missing and gets filled in.
+        valid_until=payload.valid_until,
+        # title and notes are deliberately not filled from the parse. The title
+        # was set to the customer name -- which is not what a contract is about,
+        # and arrived truncated -- and notes took a slice out of the middle of
+        # the payment clause. An empty field asks to be filled; a field holding
+        # a fragment of the wrong sentence looks like someone already did.
+        title=None,
         status=payload.status,
         currency="UZS",
-        notes=payload.payment_terms_text,
+        notes=None,
         subtotal_amount=payload.total_without_vat or Decimal("0"),
         vat_amount=payload.vat_amount or Decimal("0"),
         total_amount=payload.total_with_vat or Decimal("0"),

@@ -8,6 +8,20 @@ async function fetchClientsForSelect(selectedId = null) {
 }
 
 let _contractPageProducts = [];
+// The score is a claim about a parse, and a number alone reads as a guarantee.
+// Saying what it means keeps "82%" from being taken as "checked".
+function parseConfidenceLabel(contract) {
+  const value = Number(contract.parse_confidence || 0);
+  if (!contract.parse_confidence) return null;
+  const percent = Math.round(value * 100);
+  // Written out as three whole sentences rather than assembled from a number
+  // and a phrase: the Cyrillic dictionary matches a complete "{n}% ..." string,
+  // and a verdict glued on at runtime matches nothing.
+  if (percent >= 100) return `${percent}% — baribir PDF bilan solishtiring`;
+  if (percent >= 80) return `${percent}% — ayrim maydonlarni tekshiring`;
+  return `${percent}% — diqqat bilan tekshiring`;
+}
+
 // The paper contract states the price with VAT ("QQS bilan birga"); the column
 // stores it without, so that quantity x unit_price is always the subtotal.
 // Showing both means a reader can check the record against the document
@@ -976,7 +990,7 @@ async function contractParsedReview(parsedState) {
     }
   });
   return `<form id="contract-parsed-form">
-    ${section("Aniqlik darajasi", `<div class="summary-grid">${summaryCards([["Aniqlik darajasi", `${Math.round(Number(parsedState.confidence || 0) * 100)}%`], ["Ogohlantirishlar", parsedState.warnings?.length || 0]])}</div>${parsedState.warnings?.length ? `<div class="warning-message">${parsedState.warnings.map(esc).join("<br>")}</div>` : ""}`)}
+    ${section("Aniqlik darajasi", `<div class="summary-grid">${summaryCards([["Aniqlik darajasi", parseConfidenceLabel({ parse_confidence: parsedState.confidence })], ["Ogohlantirishlar", parsedState.warnings?.length || 0]])}</div>${parsedState.warnings?.length ? `<div class="warning-message">${parsedState.warnings.map(esc).join("<br>")}</div>` : `<p class="form-hint">Ogohlantirish yo'q. Shunda ham raqamlarni PDF bilan solishtirib chiqing — parser hamma xatoni topa olmaydi.</p>`}`)}
     ${section("Asosiy ma'lumotlar", `<div class="grid">${textField("contract_number", "Shartnoma raqami", parsed.contract_number, "text", { required: true })}${textField("contract_date", "Shartnoma sanasi", parsed.contract_date || "", "date", { required: true })}${textField("valid_until", "Amal qilish muddati", parsed.valid_until || "", "date")}${textField("place", "Tuzilgan joy", parsed.place)}${selectField("status", "Status", contractStatuses.filter(([key]) => ["draft","active","completed","cancelled"].includes(key)), parsed.status || "active")}</div>`)}
     ${section("Bajaruvchi", `<div class="grid">${textField("executor_name", "Bajaruvchi nomi", parsed.executor_name)}${textField("executor_director_full_name", "Direktor F.I.Sh.", parsed.executor_director_full_name)}${textField("executor_inn", "STIR", parsed.executor_inn)}${textField("executor_oked", "OKED", parsed.executor_oked)}${textArea("executor_legal_address", "Yuridik manzil", parsed.executor_legal_address)}${textField("executor_bank_account", "Hisob raqami", parsed.executor_bank_account)}${textField("executor_bank_name", "Bank nomi", parsed.executor_bank_name)}${textField("executor_mfo", "MFO", parsed.executor_mfo)}</div>`)}
     ${section("Buyurtmachi", `<div class="grid">${textField("customer_name", "Buyurtmachi nomi", parsed.customer_name, "text", { required: true })}${textField("customer_director_full_name", "Direktor F.I.Sh.", parsed.customer_director_full_name)}${textField("customer_inn", "STIR", parsed.customer_inn, "text", { required: true })}${textField("customer_oked", "OKED", parsed.customer_oked)}${textArea("customer_legal_address", "Yuridik manzil", parsed.customer_legal_address)}${textField("customer_bank_account", "Hisob raqami", parsed.customer_bank_account)}${textField("customer_bank_name", "Bank nomi", parsed.customer_bank_name)}${textField("customer_mfo", "MFO", parsed.customer_mfo)}</div>`)}
@@ -1033,6 +1047,9 @@ function contractHeader(contract) {
   if (numberValue(contract.summary?.paid_amount) <= 0 && numberValue(contract.summary?.advance_amount) > 0) warnings.push("Avans to'lovi hali kelmagan.");
   if (numberValue(contract.summary?.remaining_quantity) > 0) warnings.push("Shartnoma bo'yicha yetkazilmagan qoldiq mavjud.");
   if (!hasDocs(contract)) warnings.push("Shartnoma hujjatlari to'liq emas.");
+  // Parser warnings belong on the contract, not only on the review screen that
+  // is closed the moment the contract is saved.
+  (contract.parse_warnings || []).forEach((warning) => warnings.push(warning));
   const editable = canEdit("sotuv");
   const nextAction = !contract.client_id ? {title:"Shartnoma mijozga bog'lanmagan. Buyurtma yaratishdan oldin mijozni bog'lang.",button:"Mijozni bog'lash",modal:"contract-link-client"} : numberValue(contract.summary?.paid_amount)<=0 && numberValue(contract.summary?.advance_amount)>0 ? {title:"Avans hisob-fakturasini yarating yoki to'lovni kiriting",button:"Hisob yaratish",modal:"contract-invoice-modal"} : numberValue(contract.summary?.remaining_quantity)>0 ? {title:"Shartnoma bo'yicha buyurtma yarating",button:"Buyurtma yaratish",path:`/orders/new?contract_id=${contract.id}`} : {title:"Shartnoma yakunlashga tayyor",button:"Tarix",path:`/contracts/${contract.id}?tab=notes`,done:true};
   return `
@@ -1085,7 +1102,7 @@ function contractGeneralTab(contract) {
         ["Yangilangan", fmtDate(contract.updated_at)],
       ].map(([label, value]) => `<div class="detail-item"><span>${label}</span><strong>${fmt(value)}</strong></div>`).join("")}
     </div>
-  `) + section("Bajaruvchi", detailList([["Bajaruvchi nomi", contract.executor_name], ["Direktor F.I.Sh.", contract.executor_director_full_name], ["STIR", contract.executor_inn], ["OKED", contract.executor_oked], ["Yuridik manzil", contract.executor_legal_address], ["Hisob raqami", contract.executor_bank_account], ["Bank nomi", contract.executor_bank_name], ["MFO", contract.executor_mfo], ["Telefon", contract.executor_phone]])) + section("Buyurtmachi", detailList([["Buyurtmachi nomi", contract.customer_name || contract.client?.name], ["Direktor F.I.Sh.", contract.customer_director_full_name], ["STIR", contract.customer_inn || contract.client?.inn], ["OKED", contract.customer_oked], ["Yuridik manzil", contract.customer_legal_address], ["Hisob raqami", contract.customer_bank_account], ["Bank nomi", contract.customer_bank_name], ["MFO", contract.customer_mfo], ["Telefon", contract.customer_phone]])) + section("Bog'langan obyektlar", `<div class="detail-list">${[["ERP mijoz", contract.client?.name], ["Talabnoma ID", contract.customer_request_id], ["Parser versiyasi", contract.parser_version], ["Aniqlik darajasi", contract.parse_confidence ? `${Math.round(Number(contract.parse_confidence) * 100)}%` : null]].map(([label, value]) => `<div class="detail-item"><span>${label}</span><strong>${fmt(value)}</strong></div>`).join("")}<div class="detail-item"><span>PDF fayl</span><strong>${contract.source_file_path ? `<a class="link-btn" target="_blank" href="/api/contracts/${contract.id}/file">PDF faylni ko'rish</a>` : dash}</strong></div></div>`);
+  `) + section("Bajaruvchi", detailList([["Bajaruvchi nomi", contract.executor_name], ["Direktor F.I.Sh.", contract.executor_director_full_name], ["STIR", contract.executor_inn], ["OKED", contract.executor_oked], ["Yuridik manzil", contract.executor_legal_address], ["Hisob raqami", contract.executor_bank_account], ["Bank nomi", contract.executor_bank_name], ["MFO", contract.executor_mfo], ["Telefon", contract.executor_phone]])) + section("Buyurtmachi", detailList([["Buyurtmachi nomi", contract.customer_name || contract.client?.name], ["Direktor F.I.Sh.", contract.customer_director_full_name], ["STIR", contract.customer_inn || contract.client?.inn], ["OKED", contract.customer_oked], ["Yuridik manzil", contract.customer_legal_address], ["Hisob raqami", contract.customer_bank_account], ["Bank nomi", contract.customer_bank_name], ["MFO", contract.customer_mfo], ["Telefon", contract.customer_phone]])) + section("Bog'langan obyektlar", `<div class="detail-list">${[["ERP mijoz", contract.client?.name], ["Talabnoma ID", contract.customer_request_id], ["Parser versiyasi", contract.parser_version], ["Aniqlik darajasi", parseConfidenceLabel(contract)]].map(([label, value]) => `<div class="detail-item"><span>${label}</span><strong>${fmt(value)}</strong></div>`).join("")}<div class="detail-item"><span>PDF fayl</span><strong>${contract.source_file_path ? `<a class="link-btn" target="_blank" href="/api/contracts/${contract.id}/file">PDF faylni ko'rish</a>` : dash}</strong></div></div>`);
 }
 
 function contractSpecificationTab(contract) {

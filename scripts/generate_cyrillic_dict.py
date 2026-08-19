@@ -254,6 +254,9 @@ def collect_html(path: Path) -> set[str]:
     return found
 
 
+_PY_MESSAGE_CONST_RE = re.compile(r'^MSG_[A-Z0-9_]+\s*=\s*"([^"\n]+)"', re.MULTILINE)
+
+
 def collect_py(path: Path) -> set[str]:
     """Only `detail=` messages: those are what reach the user as toasts.
 
@@ -269,6 +272,14 @@ def collect_py(path: Path) -> set[str]:
         if "{" in raw:
             continue
         if is_ui_text(raw):
+            found.add(raw.strip())
+    # A module constant named MSG_* is a deliberate marker for "this sentence
+    # is shown to the user". It exists so a message that has a value appended
+    # to it at runtime can still be translated: the sentence is a fixed
+    # literal, the value is not part of it.
+    for m in _PY_MESSAGE_CONST_RE.finditer(text):
+        raw = m.group(1)
+        if "{" not in raw and is_ui_text(raw):
             found.add(raw.strip())
     return found
 

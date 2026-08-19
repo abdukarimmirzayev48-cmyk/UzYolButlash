@@ -1256,10 +1256,21 @@ function workflowStatusGrid(items) {
   return `<div class="workflow-status-grid">${items.map(([label, value]) => `<div class="workflow-status-card"><span>${label}</span><strong>${value}</strong></div>`).join("")}</div>`;
 }
 
+// Server warnings are written as "<sentence>: <value>". The sentence is a
+// fixed phrase the dictionary knows; the value is whatever the document
+// actually said and must be left alone -- transliterating a hex id or a
+// catalog code would turn evidence into nonsense.
+function warningParts(message) {
+  const text = String(message ?? "");
+  const at = text.indexOf(": ");
+  if (at < 0) return `<span>${esc(text)}</span>`;
+  return `<span>${esc(text.slice(0, at))}</span><span data-noloc>: ${esc(text.slice(at + 2))}</span>`;
+}
+
 function workflowWarningsPanel(messages, title = "E'tibor kerak") {
   const clean = messages.filter(Boolean);
   if (!clean.length) return "";
-  return `<div class="workflow-warning"><strong>${fmt(title)}</strong><ul>${clean.map((message) => `<li>${esc(message)}</li>`).join("")}</ul></div>`;
+  return `<div class="workflow-warning"><strong>${fmt(title)}</strong><ul>${clean.map((message) => `<li>${warningParts(message)}</li>`).join("")}</ul></div>`;
 }
 
 function workflowNextActionPanel(action = {}) {
