@@ -154,7 +154,7 @@ class OrderDocument(Base):
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     file_url: Mapped[str | None] = mapped_column(Text)
     uploaded_by: Mapped[str | None] = mapped_column(String(255))
-    uploaded_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+    uploaded_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now, nullable=False)
 
     order: Mapped[Order] = relationship(back_populates="documents")
 
@@ -166,6 +166,6 @@ class OrderNote(Base):
     order_id: Mapped[int] = mapped_column(ForeignKey("orders.id", ondelete="CASCADE"), index=True)
     note: Mapped[str] = mapped_column(Text, nullable=False)
     created_by: Mapped[str | None] = mapped_column(String(255))
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now, nullable=False)
 
     order: Mapped[Order] = relationship(back_populates="notes_history")

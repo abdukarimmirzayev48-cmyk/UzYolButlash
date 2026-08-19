@@ -11,6 +11,7 @@ from backend.app.api.audit import router as audit_router
 from backend.app.api.auth import auth_router, users_router
 from backend.app.api.clients import router as clients_router
 from backend.app.api.contracts import router as contracts_router
+from backend.app.api.geo import router as geo_router
 from backend.app.api.customer_requests import public_router as customer_requests_public_router
 from backend.app.api.customer_requests import router as customer_requests_router
 from backend.app.api.dashboard import router as dashboard_router
@@ -37,7 +38,7 @@ from backend.app.services.notifications import run_reminder_sweep
 from backend.app.services.telegram_bot import start_bot, stop_bot
 
 
-app = FastAPI(title="Bitum ERP", version="0.1.0")
+app = FastAPI(title="UzYolButlash ERP", version="0.1.0")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=CORS_ORIGINS,
@@ -63,6 +64,7 @@ app.include_router(hikvision_agent_router)
 # via their own route-level `require_edit(...)` dependency.
 authenticated = [Depends(get_current_user)]
 app.include_router(audit_router, dependencies=authenticated)
+app.include_router(geo_router, dependencies=authenticated)
 app.include_router(clients_router, dependencies=authenticated)
 app.include_router(contracts_router, dependencies=authenticated)
 app.include_router(customer_requests_router, dependencies=authenticated)

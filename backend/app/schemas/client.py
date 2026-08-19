@@ -275,6 +275,13 @@ class ClientUpdate(ClientIdentifiersMixin):
     phone: str | None = None
     email: EmailStr | None = None
     notes: str | None = None
+    # The edit form shows the client together with its primary contact, address
+    # and bank account, so it can send them together. Previously it fired four
+    # separate requests and a failure on the third left the first two already
+    # written, with nothing said about it.
+    first_contact: ClientContactUpdate | None = None
+    address: ClientAddressUpdate | None = None
+    bank_account: ClientBankAccountUpdate | None = None
 
 
 class ClientRead(ClientBase):

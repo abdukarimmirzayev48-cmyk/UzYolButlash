@@ -129,7 +129,7 @@ class PaymentAllocation(Base):
     invoice_id: Mapped[int] = mapped_column(ForeignKey("customer_invoices.id", ondelete="CASCADE"), index=True)
     allocated_amount: Mapped[Decimal] = mapped_column(Numeric(18, 2), nullable=False)
     created_by: Mapped[str | None] = mapped_column(String(255))
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now, nullable=False)
 
     payment: Mapped[CustomerPayment] = relationship(back_populates="allocations")
     invoice: Mapped[CustomerInvoice] = relationship(back_populates="allocations")
@@ -147,7 +147,7 @@ class FinanceDocument(Base):
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     file_url: Mapped[str | None] = mapped_column(Text)
     uploaded_by: Mapped[str | None] = mapped_column(String(255))
-    uploaded_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+    uploaded_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now, nullable=False)
 
     invoice: Mapped[CustomerInvoice | None] = relationship(back_populates="documents")
     payment: Mapped[CustomerPayment | None] = relationship(back_populates="documents")
@@ -163,7 +163,7 @@ class FinanceNote(Base):
     payment_id: Mapped[int | None] = mapped_column(ForeignKey("customer_payments.id", ondelete="CASCADE"), index=True)
     note: Mapped[str] = mapped_column(Text, nullable=False)
     created_by: Mapped[str | None] = mapped_column(String(255))
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now, nullable=False)
 
     invoice: Mapped[CustomerInvoice | None] = relationship(back_populates="notes_history")
     payment: Mapped[CustomerPayment | None] = relationship(back_populates="notes_history")

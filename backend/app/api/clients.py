@@ -441,13 +441,56 @@ def get_client_detail(client_id: int, db: Session = Depends(get_db)):
     return detail
 
 
+def primary_or_first(items: list) -> Any | None:
+    """The record the edit form is showing.
+
+    The form has one slot each for contact, address and bank account, and that
+    slot means "the primary one" -- it used to mean "items[0]", which on a
+    client with two contacts silently edited whichever happened to be created
+    first while the detail page managed all of them.
+    """
+    return next((item for item in items if getattr(item, "is_primary", False)), items[0] if items else None)
+
+
+def apply_child(db: Session, client: Client, model: Any, items: list, data: dict | None, required_field: str) -> None:
+    """Update the primary child record, or create it if there is none.
+
+    Called inside the client's own transaction, so either the whole form is
+    saved or none of it is.
+    """
+    if not data:
+        return
+    existing = primary_or_first(items)
+    if existing is not None:
+        update_model(existing, data)
+        if data.get("is_primary"):
+            apply_primary_rules(db, model, client.id, existing.id)
+        return
+    # Nothing to update: create only if the block carries its own key field,
+    # otherwise an untouched section would insert an empty row.
+    if not data.get(required_field):
+        return
+    created = model(client_id=client.id, **data)
+    db.add(created)
+    db.flush()
+    if data.get("is_primary"):
+        apply_primary_rules(db, model, client.id, created.id)
+
+
 @router.patch("/{client_id}", response_model=ClientRead, dependencies=[Depends(require_edit("sotuv"))])
 def update_client(client_id: int, payload: ClientUpdate, db: Session = Depends(get_db)):
     client = get_client_or_404(db, client_id)
     data = payload.model_dump(exclude_unset=True)
+    contact = data.pop("first_contact", None)
+    address = data.pop("address", None)
+    bank_account = data.pop("bank_account", None)
     if "inn" in data:
         ensure_inn_available(db, data["inn"], exclude_client_id=client_id)
     update_model(client, data)
+    apply_child(db, client, ClientContact, client.contacts, contact, "full_name")
+    apply_child(db, client, ClientAddress, client.addresses, address, "address_type")
+    apply_child(db, client, ClientBankAccount, client.bank_accounts, bank_account, "bank_name")
+    # One commit for the whole form.
     db.commit()
     db.refresh(client)
     return client

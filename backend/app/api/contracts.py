@@ -789,7 +789,7 @@ def list_contracts(
 
 
 def next_contract_number(db: Session) -> str:
-    year = datetime.utcnow().year
+    year = datetime.now().year
     prefix = f"BIT-{year}-"
     existing = db.scalars(
         select(Contract.contract_number).where(Contract.contract_number.like(f"{prefix}%"))

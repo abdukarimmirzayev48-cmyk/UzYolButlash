@@ -40,8 +40,10 @@ function clientFilterField(label, control) {
 function clientsFiltersHtml(params, regionOptions, contactOptions) {
   const currentRegion = params.get("region") || "";
   const currentContact = params.get("contact_person") || "";
-  const option = (value, current) =>
-    `<option value="${esc(value)}" ${current === value ? "selected" : ""}>${esc(value)}</option>`;
+  // The value stays exactly as stored so the filter still matches; only the
+  // label the user reads is normalised.
+  const option = (value, current, label = value) =>
+    `<option value="${esc(value)}" ${current === value ? "selected" : ""}>${esc(label)}</option>`;
   return [
     clientFilterField(
       "Mijoz nomi",
@@ -54,7 +56,7 @@ function clientsFiltersHtml(params, regionOptions, contactOptions) {
     ),
     clientFilterField(
       "Kontakt shaxs",
-      `<select name="contact_person"><option value="">Barcha kontaktlar</option>${contactOptions.map((c) => option(c, currentContact)).join("")}</select>`
+      `<select name="contact_person"><option value="">Barcha kontaktlar</option>${contactOptions.map((c) => option(c, currentContact, fmtPersonName(c))).join("")}</select>`
     ),
   ].join("");
 }
@@ -253,7 +255,9 @@ async function renderClientsList() {
 }
 
 async function renderNewClient() {
+  await loadGeoRegions();
   app.innerHTML = clientForm();
+  bindGeoFields(app);
   document.querySelector("#client-form").addEventListener("submit", async (event) => {
     event.preventDefault();
     const form = event.currentTarget;
@@ -273,8 +277,9 @@ async function renderNewClient() {
 
 async function renderEditClient(id) {
   app.innerHTML = `<div class="page"><div class="empty">Mijoz yuklanmoqda...</div></div>`;
-  const client = await api(`/api/clients/${id}`);
+  const [client] = await Promise.all([api(`/api/clients/${id}`), loadGeoRegions()]);
   app.innerHTML = clientForm(client);
+  bindGeoFields(app);
   document.querySelector("#client-form").addEventListener("submit", async (event) => {
     event.preventDefault();
     const form = event.currentTarget;
@@ -283,22 +288,10 @@ async function renderEditClient(id) {
       return;
     }
     try {
-      await api(`/api/clients/${id}`, { method: "PATCH", body: JSON.stringify(baseClientPayload(form)) });
-      if (client.contacts[0] && field(form, "contact_full_name")) {
-        await api(`/api/clients/${id}/contacts/${client.contacts[0].id}`, { method: "PATCH", body: JSON.stringify(createPayload(form).first_contact) });
-      } else if (field(form, "contact_full_name")) {
-        await api(`/api/clients/${id}/contacts`, { method: "POST", body: JSON.stringify(createPayload(form).first_contact) });
-      }
-      if (client.addresses[0] && (field(form, "region") || field(form, "address"))) {
-        await api(`/api/clients/${id}/addresses/${client.addresses[0].id}`, { method: "PATCH", body: JSON.stringify(createPayload(form).address) });
-      } else if (field(form, "region") || field(form, "address")) {
-        await api(`/api/clients/${id}/addresses`, { method: "POST", body: JSON.stringify(createPayload(form).address) });
-      }
-      if (client.bank_accounts[0] && field(form, "bank_name")) {
-        await api(`/api/clients/${id}/bank-accounts/${client.bank_accounts[0].id}`, { method: "PATCH", body: JSON.stringify(createPayload(form).bank_account) });
-      } else if (field(form, "bank_name")) {
-        await api(`/api/clients/${id}/bank-accounts`, { method: "POST", body: JSON.stringify(createPayload(form).bank_account) });
-      }
+      // One request carrying the whole form. It used to be four in sequence,
+      // so a failure partway through left the earlier ones already written
+      // with nothing telling the user which had gone in.
+      await api(`/api/clients/${id}`, { method: "PATCH", body: JSON.stringify(createPayload(form)) });
       showToast("Mijoz yangilandi.");
       navigate(`/clients/${id}`);
     } catch (error) {
@@ -344,7 +337,7 @@ function tabs(active) {
 function generalTab(client) {
   return section("Umumiy ma'lumotlar", detailList([
     ["Nomi", client.name],
-    ["INN", client.inn],
+    ["STIR", client.inn],
     ["OKED", client.oked],
     ["Telefon", client.phone],
     ["Email", client.email],
@@ -360,7 +353,7 @@ function contactsTab(client) {
     ${editable ? `<div class="actions"><button class="btn primary" data-add="contacts">Kontakt qo'shish</button></div>` : ""}
     ${tableOrEmpty(client.contacts, ["F.I.Sh.", "Lavozimi", "Telefon", "Email", "Asosiy", "Amallar"], (item) => `
       <tr>
-        <td>${fmt(item.full_name)}</td><td>${fmt(item.position)}</td><td>${fmt(item.phone)}</td><td>${fmt(item.email)}</td>
+        <td>${fmt(fmtPersonName(item.full_name))}</td><td>${fmt(item.position)}</td><td>${fmt(item.phone)}</td><td>${fmt(item.email)}</td>
         <td>${item.is_primary ? '<span class="pill">Asosiy</span>' : dash}</td>
         <td><div class="table-actions">
           ${editable ? `<button class="link-btn" data-edit="contacts" data-id="${item.id}">Tahrirlash</button>
@@ -504,7 +497,7 @@ function childForm(kind, item = {}) {
   if (kind === "addresses") {
     return {
       title: item.id ? "Manzilni tahrirlash" : "Manzil qo'shish",
-      body: `<div class="grid">${selectField("address_type", "Manzil turi", addressTypes, item.address_type || "legal")}${textField("region", "Hudud", item.region, "text", { maxlength: 120 })}${textField("district", "Tuman", item.district, "text", { maxlength: 120 })}${textField("address", "Manzil", item.address, "text", { required: true, maxlength: 255 })}${textField("latitude", "Kenglik", item.latitude, "decimal", CLIENT_FIELD_RULES.latitude)}${textField("longitude", "Uzunlik", item.longitude, "decimal", CLIENT_FIELD_RULES.longitude)}${textArea("comment", "Izoh", item.comment, { maxlength: 1000 })}</div>`,
+      body: `<div class="grid">${selectField("address_type", "Manzil turi", addressTypes, item.address_type || "legal")}${geoRegionField(item.region)}${geoDistrictField(item.region, item.district)}${textField("address", "Manzil", item.address, "text", { required: true, maxlength: 255 })}${textField("latitude", "Kenglik", item.latitude, "decimal", CLIENT_FIELD_RULES.latitude)}${textField("longitude", "Uzunlik", item.longitude, "decimal", CLIENT_FIELD_RULES.longitude)}${textArea("comment", "Izoh", item.comment, { maxlength: 1000 })}</div>`,
       payload: (form) => ({ address_type: field(form, "address_type"), region: field(form, "region"), district: field(form, "district"), address: field(form, "address"), latitude: field(form, "latitude"), longitude: field(form, "longitude"), comment: field(form, "comment") }),
     };
   }
@@ -530,6 +523,7 @@ function childForm(kind, item = {}) {
 }
 
 async function openChildForm(client, kind, item = {}) {
+  if (kind === "addresses") await loadGeoRegions();
   const cfg = childForm(kind, item);
   const tab = kind === "bank" ? "bank" : kind;
   app.innerHTML = `
@@ -546,6 +540,7 @@ async function openChildForm(client, kind, item = {}) {
       `)}
     </div>
   `;
+  bindGeoFields(app);
   document.querySelector("#child-form").addEventListener("submit", async (event) => {
     event.preventDefault();
     const pathKind = kind === "bank" ? "bank-accounts" : kind;

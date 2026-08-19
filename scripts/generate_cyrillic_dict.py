@@ -131,6 +131,15 @@ def is_ui_text(s: str) -> bool:
         return False
     if _CODEY & set(s):
         return False
+    # A parenthesised whole string is a CSS media query or a selector fragment,
+    # never a sentence -- "(max-width: 980px)" was being transliterated.
+    if s.startswith("(") and s.endswith(")"):
+        return False
+    # A quote-comma-quote sequence means the extractor cut across a literal
+    # boundary in an array, so what it captured is two half-strings glued
+    # together ("', 'Birlik narxi") rather than anything shown on screen.
+    if "', '" in s or '", "' in s:
+        return False
     if _REJECT.search(s):
         return False
     if not _HAS_LETTER.search(s) or not _UZ_HINT.search(s):

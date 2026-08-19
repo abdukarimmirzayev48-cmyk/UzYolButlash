@@ -6,7 +6,26 @@ function currentLang() {
   return localStorage.getItem(LANG_KEY) === "lat" ? "lat" : "cyr";
 }
 
+// True when a form on the page holds something the user typed and has not
+// saved. Switching alphabet reloads the page, and losing a half-filled client
+// or order form to a mis-click is a real cost -- so ask first, but only when
+// there is actually something to lose.
+function hasUnsavedInput() {
+  return [...document.querySelectorAll("#app form")].some((form) =>
+    [...form.elements].some((element) => {
+      if (element.disabled || element.readOnly) return false;
+      if (element.type === "checkbox" || element.type === "radio") return element.checked !== element.defaultChecked;
+      if (element.tagName === "SELECT") return element.selectedIndex !== element.querySelector("[selected]")?.index ?? false;
+      if (["hidden", "submit", "button", "file"].includes(element.type)) return false;
+      return typeof element.value === "string" && element.value !== element.defaultValue;
+    })
+  );
+}
+
 function setLang(lang) {
+  if (hasUnsavedInput() && !confirmMsg("Sahifada saqlanmagan ma'lumot bor. Til almashtirilsa u yo'qoladi. Davom etasizmi?")) {
+    return;
+  }
   localStorage.setItem(LANG_KEY, lang === "lat" ? "lat" : "cyr");
   // Full reload rather than a live re-render: the MutationObserver only
   // localizes *added* nodes, so switching in place would strand text that has
@@ -105,19 +124,79 @@ function esc(value) {
   })[char]);
 }
 
+// Staff names arrive from the company registry in block capitals
+// ("KARIMOV AZIZBEK ANVAR O'G'LI"), which shouts inside an otherwise normally
+// cased interface. Only fully-uppercase values are touched -- anything a person
+// typed themselves is left exactly as they wrote it, and the stored value never
+// changes, so filters and exports still match on the original.
+const NAME_SUFFIXES = new Set(["o'g'li", "og'li", "ogli", "ugli", "qizi", "kizi"]);
+
+function fmtPersonName(value) {
+  const text = String(value ?? "").trim();
+  if (!text || text !== text.toUpperCase() || !/[A-ZА-ЯЎҚҒҲ]/.test(text)) return text;
+  return text
+    .split(/\s+/)
+    .map((word) => {
+      const lower = word.toLowerCase();
+      if (NAME_SUFFIXES.has(lower)) return lower;
+      return lower.charAt(0).toUpperCase() + lower.slice(1);
+    })
+    .join(" ");
+}
+
 function fmt(value) {
   if (value === null || value === undefined || value === "") return dash;
   return esc(value);
 }
 
+// dateStyle:"medium" hands the choice to whatever CLDR data the browser ships.
+// For uz-UZ that varies: some builds render "6-iyl, 2026", others fall back to
+// the root locale and produce "2026 M07 6". Neither is the dd.mm.yyyy the rest
+// of the interface uses, so the parts are spelled out and assembled here --
+// the output is then the same in every browser.
+//
+// The values are naive wall-clock times in Asia/Tashkent (the server runs
+// there and every date the user types is local), so they are read back and
+// shown as written, with no timezone conversion.
+const NAIVE_DATETIME_RE = /^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}):(\d{2})(?::(\d{2}))?)?/;
+// A trailing Z or +05:00 means the value knows its own offset and must be
+// converted rather than read literally.
+const TZ_SUFFIX_RE = /(?:Z|[+-]\d{2}:?\d{2})$/i;
+
+function dateParts(value) {
+  if (!value) return null;
+  const text = String(value);
+  const match = TZ_SUFFIX_RE.test(text) ? null : NAIVE_DATETIME_RE.exec(text);
+  if (match) {
+    const [, year, month, day, hour, minute] = match;
+    return { year, month, day, hour, minute };
+  }
+  // Anything else (a Date, or a string carrying an offset) is converted the
+  // normal way and then read out in the company's own timezone.
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return null;
+  const parts = Object.fromEntries(
+    new Intl.DateTimeFormat("en-GB", {
+      timeZone: "Asia/Tashkent",
+      year: "numeric", month: "2-digit", day: "2-digit",
+      hour: "2-digit", minute: "2-digit", hour12: false,
+    })
+      .formatToParts(parsed)
+      .map((part) => [part.type, part.value])
+  );
+  return parts.year ? parts : null;
+}
+
 function fmtDayOnly(value) {
-  if (!value) return dash;
-  return new Intl.DateTimeFormat("uz-UZ", { dateStyle: "medium" }).format(new Date(value));
+  const parts = dateParts(value);
+  return parts ? `${parts.day}.${parts.month}.${parts.year}` : dash;
 }
 
 function fmtDate(value) {
-  if (!value) return dash;
-  return new Intl.DateTimeFormat("uz-UZ", { dateStyle: "medium", timeStyle: "short" }).format(new Date(value));
+  const parts = dateParts(value);
+  if (!parts) return dash;
+  const day = `${parts.day}.${parts.month}.${parts.year}`;
+  return parts.hour === undefined ? day : `${day} ${parts.hour}:${parts.minute}`;
 }
 
 function showToast(message, isError = false) {
@@ -433,7 +512,11 @@ function initSidebar() {
       });
     });
   });
-  observer.observe(app, { childList: true, subtree: true });
+  // Watching #app alone left everything outside it -- the topbar user role, the
+  // notifications dropdown -- in Latin, because those are written after the
+  // one-off localizeDom(document.body) above. Topbar mutations are rare, so
+  // widening the root costs nothing measurable.
+  observer.observe(document.body, { childList: true, subtree: true });
 }
 
 function updateSidebarActiveLink() {
@@ -838,10 +921,105 @@ const CLIENT_FIELD_RULES = {
   longitude: { min: -180, max: 180, inputmode: "decimal", placeholder: "69.240562", title: "Uzunlik -180 va 180 orasida bo'lishi kerak." },
 };
 
+// The form has one slot per section, and that slot is the primary record --
+// not whichever was created first. On a client with two contacts the old
+// items[0] meant the form quietly edited a different row than the one the
+// detail page marks as primary.
+function primaryOf(items) {
+  return (items || []).find((item) => item.is_primary) || (items || [])[0] || {};
+}
+
+// Reference data, loaded once per page load. A free-text region was the root
+// of a whole class of problem: one "Toshkent sh." next to "Toshkent shahri"
+// and the list filter silently splits in two, each half hiding the other's
+// clients. Picking from a list makes that impossible.
+let geoRegionsCache = null;
+
+async function loadGeoRegions() {
+  if (geoRegionsCache) return geoRegionsCache;
+  try {
+    geoRegionsCache = await api("/api/geo/regions");
+  } catch (error) {
+    geoRegionsCache = [];
+  }
+  return geoRegionsCache;
+}
+
+function geoRegionField(current = "") {
+  const options = (geoRegionsCache || []).map(
+    (region) => `<option value="${esc(region.name)}" ${region.name === current ? "selected" : ""}>${esc(region.name)}</option>`
+  );
+  // A region already stored but missing from the reference list would otherwise
+  // be wiped by simply opening the form.
+  const known = (geoRegionsCache || []).some((region) => region.name === current);
+  const orphan = current && !known ? `<option value="${esc(current)}" selected>${esc(current)}</option>` : "";
+  return `<label><span class="field-label-text">Hudud</span><select name="region" data-geo-region><option value="">Tanlanmagan</option>${orphan}${options.join("")}</select></label>`;
+}
+
+function geoDistrictField(region = "", current = "") {
+  const entry = (geoRegionsCache || []).find((item) => item.name === region);
+  const districts = entry ? entry.districts : [];
+  const options = districts.map(
+    (district) => `<option value="${esc(district.name)}" ${district.name === current ? "selected" : ""}>${esc(district.name)}</option>`
+  );
+  const orphan = current && !districts.some((d) => d.name === current) ? `<option value="${esc(current)}" selected>${esc(current)}</option>` : "";
+  return `<label><span class="field-label-text">Tuman</span>
+    <select name="district" data-geo-district><option value="">Tanlanmagan</option>${orphan}${options.join("")}</select>
+    <small class="field-helper">Ro'yxatda yo'q bo'lsa, «Tuman qo'shish» tugmasi bilan qo'shing.</small>
+    <button type="button" class="link-btn" data-geo-add-district>Tuman qo'shish</button></label>`;
+}
+
+// Re-renders the district list when the region changes, and lets a district be
+// added to the reference table without leaving the form.
+function bindGeoFields(root = document) {
+  const regionSelect = root.querySelector("[data-geo-region]");
+  const districtSelect = root.querySelector("[data-geo-district]");
+  if (!regionSelect || !districtSelect) return;
+
+  const districtsFor = (name) => ((geoRegionsCache || []).find((item) => item.name === name)?.districts || []);
+  const fill = (selected = "") => {
+    const list = districtsFor(regionSelect.value);
+    districtSelect.innerHTML =
+      `<option value="">Tanlanmagan</option>` +
+      list.map((d) => `<option value="${esc(d.name)}" ${d.name === selected ? "selected" : ""}>${esc(d.name)}</option>`).join("");
+    localizeDom(districtSelect);
+  };
+
+  regionSelect.addEventListener("change", () => fill());
+
+  root.querySelector("[data-geo-add-district]")?.addEventListener("click", async () => {
+    const region = (geoRegionsCache || []).find((item) => item.name === regionSelect.value);
+    if (!region) {
+      showToast("Avval hududni tanlang.", true);
+      return;
+    }
+    const name = (window.prompt(localizeMessage("Yangi tuman nomi:")) || "").trim();
+    if (!name) return;
+    try {
+      const created = await api(`/api/geo/regions/${region.id}/districts`, {
+        method: "POST",
+        body: JSON.stringify({ name }),
+      });
+      if (!region.districts.some((d) => d.id === created.id)) region.districts.push(created);
+      region.districts.sort((a, b) => a.name.localeCompare(b.name));
+      fill(created.name);
+      showToast("Tuman qo'shildi.");
+    } catch (error) {
+      showToast(error.message, true);
+    }
+  });
+}
+
 function clientForm(client = null) {
-  const contact = client?.contacts?.[0] || {};
-  const address = client?.addresses?.[0] || {};
-  const account = client?.bank_accounts?.[0] || {};
+  const contact = primaryOf(client?.contacts);
+  const address = primaryOf(client?.addresses);
+  const account = primaryOf(client?.bank_accounts);
+  // Say so when there is more than one, and point at the page that manages
+  // them all -- otherwise the form looks like the whole truth.
+  const extra = (items, label, tab) =>
+    (items || []).length > 1
+      ? `<p class="form-hint">Bu mijozda ${items.length} ta ${label} bor. Bu yerda faqat birlamchisi tahrirlanadi — qolganlari <button type="button" class="link-btn" data-nav="/clients/${client.id}${tab}">mijoz kartochkasida</button>.</p>`
+      : "";
   const title = client ? "Mijozni tahrirlash" : "Yangi mijoz";
   return `
     <div class="page">
@@ -856,7 +1034,7 @@ function clientForm(client = null) {
         ${section("Asosiy ma'lumotlar", `
           <div class="grid">
             ${textField("name", "Mijoz nomi", client?.name, "text", CLIENT_FIELD_RULES.name)}
-            ${textField("inn", "INN", client?.inn, "text", CLIENT_FIELD_RULES.inn)}
+            ${textField("inn", "STIR", client?.inn, "text", CLIENT_FIELD_RULES.inn)}
             ${textField("oked", "OKED", client?.oked, "text", CLIENT_FIELD_RULES.oked)}
             ${textField("phone", "Telefon", client?.phone, "tel", CLIENT_FIELD_RULES.phone)}
             ${textField("email", "Email", client?.email, "email", CLIENT_FIELD_RULES.email)}
@@ -864,6 +1042,7 @@ function clientForm(client = null) {
           </div>
         `)}
         ${section("Birlamchi kontakt shaxs", `
+          ${extra(client?.contacts, "kontakt", "")}
           <div class="grid">
             ${textField("contact_full_name", "F.I.Sh.", contact.full_name, "text", { maxlength: 255, autocomplete: "name" })}
             ${textField("contact_position", "Lavozimi", contact.position, "text", { maxlength: 120 })}
@@ -874,10 +1053,11 @@ function clientForm(client = null) {
           </div>
         `)}
         ${section("Manzil", `
+          ${extra(client?.addresses, "manzil", "")}
           <div class="grid">
             ${selectField("address_type", "Manzil turi", addressTypes, address.address_type || "legal")}
-            ${textField("region", "Hudud", address.region, "text", { maxlength: 120 })}
-            ${textField("district", "Tuman", address.district, "text", { maxlength: 120 })}
+            ${geoRegionField(address.region)}
+            ${geoDistrictField(address.region, address.district)}
             ${textField("address", "Manzil", address.address, "text", { maxlength: 255 })}
             ${textField("latitude", "Kenglik", address.latitude, "decimal", CLIENT_FIELD_RULES.latitude)}
             ${textField("longitude", "Uzunlik", address.longitude, "decimal", CLIENT_FIELD_RULES.longitude)}
@@ -885,6 +1065,7 @@ function clientForm(client = null) {
           </div>
         `)}
         ${section("Bank hisobi", `
+          ${extra(client?.bank_accounts, "bank hisobi", "")}
           <div class="grid">
             ${textField("bank_name", "Bank nomi", account.bank_name, "text", { maxlength: 160 })}
             ${textField("mfo", "MFO", account.mfo, "text", CLIENT_FIELD_RULES.mfo)}

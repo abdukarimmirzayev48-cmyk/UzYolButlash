@@ -6,6 +6,7 @@ from backend.app.models.client import (
     ClientDocument,
     ClientNote,
 )
+from backend.app.models.geo import District, Region
 from backend.app.models.contract import (
     Contract,
     ContractDocument,
@@ -81,6 +82,8 @@ from backend.app.models.task import Notification, Task, TaskAssignee, TaskAttach
 from backend.app.models.user import User
 
 __all__ = [
+    "Region",
+    "District",
     "Client",
     "ClientAddress",
     "ClientBankAccount",

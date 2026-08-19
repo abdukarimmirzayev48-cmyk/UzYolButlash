@@ -95,7 +95,7 @@ function publicRequestShell(content) {
   return `
     <div class="public-request-page">
       <header class="public-request-header">
-        <a class="public-brand" href="/talabnoma"><span class="brand-mark">B</span><strong>Bitum ERP</strong></a>
+        <a class="public-brand" href="/talabnoma"><span class="brand-mark">B</span><strong>UzYolButlash</strong></a>
         <div>
           <h1>Talabnoma yuborish</h1>
           <p>Bitum mahsulotlari bo'yicha talabnoma yuborish xizmati</p>
@@ -106,7 +106,7 @@ function publicRequestShell(content) {
         ${publicRequestStepper()}
         ${content}
         <footer class="public-request-footer">
-          <strong>&copy; Bitum ERP</strong>
+          <strong>&copy; UzYolButlash</strong>
           <span>Talabnomalar mas'ul xodimlar tomonidan ko'rib chiqiladi.</span>
         </footer>
       </div>

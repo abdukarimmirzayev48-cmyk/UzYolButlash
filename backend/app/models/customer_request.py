@@ -112,6 +112,6 @@ class CustomerRequestStatusHistory(Base):
     new_status: Mapped[CustomerRequestStatus] = mapped_column(SAEnum(CustomerRequestStatus), nullable=False, index=True)
     changed_by: Mapped[str | None] = mapped_column(String(255))
     comment: Mapped[str | None] = mapped_column(Text)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now, nullable=False)
 
     request: Mapped[CustomerRequest] = relationship(back_populates="status_history")

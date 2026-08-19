@@ -339,9 +339,9 @@ def update_customer_request_status(
     old_status = request.status
     request.status = payload.status
     if payload.status == CustomerRequestStatus.reviewing and not request.reviewed_at:
-        request.reviewed_at = datetime.utcnow()
+        request.reviewed_at = datetime.now()
     if payload.status == CustomerRequestStatus.contract_signed and not request.contract_signed_at:
-        request.contract_signed_at = datetime.utcnow()
+        request.contract_signed_at = datetime.now()
     if payload.status == CustomerRequestStatus.rejected:
         request.rejection_reason = payload.rejection_reason or payload.comment
     add_status_history(db, request, old_status, payload.status, payload.comment or payload.rejection_reason, payload.changed_by)
