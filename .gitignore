@@ -11,3 +11,4 @@ scripts/hikvision_sync_state.json
 agent_run.log
 .DS_Store
 storage/uploads/
+backend/storage/

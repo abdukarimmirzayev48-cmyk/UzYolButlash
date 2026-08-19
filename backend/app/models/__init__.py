@@ -75,6 +75,7 @@ from backend.app.models.customer_request import (
     CustomerRequestSchedule,
     CustomerRequestStatusHistory,
 )
+from backend.app.models.audit import AuditLog
 from backend.app.models.attendance import AttendanceRecord, Department, Employee, HikvisionSyncLog
 from backend.app.models.task import Notification, Task, TaskAssignee, TaskAttachment, TaskComment, TaskHistory
 from backend.app.models.user import User
@@ -142,6 +143,7 @@ __all__ = [
     "CustomerRequest",
     "CustomerRequestSchedule",
     "CustomerRequestStatusHistory",
+    "AuditLog",
     "AttendanceRecord",
     "HikvisionSyncLog",
     "Department",

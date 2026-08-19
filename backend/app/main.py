@@ -7,6 +7,7 @@ from starlette.middleware.sessions import SessionMiddleware
 from apscheduler.schedulers.background import BackgroundScheduler
 
 from backend.app.api.attendance import attendance_router, departments_router, employees_router as attendance_employees_router
+from backend.app.api.audit import router as audit_router
 from backend.app.api.auth import auth_router, users_router
 from backend.app.api.clients import router as clients_router
 from backend.app.api.contracts import router as contracts_router
@@ -30,6 +31,7 @@ from backend.app.api.products import products_router
 from backend.app.core.config import CORS_ORIGINS, SESSION_SECRET_KEY
 from backend.app.core.paths import FRONTEND_DIR, UPLOADS_DIR
 from backend.app.db.session import SessionLocal
+from backend.app.services.audit import AuditMiddleware
 from backend.app.services.auth import get_current_user
 from backend.app.services.notifications import run_reminder_sweep
 from backend.app.services.telegram_bot import start_bot, stop_bot
@@ -43,6 +45,10 @@ app.add_middleware(
     allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["*"],
 )
+# Added before SessionMiddleware on purpose: Starlette runs the last-added
+# middleware outermost, so this one sits inside the session wrapper and can
+# read request.session to learn who is acting.
+app.add_middleware(AuditMiddleware)
 app.add_middleware(SessionMiddleware, secret_key=SESSION_SECRET_KEY, same_site="lax")
 
 # Public — no login required (customer-facing request form, the login endpoint
@@ -56,6 +62,7 @@ app.include_router(hikvision_agent_router)
 # (e.g. Ijro, Davomat) additionally require edit permission for that module
 # via their own route-level `require_edit(...)` dependency.
 authenticated = [Depends(get_current_user)]
+app.include_router(audit_router, dependencies=authenticated)
 app.include_router(clients_router, dependencies=authenticated)
 app.include_router(contracts_router, dependencies=authenticated)
 app.include_router(customer_requests_router, dependencies=authenticated)
@@ -150,6 +157,7 @@ def frontend(full_path: str):
         or full_path.startswith("departments")
         or full_path.startswith("login")
         or full_path.startswith("users")
+        or full_path.startswith("audit-log")
     ):
         return FileResponse(FRONTEND_DIR / "index.html")
     return RedirectResponse("/clients")

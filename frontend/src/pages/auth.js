@@ -32,6 +32,11 @@ function renderCurrentUserBadge() {
   if (nameEl) nameEl.textContent = currentUser.full_name || currentUser.username;
   if (roleEl) roleEl.textContent = currentUser.is_admin ? "Administrator" : "Operator";
   if (usersLink) usersLink.hidden = !currentUser.is_admin;
+  // The audit log is admin-only on the server; hiding the links keeps a
+  // non-admin from walking into a 403 page from the menu.
+  document.querySelectorAll('a[href="/audit-log"]').forEach((link) => {
+    link.hidden = !currentUser.is_admin;
+  });
 
   const toggle = document.querySelector("#top-user");
   const menu = document.querySelector("#top-user-menu");
