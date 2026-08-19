@@ -90,8 +90,32 @@ app.include_router(tasks_router, dependencies=authenticated)
 app.include_router(notifications_router, dependencies=authenticated)
 app.include_router(users_router, dependencies=authenticated)  # also self-gates to admin-only
 
-app.mount("/static/uploads", StaticFiles(directory=UPLOADS_DIR), name="uploads")
-app.mount("/static", StaticFiles(directory=FRONTEND_DIR), name="static")
+class VersionedStaticFiles(StaticFiles):
+    """Cache assets forever when the URL carries a ?v=... stamp.
+
+    Every script and stylesheet in index.html is requested with a version stamp
+    that is bumped whenever the file changes, so a given URL can never return
+    different bytes -- which is exactly the condition "immutable" describes.
+    Without this header the browser only got a weak ETag, so all 32 script files
+    were re-fetched on every single page load; the front end is deliberately
+    unbundled, which makes that per-file cost worth removing.
+
+    Requests without a stamp (uploaded documents, anything hand-typed) fall
+    through to revalidation, since those really can change under the same URL.
+    """
+
+    async def get_response(self, path: str, scope):
+        response = await super().get_response(path, scope)
+        if response.status_code == 200:
+            stamped = b"v=" in scope.get("query_string", b"")
+            response.headers["Cache-Control"] = (
+                "public, max-age=31536000, immutable" if stamped else "public, max-age=0, must-revalidate"
+            )
+        return response
+
+
+app.mount("/static/uploads", VersionedStaticFiles(directory=UPLOADS_DIR), name="uploads")
+app.mount("/static", VersionedStaticFiles(directory=FRONTEND_DIR), name="static")
 
 
 def _run_reminder_sweep_job() -> None:
@@ -159,5 +183,7 @@ def frontend(full_path: str):
         or full_path.startswith("users")
         or full_path.startswith("audit-log")
     ):
-        return FileResponse(FRONTEND_DIR / "index.html")
+        # index.html is what carries the ?v= stamps, so it must always be
+        # fetched fresh -- caching it would pin the browser to old assets.
+        return FileResponse(FRONTEND_DIR / "index.html", headers={"Cache-Control": "no-cache"})
     return RedirectResponse("/clients")
