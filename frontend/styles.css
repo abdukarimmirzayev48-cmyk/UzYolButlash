@@ -1755,6 +1755,27 @@ tr:last-child td {
   margin-left: auto;
 }
 
+/* A checkbox and its text are one control. Without this they inherit the
+   generic `label { display: grid }` and split apart -- the box drifts to the
+   end of the filter bar while its label sits over the table. It was patched
+   per-page twice before; defining it once fixes every filter bar, including
+   the ones that had no patch. */
+.inline-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  width: auto;
+  white-space: nowrap;
+  font-weight: 600;
+}
+
+.inline-check input[type="checkbox"] {
+  width: auto;
+  min-height: 0;
+  margin: 0;
+  flex: 0 0 auto;
+}
+
 .ops-search input {
   width: min(360px, 28vw);
 }
@@ -2009,17 +2030,6 @@ tr:last-child td {
 
 .tasks-ops-page .ops-search select {
   width: min(170px, 15vw);
-}
-
-.tasks-ops-page .ops-search .inline-check {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  width: auto;
-}
-
-.tasks-ops-page .ops-search .inline-check input {
-  width: auto;
 }
 
 .tasks-summary-cards {
@@ -5217,15 +5227,3 @@ body.public-layout.sidebar-collapsed .app-shell {
   background: #fdf6f5;
 }
 
-#audit-search-form .inline-check {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  width: auto;
-  white-space: nowrap;
-}
-
-#audit-search-form .inline-check input {
-  width: auto;
-  margin: 0;
-}

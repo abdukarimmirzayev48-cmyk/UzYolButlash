@@ -26,7 +26,10 @@ function toCyrillic(text) {
   const values = [];
   // Digit groups may contain thousand separators ("1 250 000") but must not
   // swallow the trailing space, or the shape stops matching the template.
-  const shape = text.replace(/\d+(?:[.,\s]\d+)*/g, (hit) => {
+  // The currency word is glued to the amount by fmtMoney, so it has to be
+  // swallowed with it -- otherwise "1 047 780 000 сўм qiymat" never matches
+  // the stored "{n} qiymat" shape and the whole line stays Latin.
+  const shape = text.replace(/\d+(?:[.,\s]\d+)*(?:\s*(?:so'm|сўм))?/g, (hit) => {
     values.push(hit);
     return "{n}";
   });
@@ -698,6 +701,12 @@ function statusLabel(status) {
     procurementStatuses,
     supplierOfferStatuses,
     taskStatuses,
+    // Appended last so nothing already resolving changes: these were simply
+    // missing, so stock and ticket badges showed the raw key ("partially_used").
+    exchangeTicketStatuses,
+    stockStatuses,
+    stockAllocationStatuses,
+    supplierStatuses,
   ];
   for (const group of groups) {
     const label = group.find(([key]) => key === status)?.[1];
