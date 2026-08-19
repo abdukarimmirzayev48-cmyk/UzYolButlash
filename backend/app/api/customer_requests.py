@@ -22,6 +22,7 @@ from backend.app.schemas.customer_request import (
     CUSTOMER_TYPE_LABELS,
     PAYMENT_SOURCE_LABELS,
     REQUEST_STATUS_LABELS,
+    StatusTransition,
     CompanyRegistryRead,
     CustomerRequestCreate,
     CustomerRequestDetail,
@@ -33,6 +34,7 @@ from backend.app.schemas.customer_request import (
     ProductSummary,
     PublicProductRead,
 )
+from backend.app.services import customer_request_workflow
 from backend.app.services.auth import require_edit
 
 
@@ -173,6 +175,16 @@ def serialize_detail(request: CustomerRequest) -> CustomerRequestDetail:
         updated_at=request.updated_at,
         schedule=[CustomerRequestScheduleRead.model_validate(item) for item in request.schedules],
         status_history=[serialize_history(item) for item in request.status_history],
+        available_transitions=[
+            StatusTransition(
+                status=move["status"],
+                label=enum_label(REQUEST_STATUS_LABELS, CustomerRequestStatus(move["status"])),
+                direction=move["direction"],
+                requires_comment=move["requires_comment"],
+            )
+            for move in customer_request_workflow.transitions_from(request.status)
+        ],
+        can_convert_to_order=request.status is CustomerRequestStatus.contract_signed,
     )
 
 
@@ -324,18 +336,30 @@ def update_customer_request_status(
     payload: CustomerRequestStatusChange,
     db: Session = Depends(get_db),
 ):
-    allowed_statuses = {
-        CustomerRequestStatus.reviewing,
-        CustomerRequestStatus.negotiation,
-        CustomerRequestStatus.contract_preparation,
-        CustomerRequestStatus.contract_signed,
-        CustomerRequestStatus.rejected,
-    }
-    if payload.status not in allowed_statuses:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Status qiymati noto'g'ri.")
-    if payload.status == CustomerRequestStatus.rejected and not (payload.rejection_reason or payload.comment):
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Rad etish sababi majburiy.")
     request = get_request_or_404(db, request_id)
+    if payload.status in customer_request_workflow.STATUS_ENDPOINT_EXCLUDED:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Bu statusga o'tkazish uchun «Buyurtmaga o'tkazish» amalidan foydalaning.",
+        )
+    kind = customer_request_workflow.transition_kind(request.status, payload.status)
+    if kind is None:
+        # Says where the request actually is, because the usual cause is a page
+        # left open while somebody else moved it on.
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=(
+                f"«{REQUEST_STATUS_LABELS.get(request.status, request.status.value)}» holatidan "
+                f"«{REQUEST_STATUS_LABELS.get(payload.status, payload.status.value)}» holatiga o'tib bo'lmaydi. "
+                "Sahifani yangilang."
+            ),
+        )
+    reason = payload.rejection_reason or payload.comment
+    if kind in {"reject", "backward"} and not reason:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Rad etish sababi majburiy." if kind == "reject" else "Orqaga qaytarish sababi majburiy.",
+        )
     old_status = request.status
     request.status = payload.status
     if payload.status == CustomerRequestStatus.reviewing and not request.reviewed_at:
@@ -372,6 +396,15 @@ def delete_customer_request(request_id: int, db: Session = Depends(get_db)):
 @router.post("/{request_id}/convert-to-order", dependencies=[Depends(require_edit("sotuv"))])
 def convert_customer_request_to_order(request_id: int, db: Session = Depends(get_db)):
     request = get_request_or_404(db, request_id)
+    # A talabnoma with no signed contract has nothing to build an order from.
+    if request.status is not CustomerRequestStatus.contract_signed:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=(
+                "Buyurtmaga faqat shartnomasi imzolangan talabnoma o'tkaziladi. "
+                f"Joriy holat: «{REQUEST_STATUS_LABELS.get(request.status, request.status.value)}»."
+            ),
+        )
     return {
         "success": True,
         "data": {

@@ -181,6 +181,14 @@ class CustomerRequestStatusHistoryRead(BaseModel):
     created_at: datetime
 
 
+class StatusTransition(BaseModel):
+    status: str
+    label: str
+    # forward advances the flow, backward undoes a step, reject closes it.
+    direction: str
+    requires_comment: bool
+
+
 class CustomerRequestDetail(CustomerRequestListItem):
     region: str | None = None
     activity_type: str | None = None
@@ -202,6 +210,11 @@ class CustomerRequestDetail(CustomerRequestListItem):
     updated_at: datetime
     schedule: list[CustomerRequestScheduleRead] = Field(default_factory=list)
     status_history: list[CustomerRequestStatusHistoryRead] = Field(default_factory=list)
+    # Which moves are legal from where this request stands. The browser renders
+    # one button per entry instead of a fixed list, so it cannot offer a step
+    # the server would refuse.
+    available_transitions: list[StatusTransition] = Field(default_factory=list)
+    can_convert_to_order: bool = False
 
 
 CustomerRequestPage = Page[CustomerRequestListItem]

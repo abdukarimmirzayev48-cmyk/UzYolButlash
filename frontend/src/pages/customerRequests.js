@@ -8,13 +8,11 @@ const customerRequestStatuses = [
   ["rejected", "Rad etildi"],
 ];
 
-const customerRequestStatusActions = [
-  ["reviewing", "Ko'rib chiqilmoqda"],
-  ["negotiation", "Muzokaraga o'tkazish"],
-  ["contract_preparation", "Shartnoma tayyorlanmoqda"],
-  ["contract_signed", "Shartnoma imzolandi"],
-  ["rejected", "Rad etish"],
-];
+// The status buttons are no longer listed here. They came as a fixed five,
+// shown whatever state the request was in, which is how a new talabnoma could
+// jump straight to "Shartnoma imzolandi". The flow now lives in
+// backend/app/services/customer_request_workflow.py and reaches this page as
+// request.available_transitions.
 
 const customerTypes = [
   ["internal_organization", "Tizim tashkiloti"],
@@ -106,7 +104,7 @@ async function renderCustomerRequestDetail(id) {
         <div class="actions workflow-actions">
           <button class="btn" data-nav="/customer-requests">Orqaga</button>
           ${canEdit("sotuv") ? `<button class="btn" data-nav="/customer-requests/${request.id}/edit">Tahrirlash</button>
-          <button class="btn primary" data-convert-request="${request.id}">Buyurtmaga o'tkazish</button>
+          ${request.can_convert_to_order ? `<button class="btn primary" data-convert-request="${request.id}">Buyurtmaga o'tkazish</button>` : ""}
           <button class="btn danger" data-delete-request="${request.id}" data-request-number="${esc(request.request_number || "")}">O'chirish</button>` : ""}
         </div>
       </div>
@@ -122,7 +120,7 @@ async function renderCustomerRequestDetail(id) {
           <div class="total-box"><span>Umumiy miqdor</span><strong>${fmtQty(request.total_quantity, request.unit)}</strong></div>
         </div>
       `)}
-      ${canEdit("sotuv") ? section("Statusni o'zgartirish", `<div class="actions">${customerRequestStatusActions.map(([status, label]) => `<button class="btn" type="button" data-request-status="${status}">${label}</button>`).join("")}</div>`) : ""}
+      ${canEdit("sotuv") ? section("Statusni o'zgartirish", requestTransitionsHtml(request)) : ""}
       ${section("Status tarixi", tableOrEmpty(request.status_history, ["Sana", "Oldingi status", "Yangi status", "Izoh", "Foydalanuvchi"], (item) => `<tr><td>${fmtDate(item.created_at)}</td><td>${fmt(item.old_status_label)}</td><td>${fmt(item.new_status_label)}</td><td>${fmt(item.comment)}</td><td>${fmt(item.changed_by)}</td></tr>`, "Status tarixi mavjud emas."))}
     </div>
   `;
@@ -148,21 +146,69 @@ function bindCustomerRequestDelete(onDeleted) {
   });
 }
 
+// Buttons come from the server's own description of the flow, so what is on
+// screen is exactly what the API will accept. A fixed list of five offered
+// "Shartnoma imzolandi" on a brand-new talabnoma and the server took it.
+// Written as plain literals so the dictionary generator picks them up.
+const REQUEST_BACK_LABEL = "Orqaga qaytarish";
+const REQUEST_REJECT_LABEL = "Rad etish";
+
+function requestTransitionsHtml(request) {
+  const moves = request.available_transitions || [];
+  if (!moves.length) {
+    return `<div class="empty">Bu holatdan status o'zgartirilmaydi.</div>`;
+  }
+  const order = { forward: 0, backward: 1, reject: 2 };
+  const buttons = [...moves]
+    .sort((a, b) => order[a.direction] - order[b.direction])
+    .map((move) => {
+      const cls = move.direction === "forward" ? "btn primary" : move.direction === "reject" ? "btn danger" : "btn";
+      // The status label names a state; a button names an act. "Rad etildi" is
+      // what the request becomes, "Rad etish" is what the button does.
+      if (move.direction === "reject") {
+        return `<button class="${cls}" type="button" data-request-status="${esc(move.status)}" data-request-direction="reject">${REQUEST_REJECT_LABEL}</button>`;
+      }
+      // Going back to "Ko'rib chiqilmoqda" and moving forward to it are
+      // different acts and used to read identically, so the direction is said
+      // out loud. The two words are separate text nodes because the Cyrillic
+      // dictionary matches a whole node -- glued together they match nothing.
+      // The button is a flex row, so its spans already sit apart -- an arrow
+      // reads better between them than punctuation, which the gap would leave
+      // floating on both sides.
+      const prefix = move.direction === "backward"
+        ? `<span>${REQUEST_BACK_LABEL}</span><span data-noloc>\u2190</span>`
+        : "";
+      return `<button class="${cls}" type="button" data-request-status="${esc(move.status)}" data-request-direction="${esc(move.direction)}">${prefix}<span>${esc(move.label)}</span></button>`;
+    })
+    .join("");
+  const hint = moves.some((move) => move.direction === "backward")
+    ? `<p class="form-hint">Orqaga qaytarish uchun sabab yozish shart — u status tarixida qoladi.</p>`
+    : "";
+  return `${hint}<div class="actions">${buttons}</div>`;
+}
+
 function bindCustomerRequestDetailActions(request) {
   app.querySelectorAll("[data-request-status]").forEach((button) => {
     button.addEventListener("click", async () => {
       const nextStatus = button.dataset.requestStatus;
-      const comment = nextStatus === "rejected"
-        ? prompt("Rad etish sababini kiriting:")
-        : prompt("Izoh kiriting:", "");
-      if (nextStatus === "rejected" && !comment) {
-        showToast("Rad etish sababi majburiy.", true);
+      const direction = button.dataset.requestDirection;
+      const needsReason = direction === "rejected" || direction === "reject" || direction === "backward";
+      const question =
+        direction === "reject"
+          ? "Rad etish sababini kiriting:"
+          : direction === "backward"
+            ? "Orqaga qaytarish sababini kiriting:"
+            : "Izoh kiriting:";
+      const comment = window.prompt(localizeMessage(question), "");
+      if (comment === null) return; // bekor qilindi
+      if (needsReason && !comment.trim()) {
+        showToast(direction === "reject" ? "Rad etish sababi majburiy." : "Orqaga qaytarish sababi majburiy.", true);
         return;
       }
       try {
         await api(`/api/customer-requests/${request.id}/status`, {
           method: "POST",
-          body: JSON.stringify({ status: nextStatus, comment, rejection_reason: nextStatus === "rejected" ? comment : null }),
+          body: JSON.stringify({ status: nextStatus, comment, rejection_reason: direction === "reject" ? comment : null }),
         });
         showToast("Talabnoma statusi yangilandi.");
         await renderCustomerRequestDetail(request.id);
