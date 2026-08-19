@@ -82,6 +82,16 @@ def money(value: Decimal) -> Decimal:
     return Decimal(value or 0).quantize(MONEY, rounding=ROUND_HALF_UP)
 
 
+# Unit prices carry four decimals: a price derived out of a VAT-inclusive total
+# is rarely exact at two, and the leftover would show up as drift in the
+# contract total every time the contract was saved.
+UNIT_PRICE = Decimal("0.0001")
+
+
+def unit_money(value: Decimal) -> Decimal:
+    return Decimal(value or 0).quantize(UNIT_PRICE, rounding=ROUND_HALF_UP)
+
+
 def qty(value: Decimal) -> Decimal:
     return Decimal(value or 0).quantize(QTY, rounding=ROUND_HALF_UP)
 
@@ -298,6 +308,12 @@ def complete_parsed_item_amounts(item: ContractItem) -> None:
     if item.total_with_vat and not item.subtotal and not item.vat_amount:
         item.subtotal = money(item.total_with_vat / (Decimal("1") + rate / Decimal("100")))
         item.vat_amount = money(item.total_with_vat - item.subtotal)
+        # The price the document states includes VAT, but unit_price means the
+        # price without it -- one meaning, so that quantity x unit_price is
+        # always the subtotal and never silently 12% high. What the paper says
+        # is still recoverable as total_with_vat / quantity.
+        if item.quantity:
+            item.unit_price = unit_money(item.subtotal / item.quantity)
         return
     if not item.subtotal:
         item.subtotal = money(item.quantity * item.unit_price)

@@ -8,6 +8,16 @@ async function fetchClientsForSelect(selectedId = null) {
 }
 
 let _contractPageProducts = [];
+// The paper contract states the price with VAT ("QQS bilan birga"); the column
+// stores it without, so that quantity x unit_price is always the subtotal.
+// Showing both means a reader can check the record against the document
+// without doing the arithmetic in their head.
+function unitPriceWithVat(item) {
+  const quantity = numberValue(item.quantity);
+  if (!quantity) return null;
+  return numberValue(item.total_with_vat) / quantity;
+}
+
 
 function buildProductOptions(products, selectedId = null) {
   const grouped = {};
@@ -1082,10 +1092,11 @@ function contractSpecificationTab(contract) {
   const editable = canEdit("sotuv");
   return section("Spetsifikatsiya", `
     ${editable ? `<div class="actions"><button class="btn primary" data-contract-child="items">Mahsulot qo'shish</button></div>` : ""}
-    ${tableOrEmpty(contract.items, ["Mahsulot", "Kod", "Birlik", "Miqdor", "Birlik narxi", "QQS", "Jami", "Amallar"], (item) => `
+    ${tableOrEmpty(contract.items, ["Mahsulot", "Kod", "Birlik", "Miqdor", "Birlik narxi (QQSsiz)", "Birlik narxi (QQS bilan)", "QQS", "Jami", "Amallar"], (item) => `
       <tr>
         <td>${fmt(item.product_name)}</td><td>${fmt(item.product_code)}</td><td>${fmt(item.unit)}</td>
-        <td>${fmtQty(item.quantity)}</td><td>${fmtMoney(item.unit_price)}</td><td>${fmtMoney(item.vat_amount)} (${fmt(item.vat_rate)}%)</td>
+        <td>${fmtQty(item.quantity)}</td><td>${fmtMoney(item.unit_price)}</td>
+        <td>${fmtMoney(unitPriceWithVat(item))}</td><td>${fmtMoney(item.vat_amount)} (${fmt(item.vat_rate)}%)</td>
         <td>${fmtMoney(item.total_with_vat)}</td>
         <td><div class="table-actions">${editable ? `<button class="link-btn" data-contract-edit="items" data-id="${item.id}">Tahrirlash</button><button class="link-btn" data-contract-delete="items" data-id="${item.id}">O'chirish</button>` : ""}</div></td>
       </tr>

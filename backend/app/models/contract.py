@@ -133,7 +133,21 @@ class ContractItem(Base, TimestampMixin):
     barcode: Mapped[str | None] = mapped_column(String(128))
     unit: Mapped[str] = mapped_column(String(64), nullable=False)
     quantity: Mapped[Decimal] = mapped_column(Numeric(18, 3), nullable=False)
-    unit_price: Mapped[Decimal] = mapped_column(Numeric(18, 2), nullable=False)
+    # Always the price *excluding* VAT, and four decimals rather than two.
+    #
+    # Contracts that arrive as PDFs state the price VAT-inclusive ("QQS bilan
+    # birga"), so the parser used to store that figure here while deriving the
+    # subtotal back out of it. One column then meant two different things, and
+    # quantity x unit_price stopped matching subtotal: on a 195 000 000
+    # contract it came out 23 400 000 too high, and the next ordinary save --
+    # which recalculates the contract from quantity x unit_price -- wrote that
+    # inflated figure back.
+    #
+    # Two decimals cannot represent the excluding-VAT price exactly
+    # (7 800 000 / 1.12 = 6 964 285.714...), and the rounding error would
+    # reappear as a few tiyin of drift on every save. Four keeps
+    # quantity x unit_price equal to subtotal.
+    unit_price: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False)
     subtotal: Mapped[Decimal] = mapped_column(Numeric(18, 2), default=0, nullable=False)
     vat_rate: Mapped[Decimal] = mapped_column(Numeric(5, 2), default=12, nullable=False)
     vat_amount: Mapped[Decimal] = mapped_column(Numeric(18, 2), default=0, nullable=False)
