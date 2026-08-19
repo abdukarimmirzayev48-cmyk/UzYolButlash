@@ -153,6 +153,39 @@ function bindCustomerRequestDelete(onDeleted) {
 const REQUEST_BACK_LABEL = "Orqaga qaytarish";
 const REQUEST_REJECT_LABEL = "Rad etish";
 
+// What each kind of move asks before it happens. A status change is a record
+// other people read later, so the box says what it is about to do rather than
+// showing a bare input.
+const REQUEST_STATUS_DIALOGS = {
+  forward: {
+    title: "Keyingi bosqichga o'tkazish",
+    intro: "Talabnoma quyidagi holatga o'tadi. Izoh ixtiyoriy, lekin u status tarixida qoladi.",
+    confirmLabel: "O'tkazish",
+    tone: "primary",
+    commentLabel: "Izoh",
+    placeholder: "Nima qilindi? Keyingi bosqichga nima uchun o'tilyapti?",
+    required: false,
+  },
+  backward: {
+    title: "Oldingi bosqichga qaytarish",
+    intro: "Talabnoma orqaga qaytariladi. Sabab majburiy — u status tarixida qoladi.",
+    confirmLabel: "Qaytarish",
+    tone: "primary",
+    commentLabel: "Qaytarish sababi",
+    placeholder: "Nima noto'g'ri edi? Nimani tuzatish kerak?",
+    required: true,
+  },
+  reject: {
+    title: "Talabnomani rad etish",
+    intro: "Talabnoma rad etiladi. Sabab majburiy — u mijozga tushuntirish uchun ham kerak bo'ladi.",
+    confirmLabel: "Rad etish",
+    tone: "danger",
+    commentLabel: "Rad etish sababi",
+    placeholder: "Nima uchun rad etilyapti?",
+    required: true,
+  },
+};
+
 function requestTransitionsHtml(request) {
   const moves = request.available_transitions || [];
   if (!moves.length) {
@@ -192,19 +225,26 @@ function bindCustomerRequestDetailActions(request) {
     button.addEventListener("click", async () => {
       const nextStatus = button.dataset.requestStatus;
       const direction = button.dataset.requestDirection;
-      const needsReason = direction === "rejected" || direction === "reject" || direction === "backward";
-      const question =
-        direction === "reject"
-          ? "Rad etish sababini kiriting:"
-          : direction === "backward"
-            ? "Orqaga qaytarish sababini kiriting:"
-            : "Izoh kiriting:";
-      const comment = window.prompt(localizeMessage(question), "");
-      if (comment === null) return; // bekor qilindi
-      if (needsReason && !comment.trim()) {
-        showToast(direction === "reject" ? "Rad etish sababi majburiy." : "Orqaga qaytarish sababi majburiy.", true);
-        return;
-      }
+      // The last span holds the target status; on a backward button the ones
+      // before it are the "Orqaga qaytarish ←" prefix, which is not the subject.
+      const target = (button.querySelector("span:last-child") || button).textContent.trim();
+      const cfg = REQUEST_STATUS_DIALOGS[direction] || REQUEST_STATUS_DIALOGS.forward;
+      // appDialog reports cancelling explicitly. prompt() returned null for
+      // Escape and "" for an empty answer, and only the rejection branch ever
+      // told them apart -- so on every other status, closing the box with
+      // Escape still moved the talabnoma on.
+      const { confirmed, comment } = await appDialog({
+        title: cfg.title,
+        intro: cfg.intro,
+        // Rejection has no target worth naming -- the title already says it.
+        subject: direction === "reject" ? "" : target,
+        confirmLabel: cfg.confirmLabel,
+        tone: cfg.tone,
+        comment: cfg.required
+          ? { label: cfg.commentLabel, placeholder: cfg.placeholder }
+          : { label: cfg.commentLabel, placeholder: cfg.placeholder, optional: true },
+      });
+      if (!confirmed) return;
       try {
         await api(`/api/customer-requests/${request.id}/status`, {
           method: "POST",

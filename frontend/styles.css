@@ -4619,23 +4619,24 @@ body.public-layout.sidebar-collapsed .app-shell {
 
 /* ---- amal oynasi ---- */
 
-.task-dialog-panel {
+.app-dialog-panel {
   width: min(520px, 100%);
 }
 
-.task-dialog-intro {
+.app-dialog-intro {
   margin: 0;
   color: var(--text);
   font-size: 13.5px;
   line-height: 1.5;
 }
 
-.task-dialog-field {
+.app-dialog-field {
   display: grid;
   gap: 6px;
 }
 
-.task-dialog-field textarea {
+.app-dialog-field input[type="text"],
+.app-dialog-field textarea {
   width: 100%;
   min-height: 92px;
   padding: 9px 11px;
@@ -4648,18 +4649,19 @@ body.public-layout.sidebar-collapsed .app-shell {
   resize: vertical;
 }
 
-.task-dialog-field textarea:focus {
+.app-dialog-field input[type="text"]:focus,
+.app-dialog-field textarea:focus {
   outline: 2px solid var(--accent);
   outline-offset: -1px;
 }
 
-.task-dialog-error {
+.app-dialog-error {
   color: var(--danger);
   font-size: 12px;
   font-weight: 600;
 }
 
-.task-dialog-subject {
+.app-dialog-subject {
   margin: 0;
   padding: 9px 12px;
   border-left: 3px solid var(--accent);

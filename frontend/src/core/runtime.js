@@ -116,6 +116,79 @@ function localizeDom(root = document.body) {
   });
 }
 
+// A dialog the app owns, instead of the browser's bare prompt()/confirm().
+//
+// prompt() cannot be styled or translated, gives one short line for what is
+// often a paragraph of explanation, and -- the part that actually bites --
+// returns null on Escape, which is easy to forget to check. Every caller here
+// gets an explicit {confirmed} back, so cancelling can never be mistaken for
+// an empty answer.
+//
+// Resolves {confirmed, comment}.
+function appDialog({ title, intro = "", subject = "", confirmLabel = "Tasdiqlash", tone = "primary", comment = null }) {
+  return new Promise((resolve) => {
+    document.querySelector("#app-dialog")?.remove();
+    const backdrop = document.createElement("div");
+    backdrop.id = "app-dialog";
+    backdrop.className = "modal-backdrop";
+    backdrop.innerHTML = `
+      <div class="modal-panel app-dialog-panel">
+        <div class="modal-header">
+          <h2>${esc(title)}</h2>
+          <button class="modal-close" type="button" aria-label="Yopish">&#x2715;</button>
+        </div>
+        <form>
+          <div class="modal-body">
+            ${subject ? `<p class="app-dialog-subject" data-noloc>${esc(subject)}</p>` : ""}
+            ${intro ? `<p class="app-dialog-intro">${esc(intro)}</p>` : ""}
+            ${comment ? `<label class="app-dialog-field">
+              <span class="field-label-text">${esc(comment.label)}${comment.optional ? "" : ` <span class="required-mark" aria-hidden="true">*</span>`}</span>
+              ${comment.singleLine
+                ? `<input type="text" name="comment" maxlength="${esc(comment.maxlength || 120)}" placeholder="${esc(comment.placeholder || "")}" />`
+                : `<textarea name="comment" rows="4" placeholder="${esc(comment.placeholder || "")}"></textarea>`}
+              <span class="app-dialog-error" data-dialog-error hidden>Bu maydonni to'ldiring.</span>
+            </label>` : ""}
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn" data-dialog-cancel>Bekor qilish</button>
+            <button type="submit" class="btn ${tone}">${esc(confirmLabel)}</button>
+          </div>
+        </form>
+      </div>`;
+    document.body.appendChild(backdrop);
+    // Modals live outside #app, which is the only thing the language observer
+    // watches -- so translate this subtree by hand.
+    localizeDom(backdrop);
+
+    const field = backdrop.querySelector("textarea, .app-dialog-field input");
+    const error = backdrop.querySelector("[data-dialog-error]");
+    const close = (result) => {
+      document.removeEventListener("keydown", onKey);
+      backdrop.remove();
+      resolve(result);
+    };
+    const onKey = (event) => { if (event.key === "Escape") close({ confirmed: false }); };
+    document.addEventListener("keydown", onKey);
+    backdrop.querySelector(".modal-close").addEventListener("click", () => close({ confirmed: false }));
+    backdrop.querySelector("[data-dialog-cancel]").addEventListener("click", () => close({ confirmed: false }));
+    backdrop.addEventListener("click", (event) => { if (event.target === backdrop) close({ confirmed: false }); });
+    field?.addEventListener("input", () => { if (field.value.trim()) error.hidden = true; });
+    backdrop.querySelector("form").addEventListener("submit", (event) => {
+      event.preventDefault();
+      const text = field ? field.value.trim() : "";
+      // An optional field is still offered, just not demanded -- a forward step
+      // is often self-explanatory, while a reversal or a rejection is not.
+      if (field && !text && !comment?.optional) {
+        error.hidden = false;
+        field.focus();
+        return;
+      }
+      close({ confirmed: true, comment: text || null });
+    });
+    (field || backdrop.querySelector('button[type="submit"]'))?.focus();
+  });
+}
+
 function confirmMsg(message) {
   return confirm(localizeMessage(message));
 }
@@ -999,7 +1072,15 @@ function bindGeoFields(root = document) {
       showToast("Avval hududni tanlang.", true);
       return;
     }
-    const name = (window.prompt(localizeMessage("Yangi tuman nomi:")) || "").trim();
+    const { confirmed, comment } = await appDialog({
+      title: "Tuman qo'shish",
+      intro: "Tuman tanlangan hududga qo'shiladi va boshqalar uni ro'yxatdan tanlaydi.",
+      subject: region.name,
+      confirmLabel: "Qo'shish",
+      comment: { label: "Tuman nomi", placeholder: "Masalan: Shahrixon tumani", singleLine: true },
+    });
+    if (!confirmed) return;
+    const name = (comment || "").trim();
     if (!name) return;
     try {
       const created = await api(`/api/geo/regions/${region.id}/districts`, {

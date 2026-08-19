@@ -335,68 +335,10 @@ const TASK_ACTION_COMMENT = {
   rejected: { label: "Rad etish sababi", placeholder: "Nima to'g'ri kelmadi? Nimani tuzatish kerak?" },
 };
 
-// A dialog the app owns, instead of the browser's bare prompt()/confirm(): it
-// can be styled, translated and can explain what is about to happen.
-// Resolves {confirmed, comment}.
-function taskDialog({ title, intro = "", subject = "", confirmLabel = "Tasdiqlash", tone = "primary", comment = null }) {
-  return new Promise((resolve) => {
-    document.querySelector("#task-dialog")?.remove();
-    const backdrop = document.createElement("div");
-    backdrop.id = "task-dialog";
-    backdrop.className = "modal-backdrop";
-    backdrop.innerHTML = `
-      <div class="modal-panel task-dialog-panel">
-        <div class="modal-header">
-          <h2>${esc(title)}</h2>
-          <button class="modal-close" type="button" aria-label="Yopish">&#x2715;</button>
-        </div>
-        <form>
-          <div class="modal-body">
-            ${subject ? `<p class="task-dialog-subject" data-noloc>${esc(subject)}</p>` : ""}
-            ${intro ? `<p class="task-dialog-intro">${esc(intro)}</p>` : ""}
-            ${comment ? `<label class="task-dialog-field">
-              <span class="field-label-text">${esc(comment.label)} <span class="required-mark" aria-hidden="true">*</span></span>
-              <textarea name="comment" rows="4" placeholder="${esc(comment.placeholder || "")}"></textarea>
-              <span class="task-dialog-error" data-dialog-error hidden>Bu maydonni to'ldiring.</span>
-            </label>` : ""}
-          </div>
-          <div class="modal-footer">
-            <button type="button" class="btn" data-dialog-cancel>Bekor qilish</button>
-            <button type="submit" class="btn ${tone}">${esc(confirmLabel)}</button>
-          </div>
-        </form>
-      </div>`;
-    document.body.appendChild(backdrop);
-    // Modals live outside #app, which is the only thing the language observer
-    // watches -- so translate this subtree by hand.
-    localizeDom(backdrop);
-
-    const field = backdrop.querySelector("textarea");
-    const error = backdrop.querySelector("[data-dialog-error]");
-    const close = (result) => {
-      document.removeEventListener("keydown", onKey);
-      backdrop.remove();
-      resolve(result);
-    };
-    const onKey = (event) => { if (event.key === "Escape") close({ confirmed: false }); };
-    document.addEventListener("keydown", onKey);
-    backdrop.querySelector(".modal-close").addEventListener("click", () => close({ confirmed: false }));
-    backdrop.querySelector("[data-dialog-cancel]").addEventListener("click", () => close({ confirmed: false }));
-    backdrop.addEventListener("click", (event) => { if (event.target === backdrop) close({ confirmed: false }); });
-    field?.addEventListener("input", () => { if (field.value.trim()) error.hidden = true; });
-    backdrop.querySelector("form").addEventListener("submit", (event) => {
-      event.preventDefault();
-      const text = field ? field.value.trim() : "";
-      if (field && !text) {
-        error.hidden = false;
-        field.focus();
-        return;
-      }
-      close({ confirmed: true, comment: text || null });
-    });
-    (field || backdrop.querySelector('button[type="submit"]'))?.focus();
-  });
-}
+// The dialog itself now lives in core/runtime.js as appDialog(), because the
+// talabnoma status flow needs the same thing -- a styled, translatable box that
+// can ask for a multi-line reason. taskDialog stays as the name this page uses.
+const taskDialog = appDialog;
 
 // subject is live data (a task title), so it is shown as-is and never
 // translated -- only the surrounding explanation goes through the dictionary.
