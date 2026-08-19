@@ -1,37 +1,24 @@
 // ---- Mijozlar (Clients) ----
 
-async function clientsAggregateStats() {
-  const pageSize = 100;
-  let page = 1;
-  let items = [];
-  let total = 0;
-  for (let i = 0; i < 5; i += 1) {
-    const data = await api(`/api/clients?page=${page}&page_size=${pageSize}`);
-    total = data.total;
-    items = items.concat(data.items);
-    if (items.length >= total || !data.items.length) break;
-    page += 1;
-  }
-  return {
-    total,
-    activeContracts: items.reduce((sum, c) => sum + (Number(c.active_contracts) || 0), 0),
-    activeOrders: items.reduce((sum, c) => sum + (Number(c.active_orders) || 0), 0),
-    regions: [...new Set(items.map((c) => c.primary_region).filter(Boolean))].sort(),
-    contacts: [...new Set(items.map((c) => c.primary_contact?.full_name).filter(Boolean))].sort(),
-  };
+// Stat cards and dropdown choices in one call. The server counts the cards over
+// the same filter the table uses -- summing the first few unfiltered pages here
+// used to make a filtered page show company-wide figures above rows of zeros.
+async function clientsOverview(params) {
+  return api(`/api/clients/overview?${params.toString()}`);
 }
 
 async function renderClientsList() {
   app.innerHTML = `<div class="page ops-page"><div class="empty">Mijozlar yuklanmoqda...</div></div>`;
   const params = new URLSearchParams(location.search);
 
-  const [data, stats] = await Promise.all([
+  const [data, overview] = await Promise.all([
     api(`/api/clients?${params.toString()}`),
-    clientsAggregateStats().catch(() => null),
+    clientsOverview(params).catch(() => null),
   ]);
 
-  const regionOptions = stats ? [...stats.regions] : [];
-  const contactOptions = stats ? [...stats.contacts] : [];
+  const stats = overview?.stats || null;
+  const regionOptions = overview ? [...overview.options.regions] : [];
+  const contactOptions = overview ? [...overview.options.contacts] : [];
   const currentRegion = params.get("region") || "";
   const currentContact = params.get("contact_person") || "";
   if (currentRegion && !regionOptions.includes(currentRegion)) regionOptions.unshift(currentRegion);
@@ -48,8 +35,8 @@ async function renderClientsList() {
     counter: `${fmt(data.total)} ta mijoz`,
     statCards: [
       { label: "Jami mijozlar", value: fmt(data.total) },
-      { label: "Faol shartnomalar", value: stats ? fmt(stats.activeContracts) : dash },
-      { label: "Faol buyurtmalar", value: stats ? fmt(stats.activeOrders) : dash },
+      { label: "Faol shartnomalar", value: stats ? fmt(stats.active_contracts) : dash },
+      { label: "Faol buyurtmalar", value: stats ? fmt(stats.active_orders) : dash },
     ],
     formId: "clients-search-form",
     filters: `<input name="name" placeholder="Mijoz nomi bo'yicha qidirish" value="${esc(params.get("name") || "")}" /><input name="inn" placeholder="STIR kiriting" value="${esc(params.get("inn") || "")}" /><select name="region"><option value="">Barcha hududlar</option>${regionOptions.map((region) => `<option value="${esc(region)}" ${currentRegion === region ? "selected" : ""}>${esc(region)}</option>`).join("")}</select><select name="contact_person"><option value="">Barcha kontaktlar</option>${contactOptions.map((person) => `<option value="${esc(person)}" ${currentContact === person ? "selected" : ""}>${esc(person)}</option>`).join("")}</select>`,

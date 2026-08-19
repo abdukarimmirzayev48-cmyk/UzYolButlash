@@ -73,6 +73,12 @@ def update_model(instance: Any, data: dict[str, Any]) -> Any:
     return instance
 
 
+# The row columns and the stat cards must agree on what "active" means, so both
+# read these instead of repeating the literals.
+ACTIVE_CONTRACT_STATUSES = {"signed", "active"}
+CLOSED_ORDER_STATUSES = {"cancelled", "closed", "delivered"}
+
+
 def serialize_list_item(client: Client) -> ClientListItem:
     primary_contact = next((contact for contact in client.contacts if contact.is_primary), None)
     if primary_contact is None and client.contacts:
@@ -94,10 +100,51 @@ def serialize_list_item(client: Client) -> ClientListItem:
         primary_contact=primary_contact,
         primary_region=first_address.region if first_address else None,
         legal_address=legal_address.address if legal_address else None,
-        active_contracts=sum(1 for contract in client.contracts if contract.status in {"signed", "active"}),
-        active_orders=sum(1 for order in client.orders if order.status not in {"cancelled", "closed", "delivered"}),
+        active_contracts=sum(1 for contract in client.contracts if contract.status in ACTIVE_CONTRACT_STATUSES),
+        active_orders=sum(1 for order in client.orders if order.status not in CLOSED_ORDER_STATUSES),
         last_activity=None,
     )
+
+
+def client_filters(
+    *,
+    search: str | None = None,
+    name: str | None = None,
+    inn: str | None = None,
+    phone: str | None = None,
+    contact_person: str | None = None,
+    region: str | None = None,
+) -> list:
+    """Filter clauses for the client list.
+
+    Shared by the list and the stats endpoint. The stat cards sit directly above
+    the table, so they have to be counted over the same selection the table
+    shows -- otherwise a filtered page reports figures for clients that are not
+    on it.
+    """
+    filters = []
+    if search:
+        value = f"%{search}%"
+        filters.append(
+            or_(
+                Client.name.ilike(value),
+                Client.inn.ilike(value),
+                Client.phone.ilike(value),
+                ClientContact.full_name.ilike(value),
+                ClientAddress.region.ilike(value),
+            )
+        )
+    if name:
+        filters.append(Client.name.ilike(f"%{name}%"))
+    if inn:
+        filters.append(Client.inn.ilike(f"%{inn}%"))
+    if phone:
+        filters.append(or_(Client.phone.ilike(f"%{phone}%"), ClientContact.phone.ilike(f"%{phone}%")))
+    if contact_person:
+        filters.append(ClientContact.full_name.ilike(f"%{contact_person}%"))
+    if region:
+        filters.append(ClientAddress.region.ilike(f"%{region}%"))
+    return filters
 
 
 @router.get("", response_model=Page[ClientListItem])
@@ -124,28 +171,9 @@ def list_clients(
         )
         .distinct()
     )
-    filters = []
-    if search:
-        value = f"%{search}%"
-        filters.append(
-            or_(
-                Client.name.ilike(value),
-                Client.inn.ilike(value),
-                Client.phone.ilike(value),
-                ClientContact.full_name.ilike(value),
-                ClientAddress.region.ilike(value),
-            )
-        )
-    if name:
-        filters.append(Client.name.ilike(f"%{name}%"))
-    if inn:
-        filters.append(Client.inn.ilike(f"%{inn}%"))
-    if phone:
-        filters.append(or_(Client.phone.ilike(f"%{phone}%"), ClientContact.phone.ilike(f"%{phone}%")))
-    if contact_person:
-        filters.append(ClientContact.full_name.ilike(f"%{contact_person}%"))
-    if region:
-        filters.append(ClientAddress.region.ilike(f"%{region}%"))
+    filters = client_filters(
+        search=search, name=name, inn=inn, phone=phone, contact_person=contact_person, region=region
+    )
     if filters:
         stmt = stmt.where(*filters)
 
@@ -154,6 +182,67 @@ def list_clients(
         stmt.order_by(Client.created_at.desc()).offset((page - 1) * page_size).limit(page_size)
     ).unique()
     return Page(items=[serialize_list_item(client) for client in clients], total=total, page=page, page_size=page_size)
+
+
+@router.get("/overview")
+def clients_overview(
+    db: Session = Depends(get_db),
+    name: str | None = None,
+    inn: str | None = None,
+    phone: str | None = None,
+    contact_person: str | None = None,
+    region: str | None = None,
+    search: str | None = None,
+):
+    """Stat cards for the client list, plus the filter dropdown choices.
+
+    The two halves deliberately answer different questions:
+
+    * **stats** count the *filtered* selection, so the cards always describe the
+      rows on screen. Previously the page summed whatever the first few
+      unfiltered pages happened to contain, so filtering by region left the
+      "faol shartnomalar" card showing a company-wide number next to a table
+      whose every row said 0.
+    * **options** list *every* region and contact in the database, unfiltered on
+      purpose -- narrowing them to the current selection would drop every other
+      region out of the dropdown and leave no way to switch away from it.
+    """
+    filters = client_filters(
+        search=search, name=name, inn=inn, phone=phone, contact_person=contact_person, region=region
+    )
+    selected_ids = select(Client.id).outerjoin(ClientContact).outerjoin(ClientAddress).distinct()
+    if filters:
+        selected_ids = selected_ids.where(*filters)
+
+    total = db.scalar(select(func.count()).select_from(selected_ids.subquery())) or 0
+    active_contracts = db.scalar(
+        select(func.count())
+        .select_from(Contract)
+        .where(Contract.client_id.in_(selected_ids), Contract.status.in_(ACTIVE_CONTRACT_STATUSES))
+    ) or 0
+    active_orders = db.scalar(
+        select(func.count())
+        .select_from(Order)
+        .where(Order.client_id.in_(selected_ids), Order.status.notin_(CLOSED_ORDER_STATUSES))
+    ) or 0
+
+    regions = db.scalars(
+        select(ClientAddress.region).where(ClientAddress.region.isnot(None)).distinct().order_by(ClientAddress.region)
+    ).all()
+    contacts = db.scalars(
+        select(ClientContact.full_name)
+        .where(ClientContact.full_name.isnot(None))
+        .distinct()
+        .order_by(ClientContact.full_name)
+    ).all()
+
+    return {
+        "stats": {"total": total, "active_contracts": active_contracts, "active_orders": active_orders},
+        "options": {
+            "regions": [r for r in regions if r and r.strip()],
+            "contacts": [c for c in contacts if c and c.strip()],
+        },
+    }
 
 
 def ensure_inn_available(db: Session, inn: str | None, exclude_client_id: int | None = None) -> None:
