@@ -544,15 +544,23 @@ def contract_check_for(db: Session, order: Order) -> OrderContractCheckRead:
 def get_order_detail(order_id: int, db: Session = Depends(get_db)):
     order = load_order_detail(db, order_id)
     result = OrderDetail.model_validate(order)
-    item_balances = {balance.contract_item_id: balance for balance in balances_for_order(db, order)}
-    items = []
-    for item in result.items:
-        current_balance = item_balances.get(item.contract_item_id)
-        if current_balance:
-            current_balance = current_balance.model_copy(
-                update={"remaining_quantity": qty(current_balance.remaining_quantity + item.quantity)}
-            )
-        items.append(item.model_copy(update={"balance": current_balance}))
+    # Two different questions, and they had been answered with one number.
+    #
+    # The row on the card is labelled "Shartnoma qoldig'i", so it means what is
+    # left on the contract -- this order included. The edit form needs the
+    # opposite: the ceiling this order may be raised to, which is the remainder
+    # with this order's own quantity given back.
+    #
+    # balances_for_order() answers the second question (it passes the order id
+    # as exclude_order_id). The card was fed that answer and then had the
+    # order's quantity added on top, which counted it twice and produced a
+    # "remaining" larger than the contract itself: 1 000 t contracted, 120 t
+    # ordered, 1 120 t shown as left.
+    contract_balances = {item.id: balance_for_contract_item(db, item) for item in order.contract.items}
+    items = [
+        item.model_copy(update={"balance": contract_balances.get(item.contract_item_id)})
+        for item in result.items
+    ]
     return result.model_copy(
         update={
             "items": items,
