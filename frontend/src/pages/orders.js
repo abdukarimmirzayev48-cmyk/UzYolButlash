@@ -798,6 +798,7 @@ function orderHeader(order, related = {}) {
       ["Oxirgi faollik", dash],
     ])}
     ${workflowWarningsPanel(orderWarningMessages(order, related))}
+    ${contractPriceCheckHtml(order)}
     ${nextAction.done || !nextAction.modal || canEdit(orderActionModule(nextAction.modal)) ? workflowNextActionPanel(nextAction) : workflowNextActionPanel({ title: nextAction.title })}
   `;
 }
@@ -816,8 +817,40 @@ function orderActionModule(modal) {
   return map[modal] || "sotuv";
 }
 
+// Says where the difference comes from, because the three causes need
+// different answers: a line price that disagrees with the contract is a
+// mistake, a markup is a decision, and a logistics charge is fair only when the
+// contract says transport is invoiced separately.
+function contractPriceCheckHtml(order) {
+  const check = order.contract_check;
+  if (!check) return "";
+  const excess = numberValue(check.excess_amount);
+  const rows = [
+    ["Shartnoma bo'yicha mahsulot summasi", fmtMoney(check.contract_goods_amount)],
+    ["Buyurtmadagi mahsulot summasi", fmtMoney(check.order_goods_amount)],
+    ["Ustama", fmtMoney(check.markup_amount)],
+    [check.transport_separate ? "Logistika (shartnomada alohida)" : "Logistika (shartnoma narxiga kiritilgan)", fmtMoney(check.logistics_price)],
+    ["Mijozdan undiriladigan jami", fmtMoney(check.charged_total)],
+    ["Shartnoma asoslaydigan summa", fmtMoney(check.contract_supported_total)],
+  ];
+  const verdict = Math.abs(excess) < 1
+    ? statusChip({ label: "Shartnoma narxiga mos", tone: "success" })
+    : statusChip({ label: `${check.excess_percent}% farq`, tone: "danger" });
+  return section("Shartnoma narxi bilan solishtirish", `
+    <div class="detail-list">
+      ${rows.map(([label, value]) => `<div class="detail-item"><span>${label}</span><strong>${value}</strong></div>`).join("")}
+      <div class="detail-item"><span>Farq</span><strong>${fmtMoney(check.excess_amount)} ${verdict}</strong></div>
+    </div>
+    ${check.lines.some((line) => !line.linked) ? `<p class="form-hint">Ba'zi qatorlar shartnoma qatoriga bog'lanmagan — ular shartnomada ko'zda tutilmagan.</p>` : ""}
+  `);
+}
+
 function orderWarningMessages(order = {}, related = {}) {
   const warnings = [];
+  // The contract fixes the price; the order adds a markup and a logistics
+  // charge on top and the invoice is raised from the order total. Nothing used
+  // to compare the two, so the difference reached the customer unremarked.
+  (order.contract_check?.warnings || []).forEach((message) => warnings.push(message));
   if (order.source_type === "supplier_held_stock") {
     if (!related.allocations?.length) warnings.push("Mavjud zaxiradan ajratma hali kiritilmagan.");
   } else {

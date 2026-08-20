@@ -12,7 +12,7 @@ from backend.app.core.paths import UPLOADS_DIR
 from backend.app.db.session import get_db
 from backend.app.api.procurement import ensure_procurement_for_order, sync_procurement_items_from_order
 from backend.app.models.client import Client
-from backend.app.models.contract import Contract, ContractItem
+from backend.app.models.contract import Contract, ContractItem, TransportPaymentType
 from backend.app.models.delivery import BatchStatus, DeliveryBatch, DeliveryBatchItem
 from backend.app.models.finance import CustomerInvoice, InvoiceStatus
 from backend.app.models.procurement import Procurement
@@ -29,9 +29,12 @@ from backend.app.models.order import (
     SupplierStatus,
 )
 from backend.app.schemas.client import Page
+from backend.app.services import order_contract_check
 from backend.app.schemas.order import (
     ContractItemBalance,
     OrderCreate,
+    OrderContractCheckRead,
+    OrderContractLine,
     OrderDetail,
     OrderDocumentCreate,
     OrderDocumentRead,
@@ -494,6 +497,49 @@ def create_order(payload: OrderCreate, db: Session = Depends(get_db)):
     return get_order_detail(order.id, db)
 
 
+def contract_check_for(db: Session, order: Order) -> OrderContractCheckRead:
+    """Compare what this order charges with what its contract fixed."""
+    contract = order.contract
+    transport_terms = contract.transport_terms if contract else None
+    transport_separate = (
+        transport_terms.transport_payment_type is TransportPaymentType.separate_invoice
+        if transport_terms
+        else True  # no terms recorded: assume separate rather than accuse
+    )
+    contract_prices = {item.id: item.unit_price for item in (contract.items if contract else [])}
+    check = order_contract_check.build_check(
+        items=[
+            {
+                "product_name": item.product_name,
+                "quantity": item.quantity,
+                "unit_price": item.unit_price,
+                "vat_rate": item.vat_rate,
+                "contract_unit_price": contract_prices.get(item.contract_item_id),
+            }
+            for item in order.items
+        ],
+        markup_amount=order.markup_amount,
+        logistics_price=order.logistics_price,
+        charged_total=order.total_amount,
+        transport_separate=transport_separate,
+    )
+    return OrderContractCheckRead(
+        contract_goods_amount=check.contract_goods_amount,
+        order_goods_amount=check.order_goods_amount,
+        goods_difference=check.goods_difference,
+        goods_difference_percent=check.goods_difference_percent,
+        markup_amount=check.markup_amount,
+        logistics_price=check.logistics_price,
+        charged_total=check.charged_total,
+        contract_supported_total=check.contract_supported_total,
+        excess_amount=check.excess_amount,
+        excess_percent=check.excess_percent,
+        transport_separate=check.transport_separate,
+        warnings=check.warnings,
+        lines=[OrderContractLine(**line) for line in check.lines],
+    )
+
+
 @router.get("/{order_id}", response_model=OrderDetail)
 def get_order_detail(order_id: int, db: Session = Depends(get_db)):
     order = load_order_detail(db, order_id)
@@ -508,7 +554,12 @@ def get_order_detail(order_id: int, db: Session = Depends(get_db)):
             )
         items.append(item.model_copy(update={"balance": current_balance}))
     return result.model_copy(
-        update={"items": items, "summary": summary_for(db, order), "contract_item_balances": balances_for_order(db, order)}
+        update={
+            "items": items,
+            "summary": summary_for(db, order),
+            "contract_item_balances": balances_for_order(db, order),
+            "contract_check": contract_check_for(db, order),
+        }
     )
 
 

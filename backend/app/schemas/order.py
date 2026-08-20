@@ -247,6 +247,32 @@ class OrderListItem(OrderRead):
     last_activity: datetime | None = None
 
 
+class OrderContractLine(BaseModel):
+    product_name: str | None = None
+    order_unit_price: Decimal
+    contract_unit_price: Decimal | None = None
+    difference_percent: Decimal
+    linked: bool
+
+
+class OrderContractCheckRead(BaseModel):
+    """How far this order's price sits from the contract it belongs to."""
+
+    contract_goods_amount: Decimal
+    order_goods_amount: Decimal
+    goods_difference: Decimal
+    goods_difference_percent: Decimal
+    markup_amount: Decimal
+    logistics_price: Decimal
+    charged_total: Decimal
+    contract_supported_total: Decimal
+    excess_amount: Decimal
+    excess_percent: Decimal
+    transport_separate: bool
+    warnings: list[str] = Field(default_factory=list)
+    lines: list[OrderContractLine] = Field(default_factory=list)
+
+
 class OrderDetail(OrderRead):
     client: ClientRead
     contract: ContractRead
@@ -256,3 +282,4 @@ class OrderDetail(OrderRead):
     notes_history: list[OrderNoteRead] = Field(default_factory=list)
     summary: OrderSummary | None = None
     contract_item_balances: list[ContractItemBalance] = Field(default_factory=list)
+    contract_check: OrderContractCheckRead | None = None
