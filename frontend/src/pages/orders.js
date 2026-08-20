@@ -258,7 +258,11 @@ async function bindOrderForm(order = null) {
     const balanceMap = new Map(balances.map((balance) => [balance.contract_item_id, balance]));
     for (const item of payload.items) {
       const balance = balanceMap.get(item.contract_item_id);
-      if (balance && numberValue(item.quantity) > numberValue(balance.remaining_quantity) && !order) {
+      // The check used to be skipped when editing (`&& !order`), so a quantity
+      // over the contract balance only failed later, as a raw server error.
+      // The balance in `balances` already excludes this order, so it is the
+      // right ceiling whether the order is new or being edited.
+      if (balance && numberValue(item.quantity) > numberValue(balance.remaining_quantity)) {
         showToast(`${balance.product_name} bo'yicha shartnoma qoldig'i ${balance.remaining_quantity} ${balance.unit}.`, true);
         return;
       }

@@ -257,6 +257,66 @@ def validate_items_against_contract(
     return contract_items
 
 
+def order_item_dependants(db: Session, order_item_id: int) -> list[str]:
+    """What would be orphaned if this order line went away.
+
+    delivery_batch_items and procurement_items point at order_items with a NOT
+    NULL column, so clearing the collection made SQLAlchemy try to null them and
+    the database refused -- the edit came back as a 500 with a constraint error
+    instead of an explanation.
+    """
+    from backend.app.models.delivery import DeliveryBatchItem
+    from backend.app.models.procurement import ProcurementItem
+
+    blocking = []
+    if db.scalar(select(func.count()).where(DeliveryBatchItem.order_item_id == order_item_id)):
+        blocking.append("yetkazib berish partiyalari")
+    if db.scalar(select(func.count()).where(ProcurementItem.order_item_id == order_item_id)):
+        blocking.append("xarid qatorlari")
+    return blocking
+
+
+def apply_order_items(db: Session, order: Order, contract: Contract, payloads: list) -> None:
+    """Update the order's lines in place instead of replacing them.
+
+    Rebuilding the collection from scratch destroyed the identity of every line,
+    and anything already pointing at one -- a delivery batch, a procurement --
+    lost its target. Matching on contract_item_id keeps those links intact and
+    lets a line that really is being removed be refused with a reason.
+    """
+    contract_items = {item.id: item for item in contract.items}
+    existing = {item.contract_item_id: item for item in order.items}
+    wanted = {payload.contract_item_id for payload in payloads}
+
+    for contract_item_id, item in list(existing.items()):
+        if contract_item_id in wanted:
+            continue
+        blocking = order_item_dependants(db, item.id)
+        if blocking:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=(
+                    f"«{item.product_name}» qatorini olib tashlab bo'lmaydi: unga bog'langan "
+                    f"{' va '.join(blocking)} mavjud."
+                ),
+            )
+        order.items.remove(item)
+
+    for payload in payloads:
+        contract_item = contract_items[payload.contract_item_id]
+        item = existing.get(payload.contract_item_id)
+        if item is None:
+            order.items.append(build_order_item(contract_item, payload))
+            continue
+        item.product_name = contract_item.product_name
+        item.unit = contract_item.unit
+        item.quantity = payload.quantity
+        item.unit_price = payload.unit_price if payload.unit_price is not None else contract_item.unit_price
+        item.vat_rate = payload.vat_rate if payload.vat_rate is not None else contract_item.vat_rate
+        calculate_item(item)
+    db.flush()
+
+
 def build_order_item(contract_item: ContractItem, payload: OrderItemCreate, order_id: int | None = None) -> OrderItem:
     item = OrderItem(
         contract_item_id=contract_item.id,
@@ -590,11 +650,7 @@ def update_order(order_id: int, payload: OrderUpdate, db: Session = Depends(get_
         data["client_id"] = contract.client_id
     update_model(order, data)
     if payload.items is not None:
-        contract_items = {item.id: item for item in contract.items}
-        order.items.clear()
-        db.flush()
-        for item_payload in payload.items:
-            order.items.append(build_order_item(contract_items[item_payload.contract_item_id], item_payload))
+        apply_order_items(db, order, contract, payload.items)
     recalculate_order(db, order, markup_from_percent=markup_from_percent)
     if order.source_type != SourceType.supplier_held_stock:
         ensure_procurement_for_order(db, order)
