@@ -1148,6 +1148,62 @@ function daysUntilDate(value) {
   return Math.round((target - today) / 86400000);
 }
 
+const MONTH_NAMES = ["Yanvar", "Fevral", "Mart", "Aprel", "May", "Iyun", "Iyul", "Avgust", "Sentabr", "Oktabr", "Noyabr", "Dekabr"];
+
+// Plan against actual, month by month. Without this a contract for 1 000 tonnes
+// with 44 delivered and a year left to run could be badly behind or comfortably
+// ahead, and nothing on the page could tell the difference.
+function deliveryPlanHtml(contract) {
+  const plan = contract.delivery_plan;
+  const addButton = canEdit("sotuv")
+    ? `<div class="toolbar"><button class="btn" type="button" data-contract-child="schedule">Oy qo'shish</button></div>`
+    : "";
+  if (!plan?.has_schedule) {
+    return `${addButton}<div class="empty">Yetkazib berish grafigi kiritilmagan. Grafik kiritilsa, reja va fakt taqqoslanadi.</div>`;
+  }
+  const head = addButton + `<div class="totals-bar">
+    <div class="total-box"><span>Reja jami</span><strong>${fmtQty(plan.planned_total)}</strong></div>
+    <div class="total-box"><span>Yetkazilgan</span><strong>${fmtQty(plan.delivered_total)}</strong></div>
+    <div class="total-box"><span>Bugungacha kerak</span><strong>${fmtQty(plan.due_by_now)}</strong></div>
+    <div class="total-box"><span>Orqada</span><strong>${fmtQty(plan.behind_by)}</strong></div>
+  </div>`;
+  const editable = canEdit("sotuv");
+  const rowById = new Map((contract.schedule || []).map((row) => [`${row.year}-${row.month}`, row]));
+  return head + tableOrEmpty(
+    plan.months,
+    ["Oy", "Reja", "Yetkazilgan", "Jamlanma reja", "Jamlanma fakt", "Farq", ""],
+    (row) => {
+      const behind = row.is_past && Number(row.difference) < -1;
+      return `<tr class="${behind ? "row-overdue" : ""}">
+        <td>${fmt(MONTH_NAMES[row.month - 1])} <span data-noloc>${row.year}</span></td>
+        <td>${fmtQty(row.planned)}</td>
+        <td>${fmtQty(row.delivered)}</td>
+        <td>${fmtQty(row.planned_cumulative)}</td>
+        <td>${fmtQty(row.delivered_cumulative)}</td>
+        <td>${fmtQty(row.difference)}</td>
+        <td><div class="table-actions">${editable && rowById.has(`${row.year}-${row.month}`) ? `<button class="link-btn" data-contract-edit="schedule" data-id="${rowById.get(`${row.year}-${row.month}`).id}">Tahrirlash</button><button class="link-btn" data-contract-delete="schedule" data-id="${rowById.get(`${row.year}-${row.month}`).id}">O'chirish</button>` : ""}</div></td>
+      </tr>`;
+    },
+    "Grafik bo'sh."
+  );
+}
+
+function lateOrdersHtml(contract) {
+  const rows = contract.summary?.overdue_orders || [];
+  if (!rows.length) return "";
+  return tableOrEmpty(
+    rows,
+    ["Buyurtma", "Talab qilingan sana", "Holat", "Kechikish"],
+    (row) => `<tr class="row-overdue">
+      <td><a class="ops-primary-link" href="/orders/${row.id}" data-nav="/orders/${row.id}">${fmt(row.order_number)}</a></td>
+      <td data-noloc>${fmtDayOnly(row.required_date)}</td>
+      <td>${fmt(row.status_label)}</td>
+      <td>${statusChip({ label: `${row.overdue_days} kun`, tone: "danger" })}</td>
+    </tr>`,
+    ""
+  );
+}
+
 function paymentScheduleHtml(contract) {
   const rows = contract.summary?.payment_schedule || [];
   if (!rows.length) return `<div class="empty">To'lov muddatlari hisoblanmadi — to'lov shartlari kiritilmagan.</div>`;
@@ -1185,6 +1241,14 @@ function contractHeader(contract) {
   } else if (daysLeft !== null && daysLeft <= 30) {
     warnings.push(`Shartnoma muddati ${daysLeft} kundan keyin tugaydi.`);
   }
+  const lateOrders = contract.summary?.overdue_orders || [];
+  if (lateOrders.length) {
+    // The orders card said "Jarayonda" while six orders sat three to four
+    // months past their requested date.
+    const worst = lateOrders.reduce((a, b) => (a.overdue_days >= b.overdue_days ? a : b));
+    warnings.push(`${lateOrders.length} ta buyurtma muddati o'tgan, eng kechikkani ${worst.overdue_days} kun.`);
+  }
+  (contract.delivery_plan?.warnings || []).forEach((message) => warnings.push(message));
   const overdueCount = Number(contract.summary?.overdue_count || 0);
   if (overdueCount) {
     // One template literal on one line, so the dictionary can match it as a
@@ -1253,7 +1317,9 @@ function contractGeneralTab(contract) {
         ["Yangilangan", fmtDate(contract.updated_at)],
       ].map(([label, value]) => `<div class="detail-item"><span>${label}</span><strong>${fmt(value)}</strong></div>`).join("")}
     </div>
-  `) + section("To'lov muddatlari", paymentScheduleHtml(contract))
+  `) + section("Yetkazib berish rejasi", deliveryPlanHtml(contract))
+  + (lateOrdersHtml(contract) ? section("Muddati o'tgan buyurtmalar", lateOrdersHtml(contract)) : "")
+  + section("To'lov muddatlari", paymentScheduleHtml(contract))
   + (canEdit("sotuv") ? section("Holatni o'zgartirish", contractTransitionsHtml(contract)) : "")
   + section("Holat tarixi", tableOrEmpty(contract.status_history, ["Sana", "Oldingi holat", "Yangi holat", "Izoh", "Kim"], (item) => `
       <tr><td>${fmtDate(item.created_at)}</td><td>${fmt(item.old_status_label)}</td><td>${fmt(item.new_status_label)}</td><td>${fmt(item.comment)}</td><td>${fmt(item.changed_by)}</td></tr>
@@ -1422,6 +1488,25 @@ function renderContractActiveTab(contract, active, related = {}) {
 }
 
 function contractChildForm(kind, item = {}, products = []) {
+  if (kind === "schedule") {
+    const now = new Date();
+    return {
+      title: item.id ? "Grafik qatorini tahrirlash" : "Grafikka oy qo'shish",
+      tab: "general",
+      path: "schedule",
+      body: `<div class="grid">
+        ${textField("year", "Yil", item.year ?? now.getFullYear(), "number", { required: true })}
+        <label><span class="field-label-text">Oy <span class="required-mark" aria-hidden="true">*</span></span>
+          <select name="month" required>${MONTH_NAMES.map((label, index) => `<option value="${index + 1}" ${Number(item.month) === index + 1 ? "selected" : ""}>${label}</option>`).join("")}</select></label>
+        ${textField("quantity", "Miqdor", item.quantity ?? "", "number", { required: true })}
+      </div>`,
+      payload: (form) => ({
+        year: Number(normalizeNumberInputValue(field(form, "year"))),
+        month: Number(field(form, "month")),
+        quantity: normalizeNumberInputValue(field(form, "quantity")),
+      }),
+    };
+  }
   if (kind === "items") {
     return {
       title: item.id ? "Mahsulotni tahrirlash" : "Mahsulot qo'shish",
@@ -1785,11 +1870,17 @@ async function renderContractDetail(id) {
   });
   document.querySelectorAll("[data-contract-delete]").forEach((button) => {
     button.addEventListener("click", async () => {
-      if (!confirmMsg(localizeText("Delete this item?"))) return;
       const kind = button.dataset.contractDelete;
+      const { confirmed } = await appDialog({
+        title: "Yozuvni o'chirish",
+        intro: "Bu yozuv shartnomadan butunlay o'chiriladi.",
+        confirmLabel: "O'chirish",
+        tone: "danger",
+      });
+      if (!confirmed) return;
       try {
         await api(`/api/contracts/${id}/${kind}/${button.dataset.id}`, { method: "DELETE" });
-        showToast("Deleted.");
+        showToast("O'chirildi.");
         renderContractDetail(id);
       } catch (error) {
         showToast(error.message, true);

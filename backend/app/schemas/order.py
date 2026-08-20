@@ -247,6 +247,24 @@ class OrderListItem(OrderRead):
     last_activity: datetime | None = None
 
 
+ORDER_STATUS_LABELS = {
+    "draft": "Qoralama",
+    "created": "Yaratilgan",
+    "supplier_search": "Ta'minotchi qidirilmoqda",
+    "supplier_selected": "Ta'minotchi tanlangan",
+    "supplier_confirmed": "Ta'minotchi tasdiqlangan",
+    "waiting_payment": "To'lov kutilmoqda",
+    "ready_for_delivery": "Yetkazishga tayyor",
+    "in_delivery": "Yetkazilmoqda",
+    "partially_delivered": "Qisman yetkazildi",
+    "delivered": "Yetkazildi",
+    "documents_pending": "Hujjatlar kutilmoqda",
+    "closed": "Yopildi",
+    "on_hold": "To'xtatib turilgan",
+    "cancelled": "Bekor qilingan",
+}
+
+
 class OrderContractLine(BaseModel):
     product_name: str | None = None
     order_unit_price: Decimal

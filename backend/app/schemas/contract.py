@@ -267,6 +267,59 @@ class ContractUpdate(ContractDateRules):
     transport_terms: ContractTransportTermsCreate | None = None
 
 
+class ContractScheduleBase(BaseModel):
+    year: int = Field(ge=2000, le=2100)
+    month: int = Field(ge=1, le=12)
+    quantity: Decimal = Field(gt=0)
+
+
+class ContractScheduleCreate(ContractScheduleBase):
+    pass
+
+
+class ContractScheduleUpdate(BaseModel):
+    year: int | None = Field(default=None, ge=2000, le=2100)
+    month: int | None = Field(default=None, ge=1, le=12)
+    quantity: Decimal | None = Field(default=None, gt=0)
+
+
+class ContractScheduleRead(ContractScheduleBase):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    contract_id: int
+
+
+class PlanMonthRead(BaseModel):
+    year: int
+    month: int
+    planned: Decimal
+    delivered: Decimal
+    planned_cumulative: Decimal
+    delivered_cumulative: Decimal
+    difference: Decimal
+    is_past: bool
+
+
+class DeliveryPlanRead(BaseModel):
+    months: list[PlanMonthRead] = Field(default_factory=list)
+    planned_total: Decimal = Decimal("0")
+    delivered_total: Decimal = Decimal("0")
+    due_by_now: Decimal = Decimal("0")
+    behind_by: Decimal = Decimal("0")
+    has_schedule: bool = False
+    warnings: list[str] = Field(default_factory=list)
+
+
+class OverdueOrderRead(BaseModel):
+    id: int
+    order_number: str
+    required_date: date | None = None
+    status: str
+    status_label: str | None = None
+    overdue_days: int
+
+
 class PaymentDueItem(BaseModel):
     kind: str
     label: str
@@ -297,6 +350,9 @@ class ContractSummary(BaseModel):
     overdue_count: int = 0
     overdue_amount: Decimal = Decimal("0")
     max_overdue_days: int = 0
+    # Orders past their requested date. The card said "Jarayonda" while six of
+    # them were three to four months late.
+    overdue_orders: list[OverdueOrderRead] = Field(default_factory=list)
 
 
 class ContractRead(ContractBase):
@@ -385,6 +441,8 @@ class ContractDetail(ContractRead):
     documents: list[ContractDocumentRead] = Field(default_factory=list)
     notes_history: list[ContractNoteRead] = Field(default_factory=list)
     status_history: list[ContractStatusHistoryRead] = Field(default_factory=list)
+    schedule: list[ContractScheduleRead] = Field(default_factory=list)
+    delivery_plan: DeliveryPlanRead | None = None
     # Which moves are legal from where this contract stands, so the buttons on
     # screen are exactly what the API will accept.
     available_transitions: list[ContractStatusTransition] = Field(default_factory=list)

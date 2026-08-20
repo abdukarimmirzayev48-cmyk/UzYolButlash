@@ -25,21 +25,29 @@ from backend.app.models.contract import (
     ContractPaymentTerms,
     ContractParseSession,
     ContractParseSessionStatus,
+    ContractSchedule,
     ContractStatus,
     ContractStatusHistory,
     ContractTransportTerms,
 )
 from backend.app.models.customer_request import CustomerRequest
 from backend.app.models.delivery import BatchStatus, DeliveryBatch, DeliveryBatchItem, Logistics
-from backend.app.models.order import Order, OrderItem
+from backend.app.models.order import Order, OrderStatus, OrderItem
 from backend.app.models.product import Product
 from backend.app.models.finance import CustomerInvoice, InvoiceStatus
 from backend.app.schemas.client import Page
+from backend.app.schemas.order import ORDER_STATUS_LABELS
 from backend.app.schemas.contract import (
     ContractCreate,
     CONTRACT_STATUS_LABELS,
     ContractDetail,
+    ContractScheduleCreate,
+    ContractScheduleRead,
+    ContractScheduleUpdate,
+    DeliveryPlanRead,
+    OverdueOrderRead,
     PaymentDueItem,
+    PlanMonthRead,
     ContractStatusChange,
     ContractStatusHistoryRead,
     ContractStatusTransition,
@@ -71,7 +79,12 @@ from backend.app.services.client_matching import (
     find_client_by_inn,
     find_registry_by_inn,
 )
-from backend.app.services import contract_payment_schedule, contract_workflow, notifications
+from backend.app.services import (
+    contract_delivery_plan,
+    contract_payment_schedule,
+    contract_workflow,
+    notifications,
+)
 from backend.app.services.auth import get_current_user, require_edit
 from backend.app.services.contract_pdf_parser import PARSER_VERSION, parse_contract_pdf
 
@@ -464,6 +477,82 @@ def payment_schedule_for(db: Session, contract: Contract, advance_amount: Decima
     }
 
 
+# An order still open past its requested date. delivered/closed/cancelled are
+# finished, whatever the date says.
+ORDER_OPEN_STATUSES_EXCLUDED = (OrderStatus.delivered, OrderStatus.closed, OrderStatus.cancelled)
+
+
+def overdue_orders_for(db: Session, contract: Contract) -> list[OverdueOrderRead]:
+    """Orders on this contract that are past due and still running."""
+    today = date.today()
+    orders = db.scalars(
+        select(Order).where(
+            Order.contract_id == contract.id,
+            Order.status.notin_(ORDER_OPEN_STATUSES_EXCLUDED),
+            Order.required_date.isnot(None),
+            Order.required_date < today,
+        ).order_by(Order.required_date)
+    ).all()
+    return [
+        OverdueOrderRead(
+            id=order.id,
+            order_number=order.order_number,
+            required_date=order.required_date,
+            status=order.status.value,
+            status_label=ORDER_STATUS_LABELS.get(order.status.value),
+            overdue_days=(today - order.required_date).days,
+        )
+        for order in orders
+    ]
+
+
+def delivery_plan_for(db: Session, contract: Contract) -> DeliveryPlanRead:
+    """The contract's monthly plan against what the customer accepted."""
+    rows = db.execute(
+        select(
+            DeliveryBatch.accepted_date,
+            DeliveryBatch.actual_delivery_date,
+            DeliveryBatch.batch_date,
+            DeliveryBatchItem.accepted_quantity,
+        )
+        .join(DeliveryBatchItem, DeliveryBatchItem.delivery_batch_id == DeliveryBatch.id)
+        .where(DeliveryBatch.contract_id == contract.id, DeliveryBatchItem.accepted_quantity.isnot(None))
+    ).all()
+    plan = contract_delivery_plan.build_plan(
+        schedule=[{"year": row.year, "month": row.month, "quantity": row.quantity} for row in contract.schedules],
+        # Accepted date first, then the delivery date, then the batch date --
+        # the same order delivery_stats uses. Insisting on accepted_date alone
+        # dropped every accepted batch that had not had one filled in, which
+        # made a contract look as though nothing had ever been delivered.
+        deliveries=[
+            {"date": accepted or delivered or opened, "quantity": quantity}
+            for accepted, delivered, opened, quantity in rows
+        ],
+        today=date.today(),
+    )
+    return DeliveryPlanRead(
+        months=[
+            PlanMonthRead(
+                year=month.year,
+                month=month.month,
+                planned=month.planned,
+                delivered=month.delivered,
+                planned_cumulative=month.planned_cumulative,
+                delivered_cumulative=month.delivered_cumulative,
+                difference=month.difference,
+                is_past=month.is_past,
+            )
+            for month in plan.months
+        ],
+        planned_total=plan.planned_total,
+        delivered_total=plan.delivered_total,
+        due_by_now=plan.due_by_now,
+        behind_by=plan.behind_by,
+        has_schedule=plan.has_schedule,
+        warnings=plan.warnings,
+    )
+
+
 def summary_for(db: Session, contract: Contract) -> ContractSummary:
     total_quantity = qty(sum((item.quantity for item in contract.items), Decimal("0")))
     delivered_quantity = delivered_quantity_for_contract(db, contract.id)
@@ -484,6 +573,7 @@ def summary_for(db: Session, contract: Contract) -> ContractSummary:
         unpaid_amount=unpaid_amount,
         transport_expense_total=transport_expense_for_contract(db, contract.id),
         **payment_schedule_for(db, contract, advance_amount),
+        overdue_orders=overdue_orders_for(db, contract),
     )
 
 
@@ -1010,6 +1100,8 @@ def get_contract_detail(contract_id: int, db: Session = Depends(get_db)):
         update={
             "summary": summary_for(db, contract),
             "status_history": [serialize_status_history(entry) for entry in contract.status_history],
+            "schedule": [ContractScheduleRead.model_validate(row) for row in contract.schedules],
+            "delivery_plan": delivery_plan_for(db, contract),
             "available_transitions": [
                 ContractStatusTransition(
                     status=move["status"],
@@ -1244,6 +1336,61 @@ def update_document(contract_id: int, document_id: int, payload: ContractDocumen
 def delete_document(contract_id: int, document_id: int, db: Session = Depends(get_db)):
     document = get_child_or_404(db, ContractDocument, contract_id, document_id)
     db.delete(document)
+    db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.post(
+    "/{contract_id}/schedule",
+    response_model=ContractScheduleRead,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_edit("sotuv"))],
+)
+def create_schedule_row(contract_id: int, payload: ContractScheduleCreate, db: Session = Depends(get_db)):
+    get_contract_or_404(db, contract_id)
+    existing = db.scalar(
+        select(ContractSchedule).where(
+            ContractSchedule.contract_id == contract_id,
+            ContractSchedule.year == payload.year,
+            ContractSchedule.month == payload.month,
+        )
+    )
+    if existing is not None:
+        # One row per month: two rows for the same month would make the
+        # cumulative plan meaningless.
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Bu oy uchun grafik qatori allaqachon mavjud. Mavjudini tahrirlang.",
+        )
+    row = ContractSchedule(contract_id=contract_id, **payload.model_dump())
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return row
+
+
+@router.patch(
+    "/{contract_id}/schedule/{row_id}",
+    response_model=ContractScheduleRead,
+    dependencies=[Depends(require_edit("sotuv"))],
+)
+def update_schedule_row(contract_id: int, row_id: int, payload: ContractScheduleUpdate, db: Session = Depends(get_db)):
+    row = get_child_or_404(db, ContractSchedule, contract_id, row_id)
+    for key, value in payload.model_dump(exclude_unset=True).items():
+        setattr(row, key, value)
+    db.commit()
+    db.refresh(row)
+    return row
+
+
+@router.delete(
+    "/{contract_id}/schedule/{row_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(require_edit("sotuv"))],
+)
+def delete_schedule_row(contract_id: int, row_id: int, db: Session = Depends(get_db)):
+    row = get_child_or_404(db, ContractSchedule, contract_id, row_id)
+    db.delete(row)
     db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 

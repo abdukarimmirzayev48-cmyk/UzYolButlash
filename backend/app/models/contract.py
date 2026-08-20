@@ -3,7 +3,7 @@ from decimal import Decimal
 from enum import Enum
 from typing import Optional
 
-from sqlalchemy import Boolean, Date, DateTime, Enum as SAEnum, ForeignKey, Numeric, String, Text
+from sqlalchemy import Boolean, Date, DateTime, Enum as SAEnum, ForeignKey, Numeric, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from backend.app.db.session import Base
@@ -21,6 +21,28 @@ class ContractStatus(str, Enum):
     # nor "cancelled" (terminated) describes it either.
     expired = "expired"
     cancelled = "cancelled"
+
+
+class ContractSchedule(Base, TimestampMixin):
+    """Month-by-month delivery plan for a contract.
+
+    The talabnoma has carried this from the start; the contract it turns into
+    did not, so once a contract existed there was nothing to measure delivery
+    against. A contract for 1 000 tonnes running to the end of 2027 with 44
+    delivered could be badly behind or comfortably ahead and nothing on the
+    screen could tell the difference.
+    """
+
+    __tablename__ = "contract_schedules"
+    __table_args__ = (UniqueConstraint("contract_id", "year", "month", name="uq_contract_schedule_period"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    contract_id: Mapped[int] = mapped_column(ForeignKey("contracts.id", ondelete="CASCADE"), index=True)
+    year: Mapped[int] = mapped_column(nullable=False)
+    month: Mapped[int] = mapped_column(nullable=False)
+    quantity: Mapped[Decimal] = mapped_column(Numeric(18, 3), nullable=False)
+
+    contract: Mapped["Contract"] = relationship(back_populates="schedules")
 
 
 class ContractStatusHistory(Base):
@@ -126,6 +148,10 @@ class Contract(Base, TimestampMixin):
     parse_warnings: Mapped[str | None] = mapped_column(Text)
 
     client: Mapped["Client"] = relationship(back_populates="contracts")
+    schedules: Mapped[list["ContractSchedule"]] = relationship(
+        back_populates="contract", cascade="all, delete-orphan",
+        order_by="ContractSchedule.year, ContractSchedule.month",
+    )
     status_history: Mapped[list["ContractStatusHistory"]] = relationship(
         back_populates="contract", cascade="all, delete-orphan", order_by="ContractStatusHistory.created_at.desc()"
     )
