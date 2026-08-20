@@ -1,3 +1,4 @@
+from datetime import date, timedelta
 from decimal import Decimal, ROUND_HALF_UP
 from pathlib import Path
 from shutil import copyfileobj
@@ -127,8 +128,6 @@ def ensure_contract_in_force(contract) -> None:
     which is how this was noticed. Extending the contract -- putting it back to
     active with a reason -- is the way to carry on.
     """
-    from datetime import date
-
     from backend.app.models.contract import ContractStatus
 
     if contract.status in {ContractStatus.expired, ContractStatus.cancelled}:
@@ -450,6 +449,7 @@ def list_orders(
     supplier_status: str | None = None,
     date_from: str | None = None,
     date_to: str | None = None,
+    delivery: str | None = Query(default=None, description="overdue | soon"),
 ):
     stmt = (
         select(Order)
@@ -489,6 +489,19 @@ def list_orders(
         filters.append(OrderItem.product_name.ilike(f"%{product_name}%"))
     if supplier_name:
         filters.append(Order.supplier_name.ilike(f"%{supplier_name}%"))
+    if delivery:
+        # A date question about goods, not a status one: an order can sit in
+        # "partially_delivered" for months and its status never says so.
+        # Finished orders are excluded whatever the date -- what is delivered is
+        # not late any more.
+        today = date.today()
+        filters.append(Order.required_date.isnot(None))
+        filters.append(Order.status.notin_([OrderStatus.delivered, OrderStatus.closed, OrderStatus.cancelled]))
+        if delivery == "overdue":
+            filters.append(Order.required_date < today)
+        elif delivery == "soon":
+            filters.append(Order.required_date >= today)
+            filters.append(Order.required_date <= today + timedelta(days=7))
     if status_filter:
         filters.append(Order.status == status_filter)
     if client_id:

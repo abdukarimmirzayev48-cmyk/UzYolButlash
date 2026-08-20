@@ -307,14 +307,14 @@ async function renderOrdersList() {
     clearPath: "/orders",
     counter: `${fmt(data.total)} ta buyurtma · sahifada ${fmt(activeCount)} ta faol`,
     formId: "order-search-form",
-    filters: `<input name="search" placeholder="Qidirish..." value="${esc(params.get("search") || "")}" /><input name="order_number" placeholder="Buyurtma raqami" value="${esc(params.get("order_number") || "")}" /><input name="client_name" placeholder="Mijoz" value="${esc(params.get("client_name") || "")}" /><select name="status"><option value="">Status</option>${orderStatuses.map(([key, label]) => `<option value="${key}" ${params.get("status") === key ? "selected" : ""}>${label}</option>`).join("")}</select>`,
-    headers: ["Buyurtma raqami", "Sana", "Mijoz", "Shartnoma", "Mahsulot", "Miqdor", "Yetkazilgan", "Qoldiq", "Manba", "Model", "Ta'minotchi", "Jami summa", "Status", ""],
-    rows: data.items.map((order) => `<tr><td><button class="ops-primary-link" data-nav="/orders/${order.id}">${fmt(order.order_number)}</button></td><td>${fmt(order.order_date)}</td><td>${fmt(order.client?.name)}</td><td>${fmt(order.contract?.contract_number)}</td><td>${fmt(order.product)}</td><td>${fmtQty(order.total_quantity)}</td><td>${fmtQty(order.delivered_quantity)}</td><td class="${numberValue(order.remaining_quantity) > 0 ? "ops-warning" : ""}">${fmtQty(order.remaining_quantity)}</td><td>${fmt(optionLabel(sourceTypes, order.source_type))}</td><td>${fmt(optionLabel(fulfillmentTypes, order.fulfillment_type))}</td><td>${fmt(order.supplier_name)}</td><td class="ops-money">${fmtMoney(order.total_amount)}</td><td>${statusBadge(order.status)}</td><td><div class="ops-row-actions"><button class="link-btn" data-nav="/orders/${order.id}">Ochish</button><button class="link-btn" data-nav="/orders/${order.id}?tab=supplier">Ta'minotchi</button>${canEdit("yetkazib_berish") ? `<button class="link-btn" data-nav="/delivery-batches/new?order_id=${order.id}">Partiya</button>` : ""}</div></td></tr>`).join(""),
+    filters: `<input name="search" placeholder="Qidirish..." value="${esc(params.get("search") || "")}" /><select name="delivery"><option value="">Yetkazish muddati</option>${[["overdue", "Muddati o'tgan"], ["soon", "7 kun ichida"]].map(([key, label]) => `<option value="${key}" ${params.get("delivery") === key ? "selected" : ""}>${label}</option>`).join("")}</select><input name="order_number" placeholder="Buyurtma raqami" value="${esc(params.get("order_number") || "")}" /><input name="client_name" placeholder="Mijoz" value="${esc(params.get("client_name") || "")}" /><select name="status"><option value="">Status</option>${orderStatuses.map(([key, label]) => `<option value="${key}" ${params.get("status") === key ? "selected" : ""}>${label}</option>`).join("")}</select>`,
+    headers: ["Buyurtma raqami", "Sana", "Yetkazish muddati", "Mijoz", "Shartnoma", "Mahsulot", "Miqdor", "Yetkazilgan", "Qoldiq", "Manba", "Model", "Ta'minotchi", "Jami summa", "Status", ""],
+    rows: data.items.map((order) => `<tr><td><button class="ops-primary-link" data-nav="/orders/${order.id}">${fmt(order.order_number)}</button></td><td data-noloc>${fmtDayOnly(order.order_date)}</td><td>${orderDueCell(order)}</td><td>${fmt(order.client?.name)}</td><td>${fmt(order.contract?.contract_number)}</td><td>${fmt(order.product)}</td><td>${fmtQty(order.total_quantity)}</td><td>${fmtQty(order.delivered_quantity)}</td><td class="${numberValue(order.remaining_quantity) > 0 ? "ops-warning" : ""}">${fmtQty(order.remaining_quantity)}</td><td>${fmt(optionLabel(sourceTypes, order.source_type))}</td><td>${fmt(optionLabel(fulfillmentTypes, order.fulfillment_type))}</td><td>${fmt(order.supplier_name)}</td><td class="ops-money">${fmtMoney(order.total_amount)}</td><td>${statusBadge(order.status)}</td><td><div class="ops-row-actions"><button class="link-btn" data-nav="/orders/${order.id}">Ochish</button><button class="link-btn" data-nav="/orders/${order.id}?tab=supplier">Ta'minotchi</button>${canEdit("yetkazib_berish") ? `<button class="link-btn" data-nav="/delivery-batches/new?order_id=${order.id}">Partiya</button>` : ""}</div></td></tr>`).join(""),
     emptyText: "Buyurtmalar topilmadi.",
-    colspan: 14,
+    colspan: 15,
     footer: opsFooter(data, "order"),
   });
-  bindOpsSearch("order-search-form", "/orders", ["search", "order_number", "client_name", "status"]);
+  bindOpsSearch("order-search-form", "/orders", ["search", "order_number", "client_name", "status", "delivery"]);
   bindOpsPagination("order", "/orders");
 }
 
@@ -849,6 +849,42 @@ function contractPriceCheckHtml(order) {
   `);
 }
 
+// Days past the requested delivery date, and only while something is still
+// owed -- a late order that has since been delivered in full is history, not a
+// problem to raise now.
+// The list needs the date and how late it is in one cell -- a date column that
+// says nothing about lateness is just another date to read past.
+function orderDueCell(order) {
+  if (!order.required_date) return dash;
+  const late = orderOverdueDays(order);
+  const date = `<span data-noloc>${fmtDayOnly(order.required_date)}</span>`;
+  if (!late) return date;
+  return `${date} ${statusChip({ label: `${late} kun`, tone: "danger" })}`;
+}
+
+function orderOverdueDays(order = {}) {
+  // The detail response nests the figure under summary; a list row carries it
+  // at the top level. Both call this.
+  const remaining = order.summary?.remaining_quantity ?? order.remaining_quantity;
+  if (numberValue(remaining) <= 0) return 0;
+  if (["delivered", "closed", "cancelled"].includes(order.status)) return 0;
+  const days = daysUntilOrderDate(order.required_date);
+  return days === null || days >= 0 ? 0 : -days;
+}
+
+function daysUntilOrderDate(value) {
+  if (!value) return null;
+  const target = new Date(`${String(value).slice(0, 10)}T00:00:00`);
+  if (Number.isNaN(target.getTime())) return null;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return Math.round((target - today) / 86400000);
+}
+
+function orderUnit(order = {}) {
+  return order.items?.[0]?.unit || "";
+}
+
 function orderWarningMessages(order = {}, related = {}) {
   const warnings = [];
   // The contract fixes the price; the order adds a markup and a logistics
@@ -861,7 +897,19 @@ function orderWarningMessages(order = {}, related = {}) {
     if (!order.supplier_name) warnings.push("Ta'minotchi hali tanlanmagan.");
     if (!order.supplier_options?.length) warnings.push("Ta'minotchi takliflari hali kiritilmagan.");
   }
-  if (numberValue(order.summary?.remaining_quantity) > 0) warnings.push("Buyurtma to'liq yetkazilmagan.");
+  // The invoice due date was watched from the start; the delivery date was not,
+  // so an order 135 days past its requested date said only "not fully
+  // delivered" -- the same sentence it showed on day one.
+  const lateDays = orderOverdueDays(order);
+  if (lateDays > 0) {
+    // One short sentence, one number: the dictionary matches it as a "{n} kun"
+    // pattern. fmtQty returns markup now, so it must not be embedded in a
+    // message the warnings panel escapes -- the outstanding quantity is on the
+    // summary cards right above anyway.
+    warnings.push(`Yetkazib berish muddati ${lateDays} kun oldin o'tgan.`);
+  } else if (numberValue(order.summary?.remaining_quantity) > 0) {
+    warnings.push("Buyurtma to'liq yetkazilmagan.");
+  }
   if (!(related.invoices || []).length) warnings.push("Mijoz hisob-fakturasi yaratilmagan.");
   if (!hasDocs(order)) warnings.push("Buyurtma hujjatlari yuklanmagan.");
   return warnings;
