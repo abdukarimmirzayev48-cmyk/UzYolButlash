@@ -884,17 +884,47 @@ function orderFinanceStatusChip(finance = {}) {
   return { label: "To'lov kutilmoqda", tone: "warning" };
 }
 
+// What to do next, decided from where the order actually stands.
+//
+// This used to walk a fixed chain -- offer, supplier, batch, invoice -- and
+// answered from the first unfinished link regardless of anything else. So an
+// order with three batches and 44 tonnes already accepted by the customer was
+// told to "add a supplier offer", because that step had been skipped months
+// earlier and the chain never looked past it. Six of eight orders said this,
+// and since invoicing sat at the far end of the chain, not one of them was
+// ever advised to invoice -- none has an invoice to this day.
+//
+// The ordering below is by exposure rather than by procedure: goods that have
+// left the yard uninvoiced are money at risk, and that outranks paperwork about
+// how those goods were bought.
 function orderNextAction(order = {}, related = {}) {
-  if (order.source_type === "supplier_held_stock") {
-    if (related.allocations?.length && numberValue(order.summary?.remaining_quantity) > 0) return { title: "Partiya yarating", button: "Partiya yaratish", modal: "order-batch" };
-    if (!related.allocations?.length) return { title: "Mavjud zaxiradan ajrating", button: "Zaxiradan ajratish", modal: "order-stock" };
-  }
-  if (order.source_type !== "supplier_held_stock" && !order.supplier_options?.length) return { title: "Ta'minotchi taklifini qo'shing", button: "Taklif qo'shish", modal: "order-supplier-offer" };
-  if (order.source_type !== "supplier_held_stock" && !order.supplier_name) return { title: "Ta'minotchini tanlang", button: "Ta'minotchini tanlash", modal: "order-supplier-select" };
-  if (numberValue(order.summary?.remaining_quantity) > 0) return { title: "Qoldiq miqdor uchun partiya yarating", button: "Partiya yaratish", modal: "order-batch" };
-  if (!(related.invoices || []).length) return { title: "Mijoz hisob-fakturasini yarating", button: "Hisob yaratish", modal: "order-invoice" };
+  const isStockSource = order.source_type === "supplier_held_stock";
+  const delivered = numberValue(order.summary?.delivered_quantity);
+  const remaining = numberValue(order.summary?.remaining_quantity);
+  const invoices = (related.invoices || []).filter((invoice) => invoice.status !== "cancelled");
   const finance = orderFinanceSummary(related.invoices || []);
-  if (finance.remaining > 0) return { title: "To'lovni kiriting", button: "To'lov qo'shish", modal: "order-payment" };
+
+  const invoiceAction = { title: "Mijoz hisob-fakturasini yarating", button: "Hisob yaratish", modal: "order-invoice" };
+  const paymentAction = { title: "To'lovni kiriting", button: "To'lov qo'shish", modal: "order-payment" };
+
+  // Delivered and not invoiced: nothing else on this card matters as much.
+  if (delivered > 0 && !invoices.length) return invoiceAction;
+  if (invoices.length && finance.remaining > 0 && delivered > 0) return paymentAction;
+
+  // Something still to deliver -- work through what that needs, in order.
+  if (remaining > 0) {
+    if (isStockSource) {
+      if (!related.allocations?.length) return { title: "Mavjud zaxiradan ajrating", button: "Zaxiradan ajratish", modal: "order-stock" };
+      return { title: "Qoldiq miqdor uchun partiya yarating", button: "Partiya yaratish", modal: "order-batch" };
+    }
+    if (!order.supplier_options?.length) return { title: "Ta'minotchi taklifini qo'shing", button: "Taklif qo'shish", modal: "order-supplier-offer" };
+    if (!order.supplier_name) return { title: "Ta'minotchini tanlang", button: "Ta'minotchini tanlash", modal: "order-supplier-select" };
+    return { title: "Qoldiq miqdor uchun partiya yarating", button: "Partiya yaratish", modal: "order-batch" };
+  }
+
+  // Everything delivered.
+  if (!invoices.length) return invoiceAction;
+  if (finance.remaining > 0) return paymentAction;
   if (!hasDocs(order)) return { title: "Buyurtma hujjatini yuklang", button: "Hujjat yuklash", modal: "order-document" };
   return { title: "Buyurtma yopishga tayyor", button: "Tarixni ko'rish", path: `/orders/${order.id}?tab=notes`, done: true };
 }
