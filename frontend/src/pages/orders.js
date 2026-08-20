@@ -792,10 +792,13 @@ function orderHeader(order, related = {}) {
       ["Moliya holati", statusChip(orderFinanceStatusChip(finance))],
     ])}
     ${summaryCards([
-      ["Jami miqdor", fmtQty(order.summary?.total_quantity)],
+      ["Jami miqdor", fmtQty(order.summary?.total_quantity, orderUnit(order))],
       ["Jami summa", fmtMoney(order.summary?.total_amount)],
-      ["Yetkazilgan", fmtQty(order.summary?.delivered_quantity)],
-      ["Qoldiq", fmtQty(order.summary?.remaining_quantity)],
+      ["Yetkazilgan", fmtQty(order.summary?.delivered_quantity, orderUnit(order))],
+      // Loaded and not yet signed for. Between "delivered" and "still to
+      // order" it belonged to neither, so it was simply absent from the card.
+      ["Yo'lda (qabul qilinmagan)", fmtQty(order.summary?.in_transit_quantity, orderUnit(order))],
+      ["Qoldiq", fmtQty(order.summary?.remaining_quantity, orderUnit(order))],
       ["Ta'minotchi", fmt(order.supplier_name)],
       ["Model", fmt(optionLabel(fulfillmentTypes, order.fulfillment_type))],
       ["Logistika narxi", order.fulfillment_type === "direct_supplier_to_customer" ? dash : fmtMoney(order.logistics_price)],
@@ -900,6 +903,13 @@ function orderWarningMessages(order = {}, related = {}) {
   // The invoice due date was watched from the start; the delivery date was not,
   // so an order 135 days past its requested date said only "not fully
   // delivered" -- the same sentence it showed on day one.
+  const inTransit = numberValue(order.summary?.in_transit_quantity);
+  if (inTransit > 0) {
+    // Number only. Interpolating the unit as well made the extracted pattern
+    // "{n} {n}", which nothing matches at runtime -- the unit is a word. The
+    // card above states it with the unit.
+    warnings.push(`Yuklangan, lekin mijoz hali qabul qilmagan miqdor: ${inTransit}`);
+  }
   const lateDays = orderOverdueDays(order);
   if (lateDays > 0) {
     // One short sentence, one number: the dictionary matches it as a "{n} kun"

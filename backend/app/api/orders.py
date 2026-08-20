@@ -358,9 +358,26 @@ def summary_for(db: Session, order: Order) -> OrderSummary:
             Decimal("0"),
         )
     )
+    # Loaded but not yet signed for by the customer. It is neither "delivered"
+    # nor "still to order", so with only those two figures on the card it
+    # disappeared: 332 t of bitumen sitting between the two numbers.
+    loaded_quantity = qty(
+        sum(
+            (
+                item.loaded_quantity or Decimal("0")
+                for batch in order.delivery_batches
+                if batch.status != BatchStatus.cancelled
+                for item in batch.items
+            ),
+            Decimal("0"),
+        )
+    )
+    in_transit_quantity = qty(max(Decimal("0"), loaded_quantity - delivered_quantity))
     completed_batches = sum(1 for batch in order.delivery_batches if batch.status in {BatchStatus.completed, BatchStatus.accepted})
     return OrderSummary(
         total_quantity=total_quantity,
+        loaded_quantity=loaded_quantity,
+        in_transit_quantity=in_transit_quantity,
         product_subtotal=money(order.product_subtotal),
         vat_amount=money(order.vat_amount),
         markup_percent=money(order.markup_percent),

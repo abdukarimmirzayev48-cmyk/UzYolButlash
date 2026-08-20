@@ -506,9 +506,40 @@ def list_batches(
     return Page(items=[serialize_batch(batch) for batch in batches], total=total, page=page, page_size=page_size)
 
 
+def ensure_order_has_source(order, payload) -> None:
+    """Refuse to ship goods nobody has recorded buying.
+
+    The order flow has supplier_search -> supplier_selected ->
+    supplier_confirmed, but batch creation never looked at any of it: six orders
+    reached "partially delivered" across nineteen batches with supplier_status
+    still "not_selected" and no offers on file. So the goods moved, and the
+    system holds no record of where they came from or what they cost.
+
+    Stock-sourced orders are exempt: there the supplier is on the stock lot, not
+    on the order. A supplier named on the batch itself also satisfies this --
+    that is a record, just entered later.
+    """
+    from backend.app.models.order import SourceType
+
+    if order.source_type == SourceType.supplier_held_stock:
+        return
+    if payload.supplier_id or (payload.supplier_name or "").strip():
+        return
+    if order.supplier_id or (order.supplier_name or "").strip():
+        return
+    raise HTTPException(
+        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        detail=(
+            "Bu buyurtmada ta'minotchi tanlanmagan. Partiya yaratishdan oldin ta'minotchini "
+            "tanlang yoki partiyada uni ko'rsating."
+        ),
+    )
+
+
 @router.post("", response_model=DeliveryBatchDetail, status_code=201, dependencies=[Depends(require_edit("yetkazib_berish"))])
 def create_batch(payload: DeliveryBatchCreate, db: Session = Depends(get_db)):
     order = get_order_or_400(db, payload.order_id)
+    ensure_order_has_source(order, payload)
     order_items = validate_items(db, order, payload.items)
     data = payload.model_dump(exclude={"items", "logistics", "documents", "initial_note"})
     data["client_id"] = order.client_id

@@ -202,6 +202,9 @@ class OrderSummary(BaseModel):
     logistics_price: Decimal
     total_amount: Decimal
     delivered_quantity: Decimal
+    # Loaded and on its way, but not yet accepted by the customer.
+    loaded_quantity: Decimal = Decimal("0")
+    in_transit_quantity: Decimal = Decimal("0")
     remaining_quantity: Decimal
     items_count: int
     paid_amount: Decimal
