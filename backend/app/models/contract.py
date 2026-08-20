@@ -10,6 +10,9 @@ from backend.app.db.session import Base
 from backend.app.models.client import TimestampMixin
 
 
+MSG_REMAINING_PAYMENT_RULE = "Qolgan summa tayyor partiya bo'yicha hisob-faktura asosida to'lanadi."
+
+
 class ContractStatus(str, Enum):
     draft = "draft"
     signed = "signed"
@@ -265,7 +268,10 @@ class ContractPaymentTerms(Base, TimestampMixin):
     batch_payment_due_days: Mapped[int] = mapped_column(default=3, nullable=False)
     remaining_payment_rule: Mapped[str] = mapped_column(
         Text,
-        default="Payment of the remaining amount is made per ready delivery batch based on invoice.",
+        # One wording, in the language the rest of the contract is written in.
+        # The English default was the reason four different versions of this
+        # clause ended up on file.
+        default=MSG_REMAINING_PAYMENT_RULE,
         nullable=False,
     )
     notes: Mapped[str | None] = mapped_column(Text)

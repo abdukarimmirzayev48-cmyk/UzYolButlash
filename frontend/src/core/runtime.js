@@ -915,7 +915,10 @@ function fmtMoney(value) {
 function fmtQty(value, unit = "") {
   if (value === null || value === undefined || value === "") return dash;
   const amount = new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 3 }).format(Number(value));
-  return `${amount}${unit ? ` ${esc(unit)}` : ""}`;
+  if (!unit) return amount;
+  // The unit gets its own node: glued to the number it is one text node the
+  // dictionary cannot match, so "tonna" stayed Latin beside Cyrillic labels.
+  return `<span data-noloc>${amount}</span> <span>${esc(unit)}</span>`;
 }
 
 function fmtPercent(value) {
@@ -1241,6 +1244,19 @@ function summaryCards(items) {
 
 function detailList(items) {
   return `<div class="detail-list">${items.map(([label, value]) => `<div class="detail-item"><span>${label}</span><strong>${fmt(value)}</strong></div>`).join("")}</div>`;
+}
+
+// A card subtitle mixes data with labels: a client name must not go through the
+// dictionary, a status must. Built as one interpolated string the whole line
+// became a single text node that matched no entry, so the labels stayed Latin
+// while the same status showed in Cyrillic elsewhere on the page.
+//
+// Pass {value, raw: true} for anything that came from the database.
+function subtitleLine(parts) {
+  return parts
+    .filter((part) => part && part.value !== null && part.value !== undefined && String(part.value) !== "")
+    .map((part) => (part.raw ? `<span data-noloc>${esc(part.value)}</span>` : `<span>${esc(part.value)}</span>`))
+    .join('<span data-noloc> · </span>');
 }
 
 function workflowHeader({ title, subtitle = "", backPath = "", actions = [], fullEditPath = "" }) {

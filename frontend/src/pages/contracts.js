@@ -154,7 +154,7 @@ function collectContractPayload(form) {
       advance_percent: field(form, "advance_percent") || "30",
       advance_due_days: Number(field(form, "advance_due_days") || 10),
       batch_payment_due_days: Number(field(form, "batch_payment_due_days") || 3),
-      remaining_payment_rule: field(form, "remaining_payment_rule") || "Payment of the remaining amount is made per ready delivery batch based on invoice.",
+      remaining_payment_rule: field(form, "remaining_payment_rule") || CONTRACT_REMAINING_RULE,
       notes: field(form, "payment_notes"),
     },
     transport_terms: {
@@ -180,7 +180,7 @@ async function contractForm(contract = null) {
     <div class="page">
       <div class="page-header">
         <div class="page-title">
-          <h1>${contract ? "Edit contract" : "New contract"}</h1>
+          <h1>${contract ? "Shartnomani tahrirlash" : "Yangi shartnoma"}</h1>
           <p>Contract data, specification, payment terms, transport terms, and documents.</p>
         </div>
         <div class="actions"><button class="btn" data-nav="${contract ? `/contracts/${contract.id}` : "/contracts"}">Back</button></div>
@@ -188,19 +188,19 @@ async function contractForm(contract = null) {
       <form id="contract-form">
         ${section("Basic information", `
           <div class="grid">
-            ${textField("contract_number", "Contract number", contract?.contract_number)}
-            ${textField("contract_date", "Contract date", contract?.contract_date || today, "date")}
-            ${textField("valid_until", "Valid until", contract?.valid_until || oneYearLater, "date")}
-            <label>Client${selectSearch("client_id", "Mijoz nomi yoki STIR bo'yicha qidiring")}<select name="client_id"><option value="">Select client</option>${clientOptions}</select></label>
-            ${textField("title", "Title", contract?.title)}
+            ${textField("contract_number", "Shartnoma raqami", contract?.contract_number, "text", { required: true, maxlength: 128 })}
+            ${textField("contract_date", "Shartnoma sanasi", contract?.contract_date || today, "date", { required: true })}
+            ${textField("valid_until", "Amal qilish muddati", contract?.valid_until || oneYearLater, "date", { required: true })}
+            <label><span class="field-label-text">Mijoz</span>${selectSearch("client_id", "Mijoz nomi yoki STIR bo'yicha qidiring")}<select name="client_id"><option value="">Mijozni tanlang</option>${clientOptions}</select></label>
+            ${textField("title", "Sarlavha", contract?.title, "text", { maxlength: 255 })}
             ${contract ? `<label><span class="field-label-text">Status</span><input value="${esc(optionLabel(contractStatuses, contract.status))}" readonly /><small class="field-helper">Holat shartnoma kartochkasidagi tugmalar orqali o'zgartiriladi — shunda kim va nima uchun o'zgartirgani yozib boriladi.</small></label>` : selectField("status", "Status", contractStatuses, "draft")}
             ${contract?.created_by ? `<label><span class="field-label-text">Kim yaratgan</span><input value="${esc(contract.created_by)}" readonly data-noloc /></label>` : ""}
-            ${textArea("notes", "Notes", contract?.notes)}
+            ${textArea("notes", "Izohlar", contract?.notes, { maxlength: 2000 })}
           </div>
         `)}
         ${section("Specification", `
           <div id="contract-items">${rows.map((item, i) => contractItemRow(item, i, products)).join("")}</div>
-          <button type="button" class="btn" id="add-item">Add product</button>
+          <button type="button" class="btn" id="add-item">Mahsulot qo'shish</button>
           <div class="totals-bar">
             <div class="total-box"><span>Total quantity</span><strong data-total-quantity>${dash}</strong></div>
             <div class="total-box"><span>Subtotal</span><strong data-subtotal>${dash}</strong></div>
@@ -210,12 +210,12 @@ async function contractForm(contract = null) {
         `)}
         ${section("Payment terms", `
           <div class="grid">
-            ${textField("advance_percent", "Advance percent", payment.advance_percent ?? 30, "number")}
-            ${textField("remaining_percent", "Remaining percent (auto)", payment.remaining_percent ?? 70, "number", { readonly: true, disabled: true })}
-            ${textField("advance_due_days", "Advance due days", payment.advance_due_days ?? 10, "number")}
-            ${textField("batch_payment_due_days", "Batch payment due days", payment.batch_payment_due_days ?? 3, "number")}
-            ${textArea("remaining_payment_rule", "Remaining payment rule", payment.remaining_payment_rule || "Payment of the remaining amount is made per ready delivery batch based on invoice.")}
-            ${textArea("payment_notes", "Notes", payment.notes)}
+            ${textField("advance_percent", "Avans foizi", payment.advance_percent ?? 30, "number")}
+            ${textField("remaining_percent", "Qoldiq foizi (avtomatik)", payment.remaining_percent ?? 70, "number", { readonly: true, disabled: true })}
+            ${textField("advance_due_days", "Avans muddati, kun", payment.advance_due_days ?? 10, "number")}
+            ${textField("batch_payment_due_days", "Partiya to'lovi muddati, kun", payment.batch_payment_due_days ?? 3, "number")}
+            ${textArea("remaining_payment_rule", "Qoldiq to'lov qoidasi", payment.remaining_payment_rule || CONTRACT_REMAINING_RULE, { maxlength: 2000 })}
+            ${textArea("payment_notes", "Izohlar", payment.notes, { maxlength: 2000 })}
           </div>
           <div class="totals-bar">
             <div class="total-box"><span>Advance amount</span><strong data-advance-amount>${dash}</strong></div>
@@ -226,13 +226,13 @@ async function contractForm(contract = null) {
           <div class="grid">
             ${selectField("transport_payment_type", "Transport payment type", transportPaymentTypes, transport.transport_payment_type || "separate_invoice")}
             ${selectField("delivery_method", "Delivery method", deliveryMethods, transport.delivery_method || "mixed")}
-            ${textArea("transport_notes", "Notes", transport.notes)}
+            ${textArea("transport_notes", "Izohlar", transport.notes, { maxlength: 2000 })}
           </div>
         `)}
         ${section("Documents", `<div class="empty">Contract-level document metadata can be added from the Documents tab after saving.</div>`)}
         <div class="form-footer">
-          <button type="button" class="btn" data-nav="${contract ? `/contracts/${contract.id}` : "/contracts"}">Cancel</button>
-          <button type="submit" class="btn primary">Save</button>
+          <button type="button" class="btn" data-nav="${contract ? `/contracts/${contract.id}` : "/contracts"}">Bekor qilish</button>
+          <button type="submit" class="btn primary">Saqlash</button>
         </div>
       </form>
     </div>
@@ -253,7 +253,7 @@ function bindContractForm(contract = null) {
   form.addEventListener("click", (event) => {
     if (!event.target.matches("[data-remove-item]")) return;
     if (form.querySelectorAll("[data-item-row]").length <= 1) {
-      showToast("Contract must have at least one item.", true);
+      showToast("Shartnomada kamida bitta mahsulot bo'lishi kerak.", true);
       return;
     }
     event.target.closest("[data-item-row]").remove();
@@ -263,11 +263,11 @@ function bindContractForm(contract = null) {
     event.preventDefault();
     const payload = collectContractPayload(form);
     if (!payload.client_id || !payload.contract_number || !payload.contract_date || !payload.valid_until) {
-      showToast("Client, contract number, contract date, and validity are required.", true);
+      showToast("Mijoz, shartnoma raqami, sanasi va amal muddati to'ldirilishi shart.", true);
       return;
     }
     if (!payload.items.length || payload.items.some((item) => !item.product_name || !item.unit || numberValue(item.quantity) <= 0)) {
-      showToast("Add at least one valid product row.", true);
+      showToast("Kamida bitta to'g'ri to'ldirilgan mahsulot qatorini qo'shing.", true);
       return;
     }
     try {
@@ -275,7 +275,7 @@ function bindContractForm(contract = null) {
         method: contract ? "PATCH" : "POST",
         body: JSON.stringify(payload),
       });
-      showToast("Contract saved.");
+      showToast("Shartnoma saqlandi.");
       navigate(`/contracts/${saved.id}`);
     } catch (error) {
       showToast(error.message, true);
@@ -457,7 +457,7 @@ function contractWizardPaymentPanel(state) {
     ${readonlyField("remaining_percent", "Qoldiq foizi", `${fmt(totals.remainingPercent)}%`)}
     ${textField("advance_due_days", "Avans muddati, kun", state.advanceDueDays ?? "10", "number", { required: true })}
     ${textField("batch_payment_due_days", "Partiya to'lovi muddati, kun", state.batchPaymentDueDays ?? "3", "number", { required: true })}
-    ${textArea("remaining_payment_rule", "Qoldiq to'lov qoidasi", state.remainingPaymentRule || "Qolgan summa tayyor partiya bo'yicha hisob-faktura asosida to'lanadi.", { required: true })}
+    ${textArea("remaining_payment_rule", "Qoldiq to'lov qoidasi", state.remainingPaymentRule || CONTRACT_REMAINING_RULE, { required: true })}
     ${textArea("payment_notes", "Izoh", state.paymentNotes || "")}
   </div>
   ${summaryCards([
@@ -628,7 +628,7 @@ function collectContractWizardPayload(state) {
       remaining_percent: String(totals.remainingPercent),
       advance_due_days: Number(normalizeNumberInputValue(state.advanceDueDays || 10)),
       batch_payment_due_days: Number(normalizeNumberInputValue(state.batchPaymentDueDays || 3)),
-      remaining_payment_rule: state.remainingPaymentRule || "Qolgan summa tayyor partiya bo'yicha hisob-faktura asosida to'lanadi.",
+      remaining_payment_rule: state.remainingPaymentRule || CONTRACT_REMAINING_RULE,
       notes: state.paymentNotes || null,
     },
     transport_terms: {
@@ -1035,7 +1035,7 @@ async function renderNewContract() {
 }
 
 async function renderEditContract(id) {
-  app.innerHTML = `<div class="page"><div class="empty">Loading contract...</div></div>`;
+  app.innerHTML = `<div class="page"><div class="empty">Shartnoma yuklanmoqda...</div></div>`;
   const contract = await api(`/api/contracts/${id}`);
   app.innerHTML = await contractForm(contract);
   bindContractForm(contract);
@@ -1270,7 +1270,7 @@ function contractHeader(contract) {
   return `
     ${workflowHeader({title:contract.contract_number,subtitle:`<span data-noloc>${fmt(contract.customer_name || contract.client?.name)}</span><span data-noloc> · ${fmtDayOnly(contract.contract_date)} — ${fmtDayOnly(contract.valid_until)} · </span><span>${fmt(statusLabel(contract.status))}</span>`,backPath:"/contracts",fullEditPath:editable ? `/contracts/${contract.id}/edit` : "",actions: editable ? [...(contract.client_id ? [{label:"Buyurtma yaratish",path:`/orders/new?contract_id=${contract.id}`,primary:true}] : [{label:"Mijozni bog'lash",modal:"contract-link-client",primary:true}]),{label:"Hujjat yuklash",path:`/contracts/${contract.id}?tab=documents`},{label:"O'chirish",modal:"contract-remove"}] : [{label:"Hujjat yuklash",path:`/contracts/${contract.id}?tab=documents`}]})}
     ${workflowStatusGrid([["Shartnoma holati",statusBadge(contract.status)],["Buyurtmalar holati",statusChip(numberValue(contract.summary?.remaining_quantity)>0?{label:"Jarayonda",tone:"warning"}:{label:"Yopilgan",tone:"success"})],["To'lov holati",statusChip(numberValue(contract.summary?.remaining_amount)>0?{label:"Qoldiq bor",tone:"warning"}:{label:"Yopilgan",tone:"success"})],["Yetkazib berish holati",statusChip(numberValue(contract.summary?.remaining_quantity)>0?{label:"Qoldiq bor",tone:"warning"}:{label:"To'liq",tone:"success"})]])}
-    ${summaryCards([["Jami summa",fmtMoney(contract.summary?.total_amount)],["Jami miqdor",fmtQty(contract.summary?.total_quantity)],["Yetkazilgan",fmtQty(contract.summary?.delivered_quantity)],["Qoldiq",fmtQty(contract.summary?.remaining_quantity)],["Avans summasi",fmtMoney(contract.summary?.advance_amount)],["To'langan summa",fmtMoney(contract.summary?.paid_amount)],["Qolgan to'lov",fmtMoney(contract.summary?.remaining_amount)],["Transport xarajatlari",fmtMoney(contract.summary?.transport_expense_total)]])}
+    ${summaryCards([["Jami summa",fmtMoney(contract.summary?.total_amount)],["Jami miqdor",fmtQty(contract.summary?.total_quantity, contractUnit(contract))],["Yetkazilgan",fmtQty(contract.summary?.delivered_quantity, contractUnit(contract))],["Qoldiq",fmtQty(contract.summary?.remaining_quantity, contractUnit(contract))],["Avans summasi",fmtMoney(contract.summary?.advance_amount)],["To'langan summa",fmtMoney(contract.summary?.paid_amount)],["Qolgan to'lov",fmtMoney(contract.summary?.remaining_amount)],["Transport xarajatlari",fmtMoney(contract.summary?.transport_expense_total)]])}
     ${workflowWarningsPanel(warnings)}
     ${nextAction.done || !nextAction.modal || canEdit(contractActionModule(nextAction.modal)) ? workflowNextActionPanel(nextAction) : workflowNextActionPanel({ title: nextAction.title })}
   `;
@@ -1298,13 +1298,24 @@ function contractTabs(active) {
   return workflowTabs(active, items, "contract-tab");
 }
 
+// Quantities on this page are all in the contract's own unit; showing "1 000"
+// with no unit next to "4 760 000 so'm" reads as another sum.
+// One wording for the remaining-payment clause. Four different ones are on
+// file -- two Uzbek variants, one English default and a fragment the parser cut
+// out of the middle of a sentence -- because every form supplied its own.
+const CONTRACT_REMAINING_RULE = "Qolgan summa tayyor partiya bo'yicha hisob-faktura asosida to'lanadi.";
+
+function contractUnit(contract) {
+  return contract.items?.[0]?.unit || "";
+}
+
 function contractGeneralTab(contract) {
   return section("Asosiy ma'lumotlar", `
     <div class="detail-list">
       ${[
         ["Shartnoma raqami", contract.contract_number],
-        ["Shartnoma sanasi", contract.contract_date],
-        ["Amal qilish muddati", contract.valid_until],
+        ["Shartnoma sanasi", fmtDayOnly(contract.contract_date)],
+        ["Amal qilish muddati", fmtDayOnly(contract.valid_until)],
         ["Tuzilgan joy", contract.place],
         ["Mijoz", contract.customer_name || contract.client?.name],
         ["Sarlavha", contract.title],
@@ -1538,7 +1549,7 @@ function contractChildForm(kind, item = {}, products = []) {
       tab: "payment",
       path: "payment-terms",
       method: "PUT",
-      body: `<div class="grid">${textField("advance_percent", "Advance percent", item.advance_percent ?? 30, "number")}${textField("advance_due_days", "Advance due days", item.advance_due_days ?? 10, "number")}${textField("batch_payment_due_days", "Batch payment due days", item.batch_payment_due_days ?? 3, "number")}${textArea("remaining_payment_rule", "Remaining payment rule", item.remaining_payment_rule || "Payment of the remaining amount is made per ready delivery batch based on invoice.")}${textArea("notes", "Notes", item.notes)}</div>`,
+      body: `<div class="grid">${textField("advance_percent", "Avans foizi", item.advance_percent ?? 30, "number")}${textField("advance_due_days", "Avans muddati, kun", item.advance_due_days ?? 10, "number")}${textField("batch_payment_due_days", "Partiya to'lovi muddati, kun", item.batch_payment_due_days ?? 3, "number")}${textArea("remaining_payment_rule", "Qoldiq to'lov qoidasi", item.remaining_payment_rule || CONTRACT_REMAINING_RULE, { maxlength: 2000 })}${textArea("notes", "Izohlar", item.notes, { maxlength: 2000 })}</div>`,
       payload: (form) => ({ advance_percent: field(form, "advance_percent"), advance_due_days: Number(field(form, "advance_due_days") || 10), batch_payment_due_days: Number(field(form, "batch_payment_due_days") || 3), remaining_payment_rule: field(form, "remaining_payment_rule"), notes: field(form, "notes") }),
     };
   }
@@ -1590,8 +1601,8 @@ async function openContractChildForm(contract, kind, item = {}) {
         <form id="contract-child-form">
           ${cfg.body}
           <div class="form-footer">
-            <button type="button" class="btn" data-nav="/contracts/${contract.id}?tab=${cfg.tab}">Cancel</button>
-            <button type="submit" class="btn primary">Save</button>
+            <button type="button" class="btn" data-nav="/contracts/${contract.id}?tab=${cfg.tab}">Bekor qilish</button>
+            <button type="submit" class="btn primary">Saqlash</button>
           </div>
         </form>
       `)}
@@ -1612,7 +1623,7 @@ async function openContractChildForm(contract, kind, item = {}) {
       } else {
         await api(path, { method, body: JSON.stringify(cfg.payload(event.currentTarget)) });
       }
-      showToast("Saved.");
+      showToast("Saqlandi.");
       navigate(`/contracts/${contract.id}?tab=${cfg.tab}`);
     } catch (error) {
       showToast(error.message, true);
@@ -1816,7 +1827,7 @@ async function openContractInvoiceModal(contract) {
 }
 
 async function renderContractDetail(id) {
-  app.innerHTML = `<div class="page"><div class="empty">Loading contract...</div></div>`;
+  app.innerHTML = `<div class="page"><div class="empty">Shartnoma yuklanmoqda...</div></div>`;
   const contract = await api(`/api/contracts/${id}`);
   const active = new URLSearchParams(location.search).get("tab") || "general";
   const related = {};

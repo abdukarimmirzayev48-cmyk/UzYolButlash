@@ -18,6 +18,11 @@ import re
 PROTECTED = [
     "UzYolButlash", "Bitum ERP", "MAN TGS", "Hikvision", "Telegram",
     "ERP", "PDF", "CSV", "XLSX", "Excel", "API", "ID", "SMS", "URL", "Email",
+    # ISO currency codes are written in Latin in Uzbek Cyrillic text too --
+    # "УЗС" is not a currency, it is a transliteration accident.
+    "UZS", "USD", "EUR", "RUB", "KZT",
+    # Names of outside systems, same reasoning as the brands above.
+    "Didox", "Rouming", "MXIK", "IKPU", "STIR",
 ]
 
 # Ordinary transliteration gets these wrong; fix them once here so the fix

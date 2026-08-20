@@ -770,7 +770,7 @@ function orderHeader(order, related = {}) {
   return `
     ${workflowHeader({
       title: order.order_number,
-      subtitle: `${fmt(order.client?.name)} · ${fmt(order.contract?.contract_number)} · ${fmt(optionLabel(sourceTypes, order.source_type))} · ${fmt(optionLabel(fulfillmentTypes, order.fulfillment_type))}`,
+      subtitle: subtitleLine([{value:order.client?.name,raw:true},{value:order.contract?.contract_number,raw:true},{value:optionLabel(sourceTypes, order.source_type)},{value:optionLabel(fulfillmentTypes, order.fulfillment_type)}]),
       backPath: "/orders",
       fullEditPath: editable ? `/orders/${order.id}/edit` : "",
       actions: [

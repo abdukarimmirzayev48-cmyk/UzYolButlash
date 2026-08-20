@@ -284,6 +284,12 @@ def collect_py(path: Path) -> set[str]:
     return found
 
 
+UNIT_WORDS = [
+    "tonna", "kilogramm", "litr", "dona", "quti", "metr", "kilometr",
+    "soat", "kun", "oy", "yil", "foiz",
+]
+
+
 def main() -> None:
     load_english_keys()
     strings: set[str] = set()
@@ -295,6 +301,10 @@ def main() -> None:
         patterns |= collect_js_patterns(p)
         patterns |= collect_tpl_patterns(p)
     strings |= collect_html(ROOT / "frontend" / "index.html")
+    # Units of measure come from the database, so nothing in the source
+    # extracts them -- but they are a small closed vocabulary that belongs in
+    # the reader's alphabet, not a company name to leave alone.
+    strings |= set(UNIT_WORDS)
     strings |= _ENGLISH_VALUES
     for p in sorted((ROOT / "backend" / "app").rglob("*.py")):
         # PDF-parser patterns and the registry importer are data-matching, not UI.

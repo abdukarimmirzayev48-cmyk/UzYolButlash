@@ -1,4 +1,4 @@
-from fastapi import Depends, FastAPI
+from fastapi import Depends, FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
@@ -158,6 +158,12 @@ def root():
 
 @app.get("/{full_path:path}", include_in_schema=False)
 def frontend(full_path: str):
+    # Anything under /api/ that got this far is a route that does not exist.
+    # Falling through to the SPA answered it with 200 and an HTML page, so a
+    # mistyped path looked like a success until the caller tried to parse the
+    # page as JSON and got a confusing syntax error instead of a 404.
+    if full_path == "api" or full_path.startswith("api/"):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Bunday API manzili yo'q.")
     if (
         full_path.startswith("clients")
         or full_path.startswith("customer-requests")
