@@ -231,6 +231,54 @@ def list_invoices(
     return Page(items=list(items), total=total, page=page, page_size=page_size)
 
 
+def ensure_not_over_billing(db: Session, invoice: CustomerInvoice) -> None:
+    """Refuse an invoice that would bill the contract for more than it is worth.
+
+    The advance is raised against the contract and carries no order id, so the
+    per-order arithmetic that filled in batch invoices never saw it and every
+    batch was billed in full. The advance was then charged a second time --
+    2 106 720 000 so'm on one contract.
+
+    Adjustment invoices are exempt: correcting a figure is exactly what they are
+    for, and a correction can legitimately push the total either way.
+    """
+    from backend.app.models.order import Order, OrderStatus
+    from backend.app.services import contract_billing
+
+    if invoice.contract_id is None or invoice.invoice_type is InvoiceType.adjustment:
+        return
+    order_totals = db.scalars(
+        select(Order.total_amount).where(
+            Order.contract_id == invoice.contract_id,
+            Order.status != OrderStatus.cancelled,
+        )
+    ).all()
+    invoices = db.scalars(
+        select(CustomerInvoice).where(
+            CustomerInvoice.contract_id == invoice.contract_id,
+            CustomerInvoice.status != InvoiceStatus.cancelled,
+        )
+    ).all()
+    position = contract_billing.build_position(
+        order_totals=list(order_totals),
+        invoices=[
+            {"type": i.invoice_type.value, "amount": i.total_amount, "paid_amount": i.paid_amount}
+            for i in invoices
+        ],
+    )
+    if position.over_billed <= 0:
+        return
+    raise HTTPException(
+        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        detail=(
+            f"Bu hisob-faktura bilan shartnoma bo'yicha jami hisob "
+            f"{contract_billing.money_text(position.over_billed)} so'mga oshib ketadi. "
+            "Avans allaqachon hisob qilingan bo'lsa, uni partiya hisobidan chegiring."
+        ),
+    )
+
+
+
 @invoice_router.post("", response_model=InvoiceDetail, status_code=201, dependencies=[Depends(require_edit("moliya"))])
 def create_invoice(payload: InvoiceCreate, db: Session = Depends(get_db)):
     data = payload.model_dump(exclude={"items", "documents", "initial_note"})
@@ -257,6 +305,7 @@ def create_invoice(payload: InvoiceCreate, db: Session = Depends(get_db)):
     db.flush()
     db.refresh(invoice)
     recalculate_invoice(db, invoice)
+    ensure_not_over_billing(db, invoice)
     sync_orders_for_invoices(db, [invoice])
     db.commit()
     return get_invoice_detail(invoice.id, db)

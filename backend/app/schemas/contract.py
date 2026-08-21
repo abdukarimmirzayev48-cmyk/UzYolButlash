@@ -320,6 +320,19 @@ class OverdueOrderRead(BaseModel):
     overdue_days: int
 
 
+class BillingPositionRead(BaseModel):
+    """What the customer owes on this contract against what they have been
+    asked for."""
+
+    billable: Decimal
+    invoiced: Decimal
+    paid: Decimal
+    remaining_to_bill: Decimal
+    over_billed: Decimal
+    advance_invoiced: Decimal
+    advance_paid: Decimal
+
+
 class PaymentDueItem(BaseModel):
     kind: str
     label: str
@@ -353,6 +366,9 @@ class ContractSummary(BaseModel):
     # Orders past their requested date. The card said "Jarayonda" while six of
     # them were three to four months late.
     overdue_orders: list[OverdueOrderRead] = Field(default_factory=list)
+    # The advance is raised against the contract, so the billing position can
+    # only be taken here -- taken per order it misses the advance entirely.
+    billing: BillingPositionRead | None = None
 
 
 class ContractRead(ContractBase):

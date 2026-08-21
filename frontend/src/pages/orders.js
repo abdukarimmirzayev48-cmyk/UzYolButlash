@@ -1380,15 +1380,23 @@ async function openOrderInvoiceModal(order, related = {}) {
   const invoices = related.invoices || (await api(`/api/customer-invoices?order_id=${order.id}&page_size=100`)).items || [];
   const finance = orderFinanceSummary(invoices);
   const today = new Date().toISOString().slice(0, 10);
-  const state = { invoiceType: "batch_payment", invoiceDate: today, dueDate: addDays(today, contractDetail.payment_terms?.batch_payment_due_days || 0), amount: Math.max(0, numberValue(order.total_amount) - finance.total).toFixed(2), batchId: "", notes: "" };
+  // The position has to come from the contract, not the order: the advance is
+  // raised against the contract and carries no order id, so an order-level sum
+  // cannot see it. That is how every batch got billed in full and the advance
+  // was charged twice.
+  const billing = contractDetail.summary?.billing;
+  const orderRemaining = Math.max(0, numberValue(order.total_amount) - finance.total);
+  const contractRemaining = billing ? Math.max(0, numberValue(billing.remaining_to_bill)) : orderRemaining;
+  const suggested = Math.min(orderRemaining, contractRemaining);
+  const state = { invoiceType: "batch_payment", invoiceDate: today, dueDate: addDays(today, contractDetail.payment_terms?.batch_payment_due_days || 0), amount: suggested.toFixed(2), batchId: "", notes: "" };
   async function draw() {
     const selectedBatch = batches.find((batch) => Number(batch.id) === Number(state.batchId));
     showOrderModal(`<div class="modal-backdrop" data-modal-close>
       <section class="modal-panel" role="dialog" aria-modal="true">
         <div class="modal-header"><h2>Mijoz hisob-fakturasini yaratish</h2><button class="modal-close" type="button" data-modal-close aria-label="Yopish">×</button></div>
         <form id="order-invoice-modal-form">
-          <div class="modal-body"><div class="modal-summary">${detailList([["Buyurtma raqami", order.order_number], ["Shartnoma", order.contract?.contract_number], ["Mijoz", order.client?.name], ["Buyurtma jami", fmtMoney(order.total_amount)], ["Hisob qilingan", fmtMoney(finance.total)], ["To'langan", fmtMoney(finance.paid)], ["Qoldiq", fmtMoney(Math.max(0, numberValue(order.total_amount) - finance.total))]])}</div>
-            ${numberValue(state.amount) > Math.max(0, numberValue(order.total_amount) - finance.total) ? workflowWarningsPanel(["Summa buyurtmaning hisob qilinmagan qoldig'idan oshmoqda."]) : ""}
+          <div class="modal-body"><div class="modal-summary">${detailList([["Buyurtma raqami", order.order_number], ["Shartnoma", order.contract?.contract_number], ["Mijoz", order.client?.name], ["Buyurtma jami", fmtMoney(order.total_amount)], ["Hisob qilingan", fmtMoney(finance.total)], ["To'langan", fmtMoney(finance.paid)], ["Qoldiq", fmtMoney(orderRemaining)], ["Shartnoma bo'yicha hisob qilinmagan qoldiq", fmtMoney(contractRemaining)], ["Shundan avans hisobi", fmtMoney(billing?.advance_invoiced)]])}</div>
+            ${numberValue(state.amount) > contractRemaining ? workflowWarningsPanel(["Summa shartnoma bo'yicha hisob qilinmagan qoldiqdan oshmoqda. Avans allaqachon hisob qilingan bo'lishi mumkin."]) : numberValue(state.amount) > orderRemaining ? workflowWarningsPanel(["Summa buyurtmaning hisob qilinmagan qoldig'idan oshmoqda."]) : ""}
             <div class="grid">
               ${selectField("invoice_type", "Hisob turi", invoiceTypes.filter(([key]) => key !== "advance"), state.invoiceType, { required: true })}
               ${textField("invoice_date", "Hisob sanasi", state.invoiceDate, "date", { required: true })}

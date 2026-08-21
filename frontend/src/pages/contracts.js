@@ -1204,6 +1204,29 @@ function lateOrdersHtml(contract) {
   );
 }
 
+// What the customer owes against what they have been asked for. The advance
+// lives at the contract, so this is the only level where the two can be
+// compared -- per order the advance is invisible.
+function billingPositionHtml(contract) {
+  const billing = contract.summary?.billing;
+  if (!billing) return `<div class="empty">Hisob-kitob holati hisoblanmadi.</div>`;
+  const over = numberValue(billing.over_billed);
+  const rows = [
+    ["Buyurtmalar bo'yicha to'lanishi kerak", fmtMoney(billing.billable)],
+    ["Hisob qo'yilgan", fmtMoney(billing.invoiced)],
+    ["Shundan avans", fmtMoney(billing.advance_invoiced)],
+    ["To'langan", fmtMoney(billing.paid)],
+    ["Hisob qilinmagan qoldiq", fmtMoney(billing.remaining_to_bill)],
+  ];
+  const verdict = over > 0
+    ? statusChip({ label: "Ortiqcha hisob", tone: "danger" })
+    : statusChip({ label: "Mos", tone: "success" });
+  return `<div class="detail-list">
+    ${rows.map(([label, value]) => `<div class="detail-item"><span>${label}</span><strong>${value}</strong></div>`).join("")}
+    <div class="detail-item"><span>Farq</span><strong>${fmtMoney(over)} ${verdict}</strong></div>
+  </div>`;
+}
+
 function paymentScheduleHtml(contract) {
   const rows = contract.summary?.payment_schedule || [];
   if (!rows.length) return `<div class="empty">To'lov muddatlari hisoblanmadi — to'lov shartlari kiritilmagan.</div>`;
@@ -1249,6 +1272,10 @@ function contractHeader(contract) {
     warnings.push(`${lateOrders.length} ta buyurtma muddati o'tgan, eng kechikkani ${worst.overdue_days} kun.`);
   }
   (contract.delivery_plan?.warnings || []).forEach((message) => warnings.push(message));
+  const overBilled = numberValue(contract.summary?.billing?.over_billed);
+  if (overBilled > 0) {
+    warnings.push(`Shartnoma bo'yicha ortiqcha hisob qo'yilgan: ${fmtMoney(overBilled)}`);
+  }
   const overdueCount = Number(contract.summary?.overdue_count || 0);
   if (overdueCount) {
     // One template literal on one line, so the dictionary can match it as a
@@ -1328,7 +1355,8 @@ function contractGeneralTab(contract) {
         ["Yangilangan", fmtDate(contract.updated_at)],
       ].map(([label, value]) => `<div class="detail-item"><span>${label}</span><strong>${fmt(value)}</strong></div>`).join("")}
     </div>
-  `) + section("Yetkazib berish rejasi", deliveryPlanHtml(contract))
+  `) + section("Hisob-kitob holati", billingPositionHtml(contract))
+  + section("Yetkazib berish rejasi", deliveryPlanHtml(contract))
   + (lateOrdersHtml(contract) ? section("Muddati o'tgan buyurtmalar", lateOrdersHtml(contract)) : "")
   + section("To'lov muddatlari", paymentScheduleHtml(contract))
   + (canEdit("sotuv") ? section("Holatni o'zgartirish", contractTransitionsHtml(contract)) : "")

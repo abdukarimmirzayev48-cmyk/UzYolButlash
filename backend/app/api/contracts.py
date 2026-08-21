@@ -38,6 +38,7 @@ from backend.app.models.finance import CustomerInvoice, InvoiceStatus
 from backend.app.schemas.client import Page
 from backend.app.schemas.order import ORDER_STATUS_LABELS
 from backend.app.schemas.contract import (
+    BillingPositionRead,
     ContractCreate,
     CONTRACT_STATUS_LABELS,
     ContractDetail,
@@ -80,6 +81,7 @@ from backend.app.services.client_matching import (
     find_registry_by_inn,
 )
 from backend.app.services import (
+    contract_billing,
     contract_delivery_plan,
     contract_payment_schedule,
     contract_workflow,
@@ -553,6 +555,38 @@ def delivery_plan_for(db: Session, contract: Contract) -> DeliveryPlanRead:
     )
 
 
+def billing_position_for(db: Session, contract: Contract) -> BillingPositionRead:
+    """What has been billed on this contract against what is owed."""
+    order_totals = db.scalars(
+        select(Order.total_amount).where(
+            Order.contract_id == contract.id,
+            Order.status != OrderStatus.cancelled,
+        )
+    ).all()
+    invoices = db.scalars(
+        select(CustomerInvoice).where(
+            CustomerInvoice.contract_id == contract.id,
+            CustomerInvoice.status != InvoiceStatus.cancelled,
+        )
+    ).all()
+    position = contract_billing.build_position(
+        order_totals=list(order_totals),
+        invoices=[
+            {"type": invoice.invoice_type.value, "amount": invoice.total_amount, "paid_amount": invoice.paid_amount}
+            for invoice in invoices
+        ],
+    )
+    return BillingPositionRead(
+        billable=money(position.billable),
+        invoiced=money(position.invoiced),
+        paid=money(position.paid),
+        remaining_to_bill=money(position.remaining_to_bill),
+        over_billed=money(position.over_billed),
+        advance_invoiced=money(position.advance_invoiced),
+        advance_paid=money(position.advance_paid),
+    )
+
+
 def summary_for(db: Session, contract: Contract) -> ContractSummary:
     total_quantity = qty(sum((item.quantity for item in contract.items), Decimal("0")))
     delivered_quantity = delivered_quantity_for_contract(db, contract.id)
@@ -574,6 +608,7 @@ def summary_for(db: Session, contract: Contract) -> ContractSummary:
         transport_expense_total=transport_expense_for_contract(db, contract.id),
         **payment_schedule_for(db, contract, advance_amount),
         overdue_orders=overdue_orders_for(db, contract),
+        billing=billing_position_for(db, contract),
     )
 
 
