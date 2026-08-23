@@ -30,12 +30,7 @@ function clientSortHeader(key, label, params) {
   </button>`;
 }
 
-// Every filter field gets a visible label. A placeholder disappears the moment
-// something is typed, which left the user staring at a value with no idea which
-// field it belonged to.
-function clientFilterField(label, control) {
-  return `<label class="ops-field"><span class="ops-field-label">${label}</span>${control}</label>`;
-}
+const clientFilterField = opsFilterField;
 
 function clientsFiltersHtml(params, regionOptions, contactOptions) {
   const currentRegion = params.get("region") || "";

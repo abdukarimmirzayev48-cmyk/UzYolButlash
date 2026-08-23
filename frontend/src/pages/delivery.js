@@ -1108,8 +1108,14 @@ function batchHeader(batch) {
   const editable = canEdit("yetkazib_berish");
   return `<div class="workflow-header">
     <div class="page-title">
-      <h1>Partiya: ${fmt(batch.batch_number)}</h1>
-      <p>Buyurtma: ${fmt(batch.order?.order_number)} · Mijoz: ${fmt(batch.client?.name)} · Mahsulot: ${fmt(batchPrimaryProduct(batch))} · Miqdor: ${fmtQty(quantity, batch.items?.[0]?.unit)}</p>
+      <h1><span>Partiya</span><span data-noloc>: ${esc(fmt(batch.batch_number))}</span></h1>
+      <p>${subtitleLine([
+        { label: "Buyurtma", value: batch.order?.order_number, raw: true },
+        { label: "Mijoz", value: batch.client?.name, raw: true },
+        { label: "Mahsulot", value: batchPrimaryProduct(batch), raw: true },
+        // fmtQty birlikni o'zi tarjima qiladi, shuning uchun raw.
+        { label: "Miqdor", value: fmtQty(quantity, batch.items?.[0]?.unit), raw: true },
+      ])}</p>
     </div>
     <div class="actions workflow-actions">
       <button class="btn" data-nav="/delivery-batches">Orqaga</button>

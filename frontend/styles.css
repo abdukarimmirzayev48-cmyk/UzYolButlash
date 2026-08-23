@@ -881,7 +881,12 @@ body.sidebar-collapsed .app-shell {
 
 .workflow-stepper {
   display: grid;
-  grid-template-columns: repeat(8, minmax(120px, 1fr));
+  /* 120px ustunda «Rejalashtirilgan» kabi bitta uzun so'z sig'masdi va
+     yonidagi qadamning doirasi ustiga chiqib ketardi: grid elementi
+     min-content dan tor bo'la olmaydi, matn esa bo'sh joyi bo'lmagani uchun
+     ko'chmaydi. Doira yorliqning tepasiga ko'chirildi -- shunda yorliqqa
+     butun ustun tegadi. */
+  grid-template-columns: repeat(8, minmax(96px, 1fr));
   gap: 8px;
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -894,12 +899,19 @@ body.sidebar-collapsed .app-shell {
 
 .workflow-step {
   display: grid;
-  grid-template-columns: auto 1fr;
-  align-items: center;
-  gap: 8px;
-  min-width: 120px;
+  grid-template-columns: minmax(0, 1fr);
+  justify-items: center;
+  gap: 6px;
+  min-width: 0;
   color: var(--muted);
+  text-align: center;
   font-weight: 650;
+}
+
+.workflow-step > span:last-child {
+  min-width: 0;
+  overflow-wrap: break-word;
+  line-height: 1.25;
 }
 
 .workflow-dot {
@@ -1978,6 +1990,88 @@ tr:last-child td {
      `break-word` esa avval so'z chegarasidan bo'ladi va faqat sig'masa uzadi. */
   overflow-wrap: break-word;
 }
+
+/* Moliya ro'yxatlari 12 ustunli, umumiy .ops-table esa 1420px minimal
+   kenglikni talab qiladi -- jadval kartochkadan chiqib, «Jami» va «Status»
+   ustunlari ko'rinmay qolardi. Mijozlar jadvalidagi kabi kengliklar aytib
+   qo'yiladi, shunda jadval oyna kengligiga sig'adi. */
+.invoice-ops-page .ops-table,
+.receivables-ops-page .ops-table,
+.payables-ops-page .ops-table {
+  table-layout: fixed;
+  width: 100%;
+  min-width: 1180px;
+}
+
+.invoice-ops-page .ops-table th,
+.receivables-ops-page .ops-table th,
+.payables-ops-page .ops-table th {
+  white-space: normal;
+  vertical-align: bottom;
+  overflow-wrap: break-word;
+  overflow: hidden;
+}
+
+.invoice-ops-page .ops-table td,
+.receivables-ops-page .ops-table td,
+.payables-ops-page .ops-table td {
+  overflow-wrap: break-word;
+}
+
+/* Summalar odatda bir qatorda turadi, lekin ustunga sig'masa yonidagi
+   katakning ustiga chiqib ketgandan ko'ra «so'm» ni pastga tushirgani yaxshi.
+   Raqamning o'zi uzilmaydi: guruhlar orasida uzilmas probel turibdi. */
+/* Ikkita amal tor ustunga bir qatorda sig'masdi va oxirgisi kesilib qolardi. */
+.invoice-ops-page .ops-row-actions,
+.receivables-ops-page .ops-row-actions,
+.payables-ops-page .ops-row-actions {
+  flex-wrap: wrap;
+  gap: 4px 10px;
+}
+
+.invoice-ops-page .ops-table td.ops-money,
+.receivables-ops-page .ops-table td.ops-money,
+.payables-ops-page .ops-table td.ops-money {
+  white-space: normal;
+}
+
+.invoice-ops-page .ops-table :is(th, td):nth-child(1) { width: 11%; }
+.invoice-ops-page .ops-table :is(th, td):nth-child(2) { width: 12%; }
+.invoice-ops-page .ops-table :is(th, td):nth-child(3) { width: 7%; }
+.invoice-ops-page .ops-table :is(th, td):nth-child(4) { width: 7%; }
+.invoice-ops-page .ops-table :is(th, td):nth-child(5) { width: 7%; }
+.invoice-ops-page .ops-table :is(th, td):nth-child(6) { width: 6%; }
+.invoice-ops-page .ops-table :is(th, td):nth-child(7) { width: 8%; }
+.invoice-ops-page .ops-table :is(th, td):nth-child(8) { width: 9%; }
+.invoice-ops-page .ops-table :is(th, td):nth-child(9) { width: 9%; }
+.invoice-ops-page .ops-table :is(th, td):nth-child(10) { width: 9%; }
+.invoice-ops-page .ops-table :is(th, td):nth-child(11) { width: 8%; }
+.invoice-ops-page .ops-table :is(th, td):nth-child(12) { width: 7%; }
+
+.receivables-ops-page .ops-table :is(th, td):nth-child(1) { width: 15%; }
+.receivables-ops-page .ops-table :is(th, td):nth-child(2) { width: 10%; }
+.receivables-ops-page .ops-table :is(th, td):nth-child(3) { width: 7%; }
+.receivables-ops-page .ops-table :is(th, td):nth-child(4) { width: 8%; }
+.receivables-ops-page .ops-table :is(th, td):nth-child(5) { width: 9%; }
+.receivables-ops-page .ops-table :is(th, td):nth-child(6) { width: 8%; }
+.receivables-ops-page .ops-table :is(th, td):nth-child(7) { width: 9%; }
+.receivables-ops-page .ops-table :is(th, td):nth-child(8) { width: 7%; }
+.receivables-ops-page .ops-table :is(th, td):nth-child(9) { width: 7%; }
+.receivables-ops-page .ops-table :is(th, td):nth-child(10) { width: 8%; }
+.receivables-ops-page .ops-table :is(th, td):nth-child(11) { width: 6%; }
+.receivables-ops-page .ops-table :is(th, td):nth-child(12) { width: 6%; }
+
+.payables-ops-page .ops-table :is(th, td):nth-child(1) { width: 16%; }
+.payables-ops-page .ops-table :is(th, td):nth-child(2) { width: 11%; }
+.payables-ops-page .ops-table :is(th, td):nth-child(3) { width: 8%; }
+.payables-ops-page .ops-table :is(th, td):nth-child(4) { width: 9%; }
+.payables-ops-page .ops-table :is(th, td):nth-child(5) { width: 10%; }
+.payables-ops-page .ops-table :is(th, td):nth-child(6) { width: 9%; }
+.payables-ops-page .ops-table :is(th, td):nth-child(7) { width: 10%; }
+.payables-ops-page .ops-table :is(th, td):nth-child(8) { width: 8%; }
+.payables-ops-page .ops-table :is(th, td):nth-child(9) { width: 7%; }
+.payables-ops-page .ops-table :is(th, td):nth-child(10) { width: 6%; }
+.payables-ops-page .ops-table :is(th, td):nth-child(11) { width: 6%; }
 
 /* Counts read down the column, so both the number and the heading above it
    line up on the right. */

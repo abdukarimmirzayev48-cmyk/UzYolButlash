@@ -1,3 +1,24 @@
+// Manzil hech bir sahifaga to'g'ri kelmaganda. Server SPA uchun index.html
+// qaytaradi, shuning uchun bu yerda to'xtatmasak, foydalanuvchi jimgina
+// boshqa sahifada paydo bo'ladi.
+function renderNotFound() {
+  document.title = localizeText("Sahifa topilmadi");
+  app.innerHTML = `
+    <div class="page-header">
+      <div class="page-title">
+        <h1>Sahifa topilmadi</h1>
+        <p>Bunday manzil mavjud emas yoki sahifa ko'chirilgan.</p>
+      </div>
+    </div>
+    <section class="card">
+      <div class="empty">
+        <p><span>So'ralgan manzil</span>: <strong data-noloc>${esc(location.pathname)}</strong></p>
+        <div class="actions"><button type="button" class="btn primary" data-nav="/dashboard">Bosh sahifaga qaytish</button></div>
+      </div>
+    </section>`;
+  localizeDom(app);
+}
+
 async function render() {
   try {
     const isPublicRequestRoute = location.pathname === "/talabnoma" || location.pathname === "/request";
@@ -162,8 +183,13 @@ async function render() {
       await renderEditClient(getIdFromPath());
     } else if (/^\/clients\/\d+$/.test(location.pathname)) {
       await renderDetail(getIdFromPath());
-    } else {
+    } else if (location.pathname === "/clients" || location.pathname === "/") {
       await renderClientsList();
+    } else {
+      // Ilgari noma'lum manzil ham mijozlar ro'yxatini ochardi:
+      // /finance/customer-invoices deb yozgan odam hech qanday xatosiz
+      // «Mijozlar» sahifasiga tushib, qayerda ekanini bilmay qolardi.
+      renderNotFound();
     }
     setupFormattedNumberInputs(app);
     setupFieldValidationMessages(app);

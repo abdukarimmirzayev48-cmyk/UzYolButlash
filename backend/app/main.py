@@ -164,40 +164,14 @@ def frontend(full_path: str):
     # page as JSON and got a confusing syntax error instead of a 404.
     if full_path == "api" or full_path.startswith("api/"):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Bunday API manzili yo'q.")
-    if (
-        full_path.startswith("clients")
-        or full_path.startswith("customer-requests")
-        or full_path.startswith("talabnoma")
-        or full_path.startswith("request")
-        or full_path.startswith("contracts")
-        or full_path.startswith("orders")
-        or full_path.startswith("delivery")
-        or full_path.startswith("logistics")
-        or full_path.startswith("transports")
-        or full_path.startswith("customer-invoices")
-        or full_path.startswith("customer-payments")
-        or full_path.startswith("suppliers")
-        or full_path.startswith("procurements")
-        or full_path.startswith("supplier-invoices")
-        or full_path.startswith("supplier-payments")
-        or full_path.startswith("exchange-tickets")
-        or full_path.startswith("stock")
-        or full_path.startswith("inventory")
-        or full_path.startswith("dashboard")
-        or full_path.startswith("profit")
-        or full_path.startswith("cashflow")
-        or full_path.startswith("receivables")
-        or full_path.startswith("payables")
-        or full_path.startswith("products")
-        or full_path.startswith("attendance")
-        or full_path.startswith("tasks")
-        or full_path.startswith("employees")
-        or full_path.startswith("departments")
-        or full_path.startswith("login")
-        or full_path.startswith("users")
-        or full_path.startswith("audit-log")
-    ):
-        # index.html is what carries the ?v= stamps, so it must always be
-        # fetched fresh -- caching it would pin the browser to old assets.
-        return FileResponse(FRONTEND_DIR / "index.html", headers={"Cache-Control": "no-cache"})
-    return RedirectResponse("/clients")
+    # Qolgan hamma narsa SPA ga beriladi va router noma'lum manzil uchun
+    # «Sahifa topilmadi» ni chizadi. Ilgari bu yerda ro'yxatdagi prefikslardan
+    # boshqasi /clients ga yo'naltirilardi, shuning uchun /finance/customer-
+    # invoices deb yozgan odam hech qanday xatosiz «Mijozlar» sahifasida paydo
+    # bo'lardi. Prefikslar ro'yxatining o'zi ham xato manbai edi: yangi sahifa
+    # qo'shilganda uni bu yerga qo'shish esdan chiqsa, sahifa yangilanganda
+    # yo'qolib qolardi.
+    #
+    # index.html ?v= belgilarini olib yuradi, shuning uchun u har doim yangi
+    # olinishi kerak -- keshlansa, brauzer eski fayllarga bog'lanib qoladi.
+    return FileResponse(FRONTEND_DIR / "index.html", headers={"Cache-Control": "no-cache"})

@@ -579,6 +579,7 @@ function initSidebar() {
   }
 
   localizeDom(document.body);
+  observeDynamicForms();
   document.title = localizeText(document.title);
   const observer = new MutationObserver((mutations) => {
     mutations.forEach((mutation) => {
@@ -852,23 +853,56 @@ function formatNumberInputValue(value, options = {}) {
 // rejected. Without this the browser shows its own generic message, in its own
 // language -- "Please match the requested format" told nobody what the format
 // was, in an interface that is otherwise entirely in Uzbek.
+// Brauzerning o'z xabarlari interfeys tilidan mustaqil: hisob-faktura oynasida
+// partiya tanlanmasa «Please select an item in the list» chiqardi. Har bir
+// buzilish turi uchun o'z jumlamiz bor, shunda xabar qolgan hamma narsa kabi
+// tarjima qilinadi.
+const VALIDITY_MESSAGES = [
+  ["valueMissing", "Bu maydonni to'ldiring."],
+  ["typeMismatch", "Kiritilgan qiymat mos formatda emas."],
+  ["patternMismatch", "Kiritilgan qiymat talab qilingan ko'rinishda emas."],
+  ["tooShort", "Kiritilgan qiymat juda qisqa."],
+  ["tooLong", "Kiritilgan qiymat juda uzun."],
+  ["rangeUnderflow", "Kiritilgan qiymat ruxsat etilganidan kichik."],
+  ["rangeOverflow", "Kiritilgan qiymat ruxsat etilganidan katta."],
+  ["stepMismatch", "Kiritilgan qiymat ruxsat etilgan qadamga mos emas."],
+  ["badInput", "Kiritilgan qiymatni o'qib bo'lmadi."],
+];
+
+const MSG_SELECT_FROM_LIST = "Ro'yxatdan tanlang.";
+
+function validationMessageFor(field) {
+  // `title` faqat cheklovi bor maydonda xabar bo'ladi -- boshqa joyda u oddiy
+  // maslahat matni va uni xatoga aylantirish mumkin emas.
+  const constrained = ["pattern", "min", "max", "minlength", "maxlength", "step"].some((attr) =>
+    field.hasAttribute(attr)
+  );
+  if (field.title && constrained) return localizeMessage(field.title);
+  if (field.validity.valueMissing && (field.tagName === "SELECT" || field.type === "radio")) {
+    return localizeMessage(MSG_SELECT_FROM_LIST);
+  }
+  const found = VALIDITY_MESSAGES.find(([key]) => field.validity[key]);
+  return found ? localizeMessage(found[1]) : "";
+}
+
 function setupFieldValidationMessages(root = document) {
-  const fields = root.querySelectorAll("input[title], textarea[title], select[title]");
+  const selector = "input, textarea, select";
+  const fields = [
+    ...(root instanceof Element && root.matches(selector) ? [root] : []),
+    ...root.querySelectorAll(selector),
+  ];
   fields.forEach((field) => {
     if (field.dataset.validityBound) return;
-    // Only fields that actually carry a constraint -- elsewhere `title` is an
-    // ordinary tooltip and must not be turned into an error.
-    const constrained = ["pattern", "min", "max", "minlength", "maxlength", "step"].some((attr) =>
-      field.hasAttribute(attr)
-    );
-    if (!constrained) return;
     field.dataset.validityBound = "true";
     field.addEventListener("invalid", () => {
       if (field.validity.valid) return;
-      field.setCustomValidity(localizeMessage(field.title));
+      const message = validationMessageFor(field);
+      if (message) field.setCustomValidity(message);
     });
     // Cleared on edit, otherwise the field stays invalid after being corrected.
-    field.addEventListener("input", () => field.setCustomValidity(""));
+    const clear = () => field.setCustomValidity("");
+    field.addEventListener("input", clear);
+    field.addEventListener("change", clear);
   });
 }
 
@@ -916,17 +950,25 @@ function setupFormattedNumberInputs(root = document) {
       if (cursorAtEnd) input.setSelectionRange(input.value.length, input.value.length);
     });
   });
-  if (!(root instanceof Element) || root.id !== "app" || root.dataset.formatNumberObserverBound) return;
-  {
-    root.dataset.formatNumberObserverBound = "true";
-    new MutationObserver((mutations) => {
-      mutations.forEach((mutation) => {
-        mutation.addedNodes.forEach((node) => {
-          if (node instanceof Element) setupFormattedNumberInputs(node);
-        });
-      });
-    }).observe(root, { childList: true, subtree: true });
-  }
+}
+
+// #app ichidagina kuzatish modallarni chetda qoldirardi: ular document.body ga
+// qo'shiladi, shuning uchun hisob-faktura oynasidagi summa maydoni jonli
+// formatlanmasdi -- avtomatik to'ldirilgani «1 724 800 000», qo'lda kiritilgani
+// esa «25000000» bo'lib qolardi. Til kuzatuvchisi allaqachon body ni kuzatadi;
+// bular ham shu yerdan boshqariladi.
+function observeDynamicForms() {
+  if (document.body.dataset.dynamicFormObserverBound) return;
+  document.body.dataset.dynamicFormObserverBound = "true";
+  const prepare = (node) => {
+    if (!(node instanceof Element)) return;
+    setupFormattedNumberInputs(node);
+    setupFieldValidationMessages(node);
+  };
+  prepare(document.body);
+  new MutationObserver((mutations) => {
+    mutations.forEach((mutation) => mutation.addedNodes.forEach(prepare));
+  }).observe(document.body, { childList: true, subtree: true });
 }
 
 function moneyInputField(name, label, value = "", options = {}) {
@@ -1267,8 +1309,8 @@ function opsTableOrEmpty(rows, headers, renderRow, emptyText) {
   return `<section class="ops-table-card"><table class="ops-table"><thead><tr>${headers.map((head) => `<th>${head}</th>`).join("")}</tr></thead><tbody>${rows.length ? rows.map(renderRow).join("") : `<tr><td colspan="${headers.length}"><div class="empty">${emptyText}</div></td></tr>`}</tbody></table></section>`;
 }
 
-function opsPageShell(title, tabs, body) {
-  return `<div class="page ops-page report-ops-page"><div class="ops-titlebar"><div class="ops-title-left"><button class="ops-menu-btn" type="button" aria-label="Menyu">=</button><h1>${title}</h1></div>${tabs?.length ? `<nav class="ops-tabs" aria-label="${title} ko'rinishlari">${tabs.map((tab) => `<button class="${tab.active ? "active" : ""}" type="button" ${tab.path ? `data-nav="${tab.path}"` : ""}>${tab.label}</button>`).join("")}</nav>` : ""}</div>${body}</div>`;
+function opsPageShell(title, tabs, body, className = "") {
+  return `<div class="page ops-page report-ops-page ${className}"><div class="ops-titlebar"><div class="ops-title-left"><h1>${title}</h1></div>${tabs?.length ? `<nav class="ops-tabs" aria-label="${title} ko'rinishlari">${tabs.map((tab) => `<button class="${tab.active ? "active" : ""}" type="button" ${tab.path ? `data-nav="${tab.path}"` : ""}>${tab.label}</button>`).join("")}</nav>` : ""}</div>${body}</div>`;
 }
 
 function summaryCards(items) {
@@ -1285,10 +1327,24 @@ function detailList(items) {
 // while the same status showed in Cyrillic elsewhere on the page.
 //
 // Pass {value, raw: true} for anything that came from the database.
+// Har bir filtr maydonining ko'rinadigan yorlig'i bo'ladi. Placeholder biror
+// narsa yozilishi bilan yo'qoladi va foydalanuvchi qaysi maydonga qaraganini
+// bilmay qoladi. Yorliqsiz select esa kengligini o'zi belgilay olmay, butun
+// qatorni egallab, filtrlar ustma-ust tushib qolardi.
+function opsFilterField(label, control) {
+  return `<label class="ops-field"><span class="ops-field-label">${label}</span>${control}</label>`;
+}
+
 function subtitleLine(parts) {
   return parts
     .filter((part) => part && part.value !== null && part.value !== undefined && String(part.value) !== "")
-    .map((part) => (part.raw ? `<span data-noloc>${esc(part.value)}</span>` : `<span>${esc(part.value)}</span>`))
+    .map((part) => {
+      const value = part.raw ? `<span data-noloc>${esc(part.value)}</span>` : `<span>${esc(part.value)}</span>`;
+      // Yorliq alohida tugunda qoladi: «Buyurtma: ORD-...» bir butun matn
+      // bo'lganda lug'atda mos kelmasdi va kirill rejimida ham lotincha
+      // ko'rinardi.
+      return part.label ? `<span>${esc(part.label)}</span><span data-noloc>: </span>${value}` : value;
+    })
     .join('<span data-noloc> · </span>');
 }
 
@@ -1521,7 +1577,7 @@ function quantityDisplay(value, unit = "") {
 }
 
 function opsListPage({ className = "", title, tabs = [], createPath, createLabel = "Yaratish", clearPath, counter = "", statCards = [], formId, filters = "", extraActions = "", beforeTable = "", headers = [], rows = "", emptyText = "Ma'lumot topilmadi.", colspan = headers.length, footer = "" }) {
-  return `<div class="page ops-page ${className}"><div class="ops-titlebar"><div class="ops-title-left"><button class="ops-menu-btn" type="button" aria-label="Menyu">=</button><h1>${title}</h1></div>${tabs.length ? `<nav class="ops-tabs" aria-label="${title} ko'rinishlari">${tabs.map((tab) => `<button class="${tab.active ? "active" : ""}" type="button" ${tab.path ? `data-nav="${tab.path}"` : ""}>${tab.label}</button>`).join("")}</nav>` : ""}</div>${statCards.length ? summaryCards(statCards.map((c) => [c.label, c.value, c.cls])) : ""}<div class="ops-commandbar"><div class="ops-command-left">${createPath ? `<button class="btn primary" data-nav="${createPath}">${createLabel}</button>` : ""}${clearPath ? `<button class="btn" type="button" data-nav="${clearPath}">Tozalash</button>` : ""}${counter ? `<span class="ops-counter">${counter}</span>` : ""}${extraActions}</div>${formId ? `<form class="ops-search" id="${formId}">${filters}<button class="ops-tool-btn primary" type="submit">Qidirish</button></form>` : ""}</div>${beforeTable}<section class="ops-table-card"><table class="ops-table"><thead><tr>${headers.map((head) => `<th>${head}</th>`).join("")}</tr></thead><tbody>${rows || `<tr><td colspan="${colspan}"><div class="empty">${emptyText}</div></td></tr>`}</tbody></table></section>${footer}</div>`;
+  return `<div class="page ops-page ${className}"><div class="ops-titlebar"><div class="ops-title-left"><h1>${title}</h1></div>${tabs.length ? `<nav class="ops-tabs" aria-label="${title} ko'rinishlari">${tabs.map((tab) => `<button class="${tab.active ? "active" : ""}" type="button" ${tab.path ? `data-nav="${tab.path}"` : ""}>${tab.label}</button>`).join("")}</nav>` : ""}</div>${statCards.length ? summaryCards(statCards.map((c) => [c.label, c.value, c.cls])) : ""}<div class="ops-commandbar"><div class="ops-command-left">${createPath ? `<button class="btn primary" data-nav="${createPath}">${createLabel}</button>` : ""}${clearPath ? `<button class="btn" type="button" data-nav="${clearPath}">Tozalash</button>` : ""}${counter ? `<span class="ops-counter">${counter}</span>` : ""}${extraActions}</div>${formId ? `<form class="ops-search" id="${formId}">${filters}<button class="ops-tool-btn primary" type="submit">Qidirish</button></form>` : ""}</div>${beforeTable}<section class="ops-table-card"><table class="ops-table"><thead><tr>${headers.map((head) => `<th>${head}</th>`).join("")}</tr></thead><tbody>${rows || `<tr><td colspan="${colspan}"><div class="empty">${emptyText}</div></td></tr>`}</tbody></table></section>${footer}</div>`;
 }
 
 function paginationChevron(direction) {
