@@ -54,11 +54,14 @@ function buildProductOptions(products, selectedId = null) {
 
 function bindProductSelects(form) {
   form.querySelectorAll("[data-item-product-select]").forEach((sel) => {
+    // Qator jadvalida maydonlar `product_name_0` deb, bitta mahsulot
+    // oynasida esa oddiy `product_name` deb ataladi. Oyna bo'sh qo'shimcha
+    // bilan belgilanadi, shunda katalogdan tanlash ikkalasida ham ishlaydi.
+    const suffix = sel.dataset.itemProductSelect === "" ? "" : `_${sel.dataset.itemProductSelect}`;
     const applySelection = () => {
-      const idx = sel.dataset.itemProductSelect;
       const opt = sel.options[sel.selectedIndex];
-      const nameInput = form.elements[`product_name_${idx}`];
-      const unitInput = form.elements[`unit_${idx}`];
+      const nameInput = form.elements[`product_name${suffix}`];
+      const unitInput = form.elements[`unit${suffix}`];
       if (sel.value && opt?.dataset.name) {
         if (nameInput) { nameInput.value = opt.dataset.name; nameInput.readOnly = true; }
         if (unitInput) { unitInput.value = opt.dataset.unit || ""; unitInput.readOnly = true; }
@@ -67,7 +70,13 @@ function bindProductSelects(form) {
         if (unitInput) unitInput.readOnly = false;
       }
     };
-    sel.addEventListener("change", applySelection);
+    sel.addEventListener("change", () => {
+      applySelection();
+      // Katalogdan tanlagach keyingi ish -- miqdorni kiritish. Fokusni o'zimiz
+      // ko'chirmasak, foydalanuvchi ro'yxat yopilgan joyni bosadi va o'sha
+      // paytda qator surilib ulgurgan bo'lishi mumkin.
+      form.elements[`quantity${suffix}`]?.focus();
+    });
     if (sel.value) applySelection();
   });
 }
@@ -399,7 +408,7 @@ function contractWizardProductsPanel(state) {
   const totals = contractWizardTotals(state);
   const rows = state.items || [];
   const products = state.products || [];
-  return `${tableOrEmpty(rows, ['Mahsulot <span class="required-mark">*</span>', "Mahsulot kodi", 'Birlik <span class="required-mark">*</span>', 'Miqdor <span class="required-mark">*</span>', 'Birlik narxi <span class="required-mark">*</span>', 'QQS % <span class="required-mark">*</span>', "Oraliq summa", "QQS summasi", "Jami summa", ""], (item, index) => {
+  return `<div class="fixed-item-table cols-contract">${tableOrEmpty(rows, ['Mahsulot <span class="required-mark">*</span>', "Mahsulot kodi", 'Birlik <span class="required-mark">*</span>', 'Miqdor <span class="required-mark">*</span>', 'Birlik narxi <span class="required-mark">*</span>', 'QQS % <span class="required-mark">*</span>', "Oraliq summa", "QQS summasi", "Jami summa", ""], (item, index) => {
     const calc = totals.rows[index] || {};
     return `<tr data-contract-wizard-item="${index}">
       <td>
@@ -418,7 +427,7 @@ function contractWizardProductsPanel(state) {
       <td class="number-cell" data-contract-row-total="${index}">${fmtMoney(calc.total_with_vat)}</td>
       <td class="action-cell"><button type="button" class="link-btn" data-contract-wizard-remove-item="${index}">Olib tashlash</button></td>
     </tr>`;
-  }, "Kamida bitta mahsulot qo'shilishi kerak.")}
+  }, "Kamida bitta mahsulot qo'shilishi kerak.")}</div>
   <div class="actions"><button type="button" class="btn" data-contract-wizard-add-item>Mahsulot qo'shish</button></div>
   ${summaryCards([
     ["Jami miqdor", `<span data-contract-total-quantity>${fmtQty(totals.quantity)}</span>`],
@@ -1293,7 +1302,7 @@ function contractHeader(contract) {
   // is closed the moment the contract is saved.
   (contract.parse_warnings || []).forEach((warning) => warnings.push(warning));
   const editable = canEdit("sotuv");
-  const nextAction = !contract.client_id ? {title:"Shartnoma mijozga bog'lanmagan. Buyurtma yaratishdan oldin mijozni bog'lang.",button:"Mijozni bog'lash",modal:"contract-link-client"} : numberValue(contract.summary?.paid_amount)<=0 && numberValue(contract.summary?.advance_amount)>0 ? {title:"Avans hisob-fakturasini yarating yoki to'lovni kiriting",button:"Hisob yaratish",modal:"contract-invoice-modal"} : numberValue(contract.summary?.remaining_quantity)>0 ? {title:"Shartnoma bo'yicha buyurtma yarating",button:"Buyurtma yaratish",path:`/orders/new?contract_id=${contract.id}`} : {title:"Shartnoma yakunlashga tayyor",button:"Tarix",path:`/contracts/${contract.id}?tab=notes`,done:true};
+  const nextAction = !contract.client_id ? {title:"Shartnoma mijozga bog'lanmagan. Buyurtma yaratishdan oldin mijozni bog'lang.",button:"Mijozni bog'lash",modal:"contract-link-client"} : numberValue(contract.summary?.paid_amount)<=0 && numberValue(contract.summary?.advance_amount)>0 ? {title:"Avans hisob-fakturasini yarating yoki to'lovni kiriting",button:"Hisob yaratish",modal:"contract-invoice-modal"} : numberValue(contract.summary?.unordered_quantity)>0 ? {title:"Shartnoma bo'yicha buyurtma yarating",button:"Buyurtma yaratish",path:`/orders/new?contract_id=${contract.id}`} : numberValue(contract.summary?.remaining_quantity)>0 ? {title:"Buyurtmalar bo'yicha yetkazib berish davom etmoqda",button:"Buyurtmalarni ko'rish",path:`/contracts/${contract.id}?tab=orders`} : {title:"Shartnoma yakunlashga tayyor",button:"Tarix",path:`/contracts/${contract.id}?tab=notes`,done:true};
   return `
     ${workflowHeader({title:contract.contract_number,subtitle:`<span data-noloc>${fmt(contract.customer_name || contract.client?.name)}</span><span data-noloc> · ${fmtDayOnly(contract.contract_date)} — ${fmtDayOnly(contract.valid_until)} · </span><span>${fmt(statusLabel(contract.status))}</span>`,backPath:"/contracts",fullEditPath:editable ? `/contracts/${contract.id}/edit` : "",actions: editable ? [...(contract.client_id ? [{label:"Buyurtma yaratish",path:`/orders/new?contract_id=${contract.id}`,primary:true}] : [{label:"Mijozni bog'lash",modal:"contract-link-client",primary:true}]),{label:"Hujjat yuklash",path:`/contracts/${contract.id}?tab=documents`},{label:"O'chirish",modal:"contract-remove"}] : [{label:"Hujjat yuklash",path:`/contracts/${contract.id}?tab=documents`}]})}
     ${workflowStatusGrid([["Shartnoma holati",statusBadge(contract.status)],["Buyurtmalar holati",statusChip(numberValue(contract.summary?.remaining_quantity)>0?{label:"Jarayonda",tone:"warning"}:{label:"Yopilgan",tone:"success"})],["To'lov holati",statusChip(numberValue(contract.summary?.remaining_amount)>0?{label:"Qoldiq bor",tone:"warning"}:{label:"Yopilgan",tone:"success"})],["Yetkazib berish holati",statusChip(numberValue(contract.summary?.remaining_quantity)>0?{label:"Qoldiq bor",tone:"warning"}:{label:"To'liq",tone:"success"})]])}
@@ -1317,7 +1326,10 @@ function contractTabs(active) {
     ["specification", "Spetsifikatsiya"],
     ["orders", "Buyurtmalar"],
     ["batches", "Partiyalar"],
-    ["payment", "To'lov shartlari"],
+    // Named "To'lov shartlari" it read as a page about terms, so nobody looked
+    // for invoices behind it -- the order card calls the same thing "Moliya"
+    // and that is where people went hunting.
+    ["payment", "Moliya"],
     ["transport", "Transport"],
     ["documents", "Hujjatlar"],
     ["notes", "Tarix"],
@@ -1392,8 +1404,9 @@ function contractPaymentTab(contract, invoices = []) {
   const item = contract.payment_terms || {};
   const clientId = contract.client_id || contract.client?.id || "";
   const editable = canEdit("sotuv");
-  return section("To'lov shartlari", `
+  return section("Moliya", `
     <div class="actions">${editable ? `<button class="btn primary" data-contract-child="payment">To'lov shartlarini tahrirlash</button>` : ""}${canEdit("moliya") ? `<button class="btn" type="button" data-contract-invoice-modal>Hisob yaratish</button><button class="btn" data-nav="/customer-payments/new?client_id=${clientId}&contract_id=${contract.id}">To'lov qo'shish</button>` : ""}</div>
+    <h3 class="section-subtitle">To'lov shartlari</h3>
     <div class="detail-list">
       ${[
         ["Avans foizi", item.advance_percent ? `${item.advance_percent}%` : null],
@@ -1552,7 +1565,7 @@ function contractChildForm(kind, item = {}, products = []) {
       tab: "specification",
       path: "items",
       body: `<div class="grid">
-        <label>Mahsulot katalogi<select name="product_id" data-item-product-select="0">${buildProductOptions(products, item.product_id)}</select></label>
+        <label>Mahsulot katalogi<select name="product_id" data-item-product-select="">${buildProductOptions(products, item.product_id)}</select></label>
         ${textField("product_name", "Nomi (qo'lda)", item.product_name || "")}
         ${textField("product_code", "Kodi", item.product_code || "")}
         ${textField("unit", "Birlik", item.unit || "tonna")}

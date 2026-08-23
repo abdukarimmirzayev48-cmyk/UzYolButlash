@@ -9,6 +9,18 @@ async function fetchContractsForSelect(selectedId = null, clientId = null) {
   `).join("");
 }
 
+// Uchta satr har doim chiziladi -- qiymat noma'lum bo'lsa ham. Ilgari matn
+// tanlovdan keyin ikki qatordan uch qatorga o'sib, qator balandligi o'zgarardi
+// va foydalanuvchining keyingi kliki boshqa qatorga tushib ketardi.
+const MSG_AMOUNT_KEPT = "Kiritilgan summa saqlab qolindi, partiya bo'yicha taklif";
+
+function orderRowBalanceHtml(balance) {
+  const line = (label, value) => `<span class="balance-line"><span>${label}</span><strong>${value}</strong></span>`;
+  return line("Shartnoma", balance ? fmtQty(balance.contract_quantity, balance.unit) : dash)
+    + line("Buyurilgan", balance ? fmtQty(balance.ordered_quantity, balance.unit) : dash)
+    + line("Qoldiq", balance ? fmtQty(balance.remaining_quantity, balance.unit) : dash);
+}
+
 function orderItemRow(contractItems = [], item = {}, index = 0, balances = []) {
   const selectedId = Number(item.contract_item_id || contractItems[0]?.id || "");
   const selected = contractItems.find((row) => row.id === selectedId) || contractItems[0] || {};
@@ -25,7 +37,7 @@ function orderItemRow(contractItems = [], item = {}, index = 0, balances = []) {
       ${textField(`quantity_${index}`, "Miqdor", item.quantity ?? "", "number")}
       ${textField(`unit_price_${index}`, "Birlik narxi", unitPrice, "number")}
       ${textField(`vat_rate_${index}`, "QQS %", vatRate, "number")}
-      <div class="total-box"><span>Shartnoma</span><strong data-row-balance>${balance ? `${fmtQty(balance.contract_quantity, balance.unit)} / ${fmtQty(balance.remaining_quantity, balance.unit)} qoldiq` : dash}</strong></div>
+      <div class="total-box balance-box" data-row-balance>${orderRowBalanceHtml(balance)}</div>
       <div class="total-box"><span>Qator jami</span><strong data-row-total>${dash}</strong></div>
       <button type="button" class="btn danger" data-remove-order-item>Olib tashlash</button>
     </div>
@@ -52,7 +64,9 @@ function calculateOrderForm(form, contractItems = [], balances = []) {
     subtotal += rowSubtotal;
     vat += rowVat;
     row.querySelector("[data-row-total]").textContent = fmtMoney(rowSubtotal + rowVat);
-    row.querySelector("[data-row-balance]").textContent = balance ? `${fmtQty(balance.contract_quantity, balance.unit)} / ${fmtQty(balance.ordered_quantity, balance.unit)} buyurilgan / ${fmtQty(balance.remaining_quantity, balance.unit)} qoldiq` : dash;
+    const balanceBox = row.querySelector("[data-row-balance]");
+    balanceBox.innerHTML = orderRowBalanceHtml(balance);
+    localizeDom(balanceBox);
   });
   const sourceType = form.elements.source_type?.value;
   const fulfillmentType = form.elements.fulfillment_type?.value;
@@ -222,7 +236,14 @@ async function bindOrderForm(order = null) {
   }
   form.elements.contract_id.addEventListener("change", reloadContract);
   form.addEventListener("input", () => calculateOrderForm(form, contract?.items || [], balances));
-  form.addEventListener("change", () => calculateOrderForm(form, contract?.items || [], balances));
+  form.addEventListener("change", (event) => {
+    calculateOrderForm(form, contract?.items || [], balances);
+    // Mahsulot tanlangach navbatdagi maydon -- miqdor. Fokusni o'zimiz
+    // ko'chirsak, foydalanuvchi qayta nishonga olishi shart emas.
+    if (event.target.matches("[name^='contract_item_id_']")) {
+      event.target.closest("[data-order-item-row]")?.querySelector("[name^='quantity_']")?.focus();
+    }
+  });
   document.querySelector("#add-order-item").addEventListener("click", () => {
     if (!contract) return;
     const index = form.querySelectorAll("[data-order-item-row]").length;
@@ -232,7 +253,7 @@ async function bindOrderForm(order = null) {
   form.addEventListener("click", (event) => {
     if (!event.target.matches("[data-remove-order-item]")) return;
     if (form.querySelectorAll("[data-order-item-row]").length <= 1) {
-      showToast("Order must have at least one item.", true);
+      showToast("Buyurtmada kamida bitta mahsulot bo'lishi kerak.", true);
       return;
     }
     event.target.closest("[data-order-item-row]").remove();
@@ -405,14 +426,14 @@ const ORDER_NEXT_BALANCE_LABEL = "Keyingi qoldiq:";
 function orderWizardProductsTable(state) {
   if (!state.contract) return `<div class="empty">Mahsulot tanlash uchun avval shartnomani tanlang.</div>`;
   const rows = state.balances || [];
-  return `${tableOrEmpty(rows, ["Mahsulot", "Shartnoma miqdori", "Oldin buyurtma qilingan", "Qoldiq", "Ushbu buyurtma", "Birlik narxi", "QQS %", "Qator jami"], (balance) => {
+  return `<div class="fixed-item-table cols-order">${tableOrEmpty(rows, ["Mahsulot", "Shartnoma miqdori", "Oldin buyurtma qilingan", "Qoldiq", "Ushbu buyurtma", "Birlik narxi", "QQS %", "Qator jami"], (balance) => {
     const value = state.items?.[balance.contract_item_id] ?? "";
     const quantity = numberValue(value);
     const rowSubtotal = quantity * numberValue(balance.unit_price);
     const rowVat = rowSubtotal * numberValue(balance.vat_rate) / 100;
     const after = numberValue(balance.remaining_quantity) - quantity;
     return `<tr data-order-wizard-row="${balance.contract_item_id}"><td>${fmt(balance.product_name)}</td><td>${fmtQty(balance.contract_quantity, balance.unit)}</td><td>${fmtQty(balance.ordered_quantity, balance.unit)}</td><td>${fmtQty(balance.remaining_quantity, balance.unit)}</td><td><input data-order-wizard-qty="${balance.contract_item_id}" type="number" step="any" min="0" max="${esc(balance.remaining_quantity)}" value="${esc(value)}" /></td><td class="number-cell">${fmtMoney(balance.unit_price)}</td><td>${fmt(balance.vat_rate)}%</td><td class="number-cell"><span data-order-wizard-row-total="${balance.contract_item_id}">${fmtMoney(rowSubtotal + rowVat)}</span><br><small>${ORDER_NEXT_BALANCE_LABEL} <span data-noloc data-order-wizard-row-after="${balance.contract_item_id}">${fmtQty(after, balance.unit)}</span></small></td></tr>`;
-  }, "Shartnoma mahsulotlari topilmadi.")}<p class="helper-text">Buyurtma miqdori shartnomadagi qoldiqdan oshmasligi kerak.</p>`;
+  }, "Shartnoma mahsulotlari topilmadi.")}</div><p class="helper-text">Buyurtma miqdori shartnomadagi qoldiqdan oshmasligi kerak.</p>`;
 }
 
 function updateOrderWizardProductTotals(state, input) {
@@ -468,12 +489,35 @@ function orderWizardStockPanel(state) {
   return `${state.stockLotWarning ? workflowWarningsPanel([state.stockLotWarning]) : ""}${tableOrEmpty(lots, ["Mahsulot", "Ta'minotchi", "Joylashuv", "Ticket", "Mavjud miqdor", "Band qilingan", "Birlik xarid narxi", "Ajratiladigan miqdor"], (lot) => `<tr><td>${fmt(lot.product_name)}</td><td>${fmt(lot.supplier_name)}</td><td>${fmt(lot.location_name)}</td><td>${fmt(lot.ticket_number)}</td><td>${fmtQty(lot.quantity_available, lot.unit)}</td><td>${fmtQty(lot.quantity_reserved, lot.unit)}</td><td>${fmtMoney(lot.unit_cost)}</td><td><label class="inline-check"><input type="radio" name="stock_lot_id" value="${lot.id}" ${Number(state.stockLotId) === lot.id ? "checked" : ""} /> Tanlash</label></td></tr>`, "Mavjud zaxira topilmadi.")}<div class="grid">${textField("stock_allocated_quantity", "Ajratiladigan miqdor", state.stockAllocatedQuantity || totals.quantity || "", "number", { required: true })}</div><p class="helper-text">Ajratilgan miqdor buyurtma miqdoriga teng bo'lishi kerak. Mavjud zaxira yetarli bo'lmasa, qo'shimcha xarid talab qilinadi.</p>`;
 }
 
+// The cards live in their own container so a keystroke in the markup or
+// logistics box can refresh just them. Redrawing the whole step would take the
+// cursor out of the field being typed into; not redrawing at all left the
+// totals showing the figures from before the number was entered, and only the
+// next step revealed the real amount.
+function orderWizardPriceCards(state) {
+  const totals = orderWizardTotals(state);
+  return summaryCards([
+    ["Mahsulot summasi (QQSsiz)", fmtMoney(totals.subtotal)],
+    ["QQS", fmtMoney(totals.vat)],
+    ["Ustama summasi", fmtMoney(totals.markupAmount)],
+    ["Logistika narxi", state.fulfillmentType === "direct_supplier_to_customer" ? dash : fmtMoney(totals.logistics)],
+    ["Mijozdan undiriladigan jami", fmtMoney(totals.total)],
+  ]);
+}
+
+function refreshOrderWizardPriceCards(state) {
+  const holder = document.querySelector("[data-order-wizard-price-cards]");
+  if (!holder) return;
+  holder.innerHTML = orderWizardPriceCards(state);
+  localizeDom(holder);
+}
+
 function orderWizardPricePanel(state) {
   const totals = orderWizardTotals(state);
   const logisticsInput = state.fulfillmentType === "direct_supplier_to_customer"
     ? `<label>Logistika narxi<input name="logistics_price" value="0" disabled /></label>`
     : textField("logistics_price", "Logistika narxi", state.logisticsPrice, "number");
-  return `<div class="grid">${moneyInputField("markup_amount", "Ustama summasi", state.markupAmount)}${logisticsInput}${textArea("notes", "Izoh", state.notes || "")}</div><div data-markup-note>${orderMarkupNote(totals)}</div>${summaryCards([["Mahsulot oraliq summasi", fmtMoney(totals.subtotal)], ["QQS", fmtMoney(totals.vat)], ["Ustama summasi", fmtMoney(totals.markupAmount)], ["Logistika narxi", state.fulfillmentType === "direct_supplier_to_customer" ? dash : fmtMoney(totals.logistics)], ["Jami summa", fmtMoney(totals.total)]])}<p class="helper-text">Logistika yozuvi partiya yaratilgandan keyin ochiladi.</p>`;
+  return `<div class="grid">${moneyInputField("markup_amount", "Ustama summasi", state.markupAmount)}${logisticsInput}${textArea("notes", "Izoh", state.notes || "")}</div><div data-markup-note>${orderMarkupNote(totals)}</div><div data-order-wizard-price-cards>${orderWizardPriceCards(state)}</div><p class="helper-text">Logistika yozuvi partiya yaratilgandan keyin ochiladi.</p>`;
 }
 
 function orderWizardConfirmPanel(state) {
@@ -483,10 +527,10 @@ function orderWizardConfirmPanel(state) {
   const remainingText = totals.selected.map((item) => `${item.product_name}: ${fmtQty(numberValue(item.remaining_quantity) - numberValue(item.quantity), item.unit)}`).join(", ");
   return `<div class="confirm-grid">
     ${section("Shartnoma", detailList([["Shartnoma raqami", state.contract?.contract_number], ["Mijoz", state.contract?.client?.name], ["Amal qilish muddati", state.contract?.valid_until]]))}
-    ${section("Mahsulot", detailList([["Mahsulot", productText], ["Miqdor", fmtQty(totals.quantity, totals.selected?.[0]?.unit)], ["Jami summa", fmtMoney(totals.subtotal + totals.vat)], ["Saqlangandan keyingi qoldiq", remainingText]]))}
+    ${section("Mahsulot", detailList([["Mahsulot", productText], ["Miqdor", fmtQty(totals.quantity, totals.selected?.[0]?.unit)], ["Mahsulot summasi (QQS bilan)", fmtMoney(totals.subtotal + totals.vat)], ["Saqlangandan keyingi qoldiq", remainingText]]))}
     ${section("Manba va model", detailList([["Manba", optionLabel(sourceTypes, state.sourceType)], ["Yetkazib berish modeli", optionLabel(fulfillmentTypes, state.fulfillmentType)], ["Ustama summasi", fmtMoney(totals.markupAmount)]]))}
     ${section("Zaxira / Xarid", state.sourceType === "supplier_held_stock" ? detailList([["Zaxira partiyasi", lot?.ticket_number], ["Ta'minotchi", lot?.supplier_name], ["Ticket", lot?.ticket_number], ["Ajratilgan miqdor", fmtQty(state.stockAllocatedQuantity, lot?.unit)], ["Birlik xarid narxi", fmtMoney(lot?.unit_cost)]]) : `<div class="empty">Xarid jarayoni avtomatik ochiladi. Ta'minotchi holati: Tanlanmagan.</div>`)}
-    ${section("Narx", detailList([["Mahsulot summasi", fmtMoney(totals.subtotal)], ["QQS", fmtMoney(totals.vat)], ["Logistika narxi", state.fulfillmentType === "direct_supplier_to_customer" ? dash : fmtMoney(totals.logistics)], ["Jami summa", fmtMoney(totals.total)]]))}
+    ${section("Narx", detailList([["Mahsulot summasi (QQSsiz)", fmtMoney(totals.subtotal)], ["QQS", fmtMoney(totals.vat)], ["Ustama summasi", fmtMoney(totals.markupAmount)], ["Logistika narxi", state.fulfillmentType === "direct_supplier_to_customer" ? dash : fmtMoney(totals.logistics)], ["Mijozdan undiriladigan jami", fmtMoney(totals.total)]]))}
   </div>`;
 }
 
@@ -706,10 +750,14 @@ async function renderOrderWizard() {
     form.elements.markup_amount?.addEventListener("input", () => {
       state.markupAmount = form.elements.markup_amount.value;
       refreshOrderMarkupNote(state);
+      refreshOrderWizardPriceCards(state);
     });
     form.querySelectorAll("[name='stock_lot_id']").forEach((input) => input.addEventListener("change", () => { state.stockLotId = input.value; }));
     form.elements.stock_allocated_quantity?.addEventListener("input", () => { state.stockAllocatedQuantity = form.elements.stock_allocated_quantity.value; });
-    form.elements.logistics_price?.addEventListener("input", () => { state.logisticsPrice = form.elements.logistics_price.value; });
+    form.elements.logistics_price?.addEventListener("input", () => {
+      state.logisticsPrice = form.elements.logistics_price.value;
+      refreshOrderWizardPriceCards(state);
+    });
     form.elements.notes?.addEventListener("input", () => { state.notes = form.elements.notes.value; });
     document.querySelector("[data-order-wizard-cancel]")?.addEventListener("click", () => navigate("/orders"));
     document.querySelector("[data-order-wizard-back]")?.addEventListener("click", async () => {
@@ -795,7 +843,7 @@ function orderHeader(order, related = {}) {
     ${workflowStatusGrid([
       ["Buyurtma holati", statusBadge(order.status)],
       ["Xarid / Zaxira holati", statusChip(supplyLabel)],
-      ["Partiyalar holati", statusChip(remaining <= 0 && delivered > 0 ? { label: "To'liq yetkazilgan", tone: "success" } : delivered > 0 ? { label: "Qisman yetkazilgan", tone: "warning" } : { label: "Partiya kutilmoqda", tone: "muted" })],
+      ["Partiyalar holati", statusChip(orderBatchState(order))],
       ["Moliya holati", statusChip(orderFinanceStatusChip(finance))],
     ])}
     ${summaryCards([
@@ -809,7 +857,7 @@ function orderHeader(order, related = {}) {
       ["Ta'minotchi", fmt(order.supplier_name)],
       ["Model", fmt(optionLabel(fulfillmentTypes, order.fulfillment_type))],
       ["Logistika narxi", order.fulfillment_type === "direct_supplier_to_customer" ? dash : fmtMoney(order.logistics_price)],
-      ["Oxirgi faollik", dash],
+      ["Oxirgi faollik", fmtDate(order.updated_at)],
     ])}
     ${workflowWarningsPanel(orderWarningMessages(order, related))}
     ${contractPriceCheckHtml(order)}
@@ -870,6 +918,22 @@ function orderDueCell(order) {
   const date = `<span data-noloc>${fmtDayOnly(order.required_date)}</span>`;
   if (!late) return date;
   return `${date} ${statusChip({ label: `${late} kun`, tone: "danger" })}`;
+}
+
+// The chip said "Partiya kutilmoqda" while every tonne was already committed
+// to a batch, because it only looked at what had been *delivered*. Planning
+// and delivering are separate steps and the chip has to say which one it is
+// reporting.
+function orderBatchState(order = {}) {
+  const delivered = numberValue(order.summary?.delivered_quantity);
+  const remaining = numberValue(order.summary?.remaining_quantity);
+  const unplanned = numberValue(order.summary?.unplanned_quantity);
+  const planned = numberValue(order.summary?.planned_quantity);
+  if (remaining <= 0 && delivered > 0) return { label: "To'liq yetkazilgan", tone: "success" };
+  if (delivered > 0) return { label: "Qisman yetkazilgan", tone: "warning" };
+  if (planned > 0 && unplanned <= 0) return { label: "To'liq partiyaga bo'lingan", tone: "success" };
+  if (planned > 0) return { label: "Qisman partiyaga bo'lingan", tone: "warning" };
+  return { label: "Partiya kutilmoqda", tone: "muted" };
 }
 
 function orderOverdueDays(order = {}) {
@@ -976,8 +1040,11 @@ function orderNextAction(order = {}, related = {}) {
   if (delivered > 0 && !invoices.length) return invoiceAction;
   if (invoices.length && finance.remaining > 0 && delivered > 0) return paymentAction;
 
-  // Something still to deliver -- work through what that needs, in order.
-  if (remaining > 0) {
+  // Still something to commit to a batch. `remaining` counts undelivered
+  // goods, so it stays positive while batches are on the road and kept asking
+  // for another batch after every tonne had already been planned.
+  const unplanned = numberValue(order.summary?.unplanned_quantity);
+  if (unplanned > 0) {
     if (isStockSource) {
       if (!related.allocations?.length) return { title: "Mavjud zaxiradan ajrating", button: "Zaxiradan ajratish", modal: "order-stock" };
       return { title: "Qoldiq miqdor uchun partiya yarating", button: "Partiya yaratish", modal: "order-batch" };
@@ -1403,6 +1470,7 @@ async function openOrderInvoiceModal(order, related = {}) {
         <div class="modal-header"><h2>Mijoz hisob-fakturasini yaratish</h2><button class="modal-close" type="button" data-modal-close aria-label="Yopish">×</button></div>
         <form id="order-invoice-modal-form">
           <div class="modal-body"><div class="modal-summary">${detailList([["Buyurtma raqami", order.order_number], ["Shartnoma", order.contract?.contract_number], ["Mijoz", order.client?.name], ["Buyurtma jami", fmtMoney(order.total_amount)], ["Hisob qilingan", fmtMoney(finance.total)], ["To'langan", fmtMoney(finance.paid)], ["Qoldiq", fmtMoney(orderRemaining)], ["Shartnoma bo'yicha hisob qilinmagan qoldiq", fmtMoney(contractRemaining)], ["Shundan avans hisobi", fmtMoney(billing?.advance_invoiced)]])}</div>
+            ${state.suggestedAmount != null && numberValue(state.suggestedAmount) !== numberValue(state.amount) ? workflowWarningsPanel([`${MSG_AMOUNT_KEPT}: ${fmtMoney(state.suggestedAmount)}`]) : ""}
             ${numberValue(state.amount) > contractRemaining ? workflowWarningsPanel(["Summa shartnoma bo'yicha hisob qilinmagan qoldiqdan oshmoqda. Avans allaqachon hisob qilingan bo'lishi mumkin."]) : numberValue(state.amount) > orderRemaining ? workflowWarningsPanel(["Summa buyurtmaning hisob qilinmagan qoldig'idan oshmoqda."]) : ""}
             <div class="grid">
               ${selectField("invoice_type", "Hisob turi", invoiceTypes.filter(([key]) => key !== "advance"), state.invoiceType, { required: true })}
@@ -1419,11 +1487,22 @@ async function openOrderInvoiceModal(order, related = {}) {
       </section>
     </div>`, (close) => {
       const form = document.querySelector("#order-invoice-modal-form");
+      // Without this the typed amount lived only in the DOM, so any redraw --
+      // and picking a batch causes one -- silently threw it away.
+      form?.elements.amount?.addEventListener("input", () => {
+        state.amount = form.elements.amount.value;
+        state.amountTouched = true;
+        state.suggestedAmount = null;
+      });
       form?.elements.invoice_type?.addEventListener("change", async () => {
         state.invoiceType = form.elements.invoice_type.value;
         state.invoiceDate = form.elements.invoice_date.value;
         state.dueDate = addDays(state.invoiceDate, contractDetail.payment_terms?.batch_payment_due_days || 0);
+        // Changing the type changes what the figure means, so the suggestion
+        // starts again from scratch.
         state.amount = "";
+        state.amountTouched = false;
+        state.suggestedAmount = null;
         state.batchId = "";
         await draw();
       });
@@ -1434,8 +1513,20 @@ async function openOrderInvoiceModal(order, related = {}) {
         state.dueDate = form.elements.due_date.value;
         state.notes = form.elements.notes.value.trim();
         const detail = state.batchId ? await api(`/api/delivery-batches/${state.batchId}`) : null;
-        if (state.invoiceType === "transport") state.amount = detail?.logistics?.customer_price || "";
-        if (state.invoiceType === "batch_payment") state.amount = String((await orderInvoiceRowsTotalForBatch(state.batchId)).toFixed(2));
+        // Only fill a figure the user has not put there themselves. Picking a
+        // batch used to overwrite whatever had been typed -- a 25 000 000
+        // transport amount became 0 the moment a fully-invoiced batch was
+        // chosen, with nothing said about it.
+        const suggested = state.invoiceType === "transport"
+          ? String(detail?.logistics?.customer_price || "")
+          : state.invoiceType === "batch_payment"
+            ? String((await orderInvoiceRowsTotalForBatch(state.batchId)).toFixed(2))
+            : state.amount;
+        if (!state.amountTouched || numberValue(state.amount) <= 0) {
+          state.amount = suggested;
+        } else if (numberValue(suggested) !== numberValue(state.amount)) {
+          state.suggestedAmount = suggested;
+        }
         await draw();
       });
       form?.addEventListener("submit", async (event) => {

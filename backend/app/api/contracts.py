@@ -610,6 +610,18 @@ def summary_for(db: Session, contract: Contract) -> ContractSummary:
     total_quantity = qty(sum((item.quantity for item in contract.items), Decimal("0")))
     delivered_quantity = delivered_quantity_for_contract(db, contract.id)
     advance_amount = money(contract.payment_terms.advance_amount if contract.payment_terms else Decimal("0"))
+    # How much of the contract has been turned into orders. remaining_quantity
+    # counts what has been *delivered*, so using it to decide whether another
+    # order is needed kept asking for one long after the whole contract had
+    # been ordered -- 1 000 t ordered out of 1 000 t still said "create order".
+    ordered_quantity = qty(
+        db.scalar(
+            select(func.coalesce(func.sum(OrderItem.quantity), 0))
+            .join(Order, Order.id == OrderItem.order_id)
+            .where(Order.contract_id == contract.id, Order.status != OrderStatus.cancelled)
+        )
+        or Decimal("0")
+    )
     paid_amount, unpaid_amount = customer_invoice_totals_for_contract(db, contract.id)
     # What the customer still owes, read from the invoices raised against the
     # contract. It used to be contract.total_amount minus payments, while
@@ -622,6 +634,8 @@ def summary_for(db: Session, contract: Contract) -> ContractSummary:
         vat_amount=money(contract.vat_amount),
         total_amount=money(contract.total_amount),
         total_quantity=total_quantity,
+        ordered_quantity=ordered_quantity,
+        unordered_quantity=qty(max(Decimal("0"), total_quantity - ordered_quantity)),
         advance_amount=advance_amount,
         remaining_amount=remaining_amount,
         items_count=len(contract.items),

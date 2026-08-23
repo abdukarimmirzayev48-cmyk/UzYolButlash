@@ -2487,6 +2487,81 @@ tr:last-child td {
   font-size: 16px;
 }
 
+/* Qiymat o'zgarganda balandligi o'zgarmasin: uchala satr har doim joyida
+   turadi, aks holda qator surilib, keyingi klik boshqa qatorga tushadi. */
+.balance-box {
+  display: grid;
+  gap: 2px;
+  align-content: start;
+}
+
+.balance-box .balance-line {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  align-items: baseline;
+}
+
+.balance-box .balance-line > span {
+  display: inline;
+  margin-bottom: 0;
+  white-space: nowrap;
+}
+
+.balance-box .balance-line strong {
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+/* Ustun kengligi katak ichidagi matnga bog'liq bo'lmasin -- mahsulot tanlangan
+   yoki summa hisoblangan zahoti butun jadval qayta chizilib ketardi va
+   foydalanuvchining keyingi kliki boshqa katakka tushardi. Kengliklar
+   foizda, jadval esa minimal kenglikka ega: ichidagi qiymat o'sganda ham
+   ustunlar joyidan qimirlamaydi. */
+.fixed-item-table {
+  /* Grid/flex ichida min-width: 0 bo'lmasa, jadvalning minimal kengligi
+     tashqariga chiqib, butun sahifani gorizontal suradi. */
+  min-width: 0;
+  max-width: 100%;
+}
+
+.fixed-item-table table {
+  table-layout: fixed;
+}
+
+.fixed-item-table th,
+.fixed-item-table td {
+  overflow: hidden;
+}
+
+.fixed-item-table select,
+.fixed-item-table input {
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+.fixed-item-table.cols-contract table { min-width: 1280px; }
+.fixed-item-table.cols-contract :is(th, td):nth-child(1) { width: 17%; }
+.fixed-item-table.cols-contract :is(th, td):nth-child(2) { width: 8%; }
+.fixed-item-table.cols-contract :is(th, td):nth-child(3) { width: 6%; }
+.fixed-item-table.cols-contract :is(th, td):nth-child(4) { width: 8%; }
+.fixed-item-table.cols-contract :is(th, td):nth-child(5) { width: 9%; }
+.fixed-item-table.cols-contract :is(th, td):nth-child(6) { width: 5%; }
+.fixed-item-table.cols-contract :is(th, td):nth-child(7) { width: 12%; }
+.fixed-item-table.cols-contract :is(th, td):nth-child(8) { width: 12%; }
+.fixed-item-table.cols-contract :is(th, td):nth-child(9) { width: 12%; }
+.fixed-item-table.cols-contract :is(th, td):nth-child(10) { width: 11%; }
+
+.fixed-item-table.cols-order table { min-width: 1200px; }
+.fixed-item-table.cols-order :is(th, td):nth-child(1) { width: 18%; }
+.fixed-item-table.cols-order :is(th, td):nth-child(2) { width: 12%; }
+.fixed-item-table.cols-order :is(th, td):nth-child(3) { width: 13%; }
+.fixed-item-table.cols-order :is(th, td):nth-child(4) { width: 11%; }
+.fixed-item-table.cols-order :is(th, td):nth-child(5) { width: 11%; }
+.fixed-item-table.cols-order :is(th, td):nth-child(6) { width: 11%; }
+.fixed-item-table.cols-order :is(th, td):nth-child(7) { width: 6%; }
+.fixed-item-table.cols-order :is(th, td):nth-child(8) { width: 18%; }
+
 .tabs {
   display: flex;
   gap: 4px;

@@ -349,6 +349,10 @@ class ContractSummary(BaseModel):
     vat_amount: Decimal
     total_amount: Decimal
     total_quantity: Decimal
+    # Turned into orders (whatever their delivery state) and what is left to
+    # order. Distinct from delivered/remaining, which are about goods moving.
+    ordered_quantity: Decimal = Decimal("0")
+    unordered_quantity: Decimal = Decimal("0")
     advance_amount: Decimal
     remaining_amount: Decimal
     items_count: int

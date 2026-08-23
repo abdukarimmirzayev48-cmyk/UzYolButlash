@@ -205,6 +205,9 @@ class OrderSummary(BaseModel):
     # Loaded and on its way, but not yet accepted by the customer.
     loaded_quantity: Decimal = Decimal("0")
     in_transit_quantity: Decimal = Decimal("0")
+    # Committed to a batch, whether or not it has moved yet.
+    planned_quantity: Decimal = Decimal("0")
+    unplanned_quantity: Decimal = Decimal("0")
     remaining_quantity: Decimal
     items_count: int
     paid_amount: Decimal

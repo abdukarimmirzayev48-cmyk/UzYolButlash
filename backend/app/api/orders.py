@@ -373,11 +373,28 @@ def summary_for(db: Session, order: Order) -> OrderSummary:
         )
     )
     in_transit_quantity = qty(max(Decimal("0"), loaded_quantity - delivered_quantity))
+    # Everything already committed to a batch, delivered or not. remaining_
+    # quantity counts undelivered goods, so asking "does this order still need
+    # a batch?" of it kept asking after every tonne had been planned.
+    planned_quantity = qty(
+        sum(
+            (
+                item.planned_quantity or Decimal("0")
+                for batch in order.delivery_batches
+                if batch.status != BatchStatus.cancelled
+                for item in batch.items
+            ),
+            Decimal("0"),
+        )
+    )
+    unplanned_quantity = qty(max(Decimal("0"), total_quantity - planned_quantity))
     completed_batches = sum(1 for batch in order.delivery_batches if batch.status in {BatchStatus.completed, BatchStatus.accepted})
     return OrderSummary(
         total_quantity=total_quantity,
         loaded_quantity=loaded_quantity,
         in_transit_quantity=in_transit_quantity,
+        planned_quantity=planned_quantity,
+        unplanned_quantity=unplanned_quantity,
         product_subtotal=money(order.product_subtotal),
         vat_amount=money(order.vat_amount),
         markup_percent=money(order.markup_percent),
