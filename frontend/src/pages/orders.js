@@ -965,6 +965,9 @@ function orderWarningMessages(order = {}, related = {}) {
   // charge on top and the invoice is raised from the order total. Nothing used
   // to compare the two, so the difference reached the customer unremarked.
   (order.contract_check?.warnings || []).forEach((message) => warnings.push(message));
+  // Manba turi bilan ta'minotchi hududi qarama-qarshi bo'lsa. Server hisoblaydi,
+  // chunki ta'minotchi manzillari buyurtma yozuvida yo'q.
+  (order.source_warnings || []).forEach((message) => warnings.push(message));
   if (order.source_type === "supplier_held_stock") {
     if (!related.allocations?.length) warnings.push("Mavjud zaxiradan ajratma hali kiritilmagan.");
   } else {

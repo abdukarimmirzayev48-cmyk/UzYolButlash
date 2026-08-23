@@ -89,6 +89,7 @@ from backend.app.services import (
 )
 from backend.app.services.auth import get_current_user, require_edit
 from backend.app.services.contract_pdf_parser import PARSER_VERSION, parse_contract_pdf
+from backend.app.services.product_summary import product_summary
 
 
 router = APIRouter(prefix="/api/contracts", tags=["contracts"])
@@ -670,7 +671,7 @@ def serialize_list_item(contract: Contract, delivered_quantity: Decimal) -> Cont
         created_at=contract.created_at,
         updated_at=contract.updated_at,
         client=contract.client,
-        product=contract.items[0].product_name if contract.items else None,
+        product=product_summary([item.product_name for item in contract.items]),
         total_quantity=total_quantity,
         delivered_quantity=delivered_quantity,
         remaining_quantity=qty(total_quantity - delivered_quantity),

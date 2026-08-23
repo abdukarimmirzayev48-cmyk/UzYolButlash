@@ -307,3 +307,6 @@ class OrderDetail(OrderRead):
     summary: OrderSummary | None = None
     contract_item_balances: list[ContractItemBalance] = Field(default_factory=list)
     contract_check: OrderContractCheckRead | None = None
+    # Tanlangan ta'minotchi manba turiga mos keladimi -- bloklamaydi, faqat
+    # ogohlantiradi.
+    source_warnings: list[str] = Field(default_factory=list)

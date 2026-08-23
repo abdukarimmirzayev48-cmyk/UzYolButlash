@@ -1943,14 +1943,20 @@ tr:last-child td {
   width: 100%;
   /* The shared rule pins every list table to 1420px, which is what pushed this
      one past the card at any normal window size. With the widths stated above
-     the table no longer needs that floor; 980px is where the columns stop being
-     readable and a horizontal scroll is genuinely the right answer. */
-  min-width: 980px;
+     the table no longer needs that floor. 980px was too low: the address column
+     takes whatever the stated columns leave over, and at that width there were
+     barely forty pixels left -- the address broke one letter to a line and its
+     heading spilled over the neighbouring one. 1240px keeps roughly 260px for
+     the address, which is where it stops wrapping absurdly. */
+  min-width: 1240px;
 }
 
 .clients-ops-page .ops-table th {
   white-space: normal;
   vertical-align: bottom;
+  /* Sarlavha katagidan chiqib, yonidagisining ustiga tushmasin. */
+  overflow-wrap: break-word;
+  overflow: hidden;
 }
 
 .clients-ops-page .ops-sort {
@@ -1968,7 +1974,9 @@ tr:last-child td {
 .clients-ops-page .ops-table th:nth-child(9) { width: 96px; }
 
 .clients-ops-page .ops-table td {
-  overflow-wrap: anywhere;
+  /* `anywhere` uzun manzilni har bir harfini alohida qatorga tashlab yuborardi;
+     `break-word` esa avval so'z chegarasidan bo'ladi va faqat sig'masa uzadi. */
+  overflow-wrap: break-word;
 }
 
 /* Counts read down the column, so both the number and the heading above it

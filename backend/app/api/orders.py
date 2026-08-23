@@ -16,7 +16,7 @@ from backend.app.models.client import Client
 from backend.app.models.contract import Contract, ContractItem, TransportPaymentType
 from backend.app.models.delivery import BatchStatus, DeliveryBatch, DeliveryBatchItem
 from backend.app.models.finance import CustomerInvoice, InvoiceStatus
-from backend.app.models.procurement import Procurement
+from backend.app.models.procurement import Procurement, SupplierAddress
 from backend.app.models.order import (
     FulfillmentType,
     Order,
@@ -30,7 +30,7 @@ from backend.app.models.order import (
     SupplierStatus,
 )
 from backend.app.schemas.client import Page
-from backend.app.services import order_contract_check
+from backend.app.services import order_contract_check, order_source_check
 from backend.app.schemas.order import (
     ContractItemBalance,
     OrderCreate,
@@ -57,6 +57,7 @@ from backend.app.schemas.order import (
 from backend.app.services.order_status import MANUAL_ORDER_STATUSES, sync_order_status
 from backend.app.services.contract_status import sync_contract_status
 from backend.app.services.auth import require_edit
+from backend.app.services.product_summary import product_summary
 
 
 router = APIRouter(prefix="/api/orders", tags=["orders"])
@@ -449,7 +450,7 @@ def serialize_list_item(order: Order) -> OrderListItem:
         updated_at=order.updated_at,
         client=order.client,
         contract=order.contract,
-        product=order.items[0].product_name if order.items else None,
+        product=product_summary([item.product_name for item in order.items]),
         total_quantity=total_quantity,
         delivered_quantity=delivered_quantity,
         remaining_quantity=qty(total_quantity - delivered_quantity),
@@ -647,6 +648,17 @@ def contract_check_for(db: Session, order: Order) -> OrderContractCheckRead:
     )
 
 
+def source_warnings_for(db: Session, order: Order) -> list[str]:
+    """Does the supplier on the order sit where its source type says it should?"""
+    if not order.supplier_id:
+        return []
+    addresses = db.scalars(select(SupplierAddress).where(SupplierAddress.supplier_id == order.supplier_id)).all()
+    return order_source_check.check_source(
+        source_type=order.source_type.value,
+        addresses=[{"region": address.region, "district": address.district} for address in addresses],
+    )
+
+
 @router.get("/{order_id}", response_model=OrderDetail)
 def get_order_detail(order_id: int, db: Session = Depends(get_db)):
     order = load_order_detail(db, order_id)
@@ -674,6 +686,7 @@ def get_order_detail(order_id: int, db: Session = Depends(get_db)):
             "summary": summary_for(db, order),
             "contract_item_balances": balances_for_order(db, order),
             "contract_check": contract_check_for(db, order),
+            "source_warnings": source_warnings_for(db, order),
         }
     )
 

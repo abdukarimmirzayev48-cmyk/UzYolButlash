@@ -36,6 +36,7 @@ from backend.app.services import delivery_stats
 from backend.app.services.auth import require_edit
 from backend.app.services.order_status import sync_order_status
 from backend.app.services.telegram_bot import notify_driver_of_trip
+from backend.app.services.product_summary import product_summary
 from backend.app.schemas.client import Page
 from backend.app.schemas.delivery import (
     DeliveryBatchCreate,
@@ -437,7 +438,7 @@ def serialize_batch(batch: DeliveryBatch) -> DeliveryBatchListItem:
     summary = batch_summary(batch)
     return DeliveryBatchListItem(
         **DeliveryBatchDetail.model_validate(batch).model_dump(exclude={"items", "logistics", "documents", "notes_history", "summary", "order_item_balances"}),
-        product=batch.items[0].product_name if batch.items else None,
+        product=product_summary([item.product_name for item in batch.items]),
         total_planned_quantity=summary.total_planned_quantity,
         total_loaded_quantity=summary.total_loaded_quantity,
         total_accepted_quantity=summary.total_accepted_quantity,

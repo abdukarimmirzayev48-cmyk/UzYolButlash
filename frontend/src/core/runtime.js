@@ -892,7 +892,25 @@ function setupFormattedNumberInputs(root = document) {
     input.value = formatNumberInputValue(input.value, { trimFraction: true });
     if (input.dataset.formatNumberBound) return;
     input.dataset.formatNumberBound = "true";
+    // Maydonda turgan "0" ni tanlamay ustiga yozish 25 000 000 ni
+    // 250 000 000 ga aylantirardi: sichqoncha nolning chap tomoniga tushsa,
+    // terilgan raqamlar nolning oldiga yozilib, qiymat o'n barobar oshardi.
+    // Fokusda butun qiymatni tanlaymiz, shunda birinchi bosilgan tugma uni
+    // almashtiradi. Sichqoncha tugmasi qo'yib yuborilganda brauzer tanlovni
+    // bekor qilishi mumkin, shuning uchun mouseup bir marta to'xtatiladi.
+    input.addEventListener("focus", () => {
+      input.dataset.selectOnMouseUp = "true";
+      input.select();
+    });
+    input.addEventListener("mouseup", (event) => {
+      if (input.dataset.selectOnMouseUp !== "true") return;
+      delete input.dataset.selectOnMouseUp;
+      // Foydalanuvchi ataylab bir qismini belgilagan bo'lsa, unga tegmaymiz.
+      if (input.selectionStart === input.selectionEnd) event.preventDefault();
+    });
+    input.addEventListener("blur", () => { delete input.dataset.selectOnMouseUp; });
     input.addEventListener("input", () => {
+      delete input.dataset.selectOnMouseUp;
       const cursorAtEnd = input.selectionStart === input.value.length;
       input.value = formatNumberInputValue(input.value);
       if (cursorAtEnd) input.setSelectionRange(input.value.length, input.value.length);
