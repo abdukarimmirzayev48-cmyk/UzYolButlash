@@ -96,6 +96,12 @@ class DeliveryBatch(Base, TimestampMixin):
     supplier_name: Mapped[str | None] = mapped_column(String(255), index=True)
     notes: Mapped[str | None] = mapped_column(Text)
     created_by: Mapped[str | None] = mapped_column(String(255))
+    # Qabul farqi bo'yicha qaror. Farq o'zi hisoblanardi, lekin uni yopadigan
+    # joy yo'q edi -- 2 tonna buyurtmada abadiy «yo'lda» bo'lib qolardi.
+    difference_resolution: Mapped[str | None] = mapped_column(String(32), index=True)
+    difference_note: Mapped[str | None] = mapped_column(Text)
+    difference_resolved_at: Mapped[datetime | None] = mapped_column(DateTime)
+    difference_resolved_by: Mapped[str | None] = mapped_column(String(255))
 
     client: Mapped["Client"] = relationship(back_populates="delivery_batches")
     contract: Mapped["Contract"] = relationship(back_populates="delivery_batches")

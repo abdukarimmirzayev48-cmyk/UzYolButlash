@@ -1304,6 +1304,158 @@ function loadingConfirmationModal(batch) {
   </div>`;
 }
 
+// Qabul farqi bo'yicha qaror turlari. Serverdagi ro'yxat bilan bir xil
+// bo'lishi shart -- backend/app/services/batch_difference.py.
+const BATCH_DIFFERENCE_RESOLUTIONS = [
+  ["return_to_supplier", "Ta'minotchiga qaytariladi", "Kamomad ta'minotchiga qaytariladi va undan talab qilinadi."],
+  ["reship", "Qayta jo'natiladi", "Yetmagan miqdor yangi partiyada jo'natiladi."],
+  ["credit_note", "Kredit-nota chiqariladi", "Mijozga qo'yilgan hisob kamaytiriladi."],
+  ["write_off", "Hisobdan chiqariladi", "Yo'l yo'qotishi sifatida hisobdan chiqariladi."],
+];
+
+function acceptanceRows(batch) {
+  return (batch.items || []).map((item) => {
+    const accepted = item.accepted_quantity ?? "";
+    return `<tr data-acceptance-row="${item.id}">
+      <td>${fmt(item.product_name)}</td>
+      <td>${fmtQty(item.planned_quantity, item.unit)}</td>
+      <td data-acceptance-loaded>${fmtQty(item.loaded_quantity, item.unit)}</td>
+      <td><input data-acceptance-input="${item.id}" data-loaded="${esc(item.loaded_quantity ?? 0)}" data-price="${esc(item.unit_price ?? 0)}" data-vat="${esc(item.vat_rate ?? 0)}" data-unit="${esc(item.unit || "")}" type="number" step="any" min="0" required value="${esc(accepted)}" /></td>
+      <td class="number-cell" data-noloc data-acceptance-diff="${item.id}">${dash}</td>
+    </tr>`;
+  }).join("");
+}
+
+function acceptanceDifferencePanel() {
+  return `<div class="workflow-warning" data-acceptance-decision hidden>
+    <strong>Qabul farqi bor</strong>
+    <p><span>Yetmagan miqdor</span><span data-noloc>: </span><strong data-noloc data-acceptance-total>—</strong></p>
+    <p><span>Mijozga qo'yilgan hisobdagi qiymati</span><span data-noloc>: </span><strong data-noloc data-acceptance-amount>—</strong></p>
+    <p class="helper-text">Farq bilan nima qilinishini tanlang. Tanlanmasa, miqdor buyurtmada ochiq qolib ketadi.</p>
+    <div class="acceptance-choices">${BATCH_DIFFERENCE_RESOLUTIONS.map(([key, label, hint]) => `
+      <label class="acceptance-choice"><input type="radio" name="difference_resolution" value="${key}" />
+        <span><strong>${label}</strong><small>${hint}</small></span>
+      </label>`).join("")}</div>
+    ${textArea("difference_note", "Qaror izohi", "")}
+  </div>`;
+}
+
+function acceptanceConfirmationModal(batch) {
+  return `<div class="modal-backdrop" data-modal-close>
+    <section class="modal-panel wide" role="dialog" aria-modal="true" aria-labelledby="acceptance-modal-title">
+      <div class="modal-header">
+        <h2 id="acceptance-modal-title">Qabul miqdorini kiritish</h2>
+        <button class="modal-close" type="button" data-modal-close aria-label="Yopish">×</button>
+      </div>
+      <form id="acceptance-confirmation-form">
+        <div class="modal-body">
+          <div class="modal-summary">${detailList([
+            ["Partiya raqami", batch.batch_number],
+            ["Buyurtma", batch.order?.order_number],
+            ["Mijoz", batch.client?.name],
+            ["Haqiqiy yetkazish sanasi", batch.logistics?.actual_delivery_date || batch.actual_delivery_date],
+          ])}</div>
+          <div class="table-scroll"><table>
+            <thead><tr><th>Mahsulot</th><th>Reja</th><th>Yuklangan</th><th>Qabul qilingan <span class="required-mark">*</span></th><th>Farq</th></tr></thead>
+            <tbody>${acceptanceRows(batch)}</tbody>
+          </table></div>
+          ${acceptanceDifferencePanel()}
+        </div>
+        <div class="modal-footer">
+          <button class="btn" type="button" data-modal-close>Bekor qilish</button>
+          <button class="btn primary" type="submit">Qabulni saqlash</button>
+        </div>
+      </form>
+    </section>
+  </div>`;
+}
+
+function acceptanceTotals(form) {
+  let quantity = 0;
+  let amount = 0;
+  let filled = 0;
+  form.querySelectorAll("[data-acceptance-input]").forEach((input) => {
+    const cell = form.querySelector(`[data-acceptance-diff="${input.dataset.acceptanceInput}"]`);
+    if (input.value === "") {
+      if (cell) cell.textContent = dash;
+      return;
+    }
+    filled += 1;
+    const shortfall = numberValue(input.dataset.loaded) - numberValue(input.value);
+    if (cell) cell.textContent = fmtQty(shortfall, input.dataset.unit);
+    if (shortfall <= 0) return;
+    quantity += shortfall;
+    amount += shortfall * numberValue(input.dataset.price) * (1 + numberValue(input.dataset.vat) / 100);
+  });
+  const first = form.querySelector("[data-acceptance-input]");
+  return { quantity, amount, filled, unit: first?.dataset.unit || "" };
+}
+
+function refreshAcceptanceDecision(form) {
+  const totals = acceptanceTotals(form);
+  const panel = form.querySelector("[data-acceptance-decision]");
+  if (!panel) return totals;
+  panel.hidden = totals.quantity <= 0;
+  if (!panel.hidden) {
+    panel.querySelector("[data-acceptance-total]").textContent = fmtQty(totals.quantity, totals.unit);
+    panel.querySelector("[data-acceptance-amount]").textContent = fmtMoney(amountRounded(totals.amount));
+  }
+  return totals;
+}
+
+// Tiyinlar partiyalar orasidagi yaxlitlashdan chiqadi; hisob-fakturada
+// baribir yaxlitlangan summa turadi.
+function amountRounded(value) {
+  return Math.round(value * 100) / 100;
+}
+
+function openAcceptanceModal(batch) {
+  document.querySelector(".modal-backdrop")?.remove();
+  document.body.insertAdjacentHTML("beforeend", acceptanceConfirmationModal(batch));
+  const backdrop = document.querySelector(".modal-backdrop");
+  localizeDom(backdrop);
+  const form = document.querySelector("#acceptance-confirmation-form");
+  const close = () => backdrop?.remove();
+  backdrop?.addEventListener("click", (event) => {
+    if (event.target.matches("[data-modal-close]")) close();
+  });
+  form?.addEventListener("input", () => refreshAcceptanceDecision(form));
+  refreshAcceptanceDecision(form);
+  form?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const totals = refreshAcceptanceDecision(form);
+    const inputs = [...form.querySelectorAll("[data-acceptance-input]")];
+    if (totals.filled !== inputs.length) {
+      return modalFormError(form, "Har bir mahsulot uchun qabul qilingan miqdorni kiriting.", "");
+    }
+    const resolution = form.elements.difference_resolution
+      ? [...form.querySelectorAll("[name=difference_resolution]")].find((radio) => radio.checked)?.value
+      : null;
+    if (totals.quantity > 0 && !resolution) {
+      return modalFormError(form, "Qabul farqi bor: nima qilinishini tanlang.");
+    }
+    try {
+      await api(`/api/delivery-batches/${batch.id}/confirm-acceptance`, {
+        method: "POST",
+        body: JSON.stringify({
+          items: inputs.map((input) => ({
+            id: Number(input.dataset.acceptanceInput),
+            accepted_quantity: normalizeNumberInputValue(input.value),
+          })),
+          difference_resolution: resolution || null,
+          difference_note: field(form, "difference_note") || null,
+        }),
+      });
+      showToast("Qabul miqdori saqlandi.");
+      close();
+      renderBatchDetail(batch.id);
+    } catch (error) {
+      showToast(error.message, true);
+    }
+  });
+  form?.querySelector("[data-acceptance-input]")?.focus();
+}
+
 function openLoadingConfirmationModal(batch) {
   const logistics = batch.logistics || {};
   if (!logistics.id) return showToast("Yuklandi deb belgilash uchun avval transportni biriktiring.", true);
@@ -1572,7 +1724,7 @@ function bindBatchDetailActions(batch) {
   // from a shared helper outside this file, so gate them here by disabling instead
   // of not rendering them.
   if (!editable) {
-    document.querySelectorAll("[data-transport-assignment], [data-loading-confirmation], [data-delivery-confirmation], [data-completion-confirmation], [data-mark-in-transit]").forEach((button) => {
+    document.querySelectorAll("[data-transport-assignment], [data-loading-confirmation], [data-delivery-confirmation], [data-completion-confirmation], [data-acceptance-confirmation], [data-focus-acceptance], [data-mark-in-transit]").forEach((button) => {
       button.disabled = true;
       button.title = "Bu amal uchun ruxsatingiz yo'q.";
     });
@@ -1599,8 +1751,11 @@ function bindBatchDetailActions(batch) {
     button.addEventListener("click", () => markBatchInTransit(batch));
   });
 
-  document.querySelector("[data-focus-acceptance]")?.addEventListener("click", () => {
-    document.querySelector("[name^='accepted_quantity_']")?.focus();
+  // Ilgari bu tugma shunchaki maydonga fokus qo'yardi -- ekranda hech narsa
+  // o'zgarmaydi va tugma o'lik ko'rinadi. Endi u qolgan bosqichlar kabi
+  // oyna ochadi.
+  document.querySelectorAll("[data-focus-acceptance], [data-acceptance-confirmation]").forEach((button) => {
+    button.addEventListener("click", () => openAcceptanceModal(batch));
   });
 
   document.querySelector("#batch-quantity-form")?.addEventListener("submit", async (event) => {

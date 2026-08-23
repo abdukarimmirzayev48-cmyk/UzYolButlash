@@ -205,6 +205,10 @@ class OrderSummary(BaseModel):
     # Loaded and on its way, but not yet accepted by the customer.
     loaded_quantity: Decimal = Decimal("0")
     in_transit_quantity: Decimal = Decimal("0")
+    # Yuklangan, lekin mijoz qabul qilmagan -- va partiya yopilgan. Bu yo'lda
+    # turgan yuk emas, hal qilinishi kerak bo'lgan kamomad.
+    shortfall_quantity: Decimal = Decimal("0")
+    unresolved_shortfall_quantity: Decimal = Decimal("0")
     # Committed to a batch, whether or not it has moved yet.
     planned_quantity: Decimal = Decimal("0")
     unplanned_quantity: Decimal = Decimal("0")

@@ -977,6 +977,12 @@ function orderWarningMessages(order = {}, related = {}) {
   // The invoice due date was watched from the start; the delivery date was not,
   // so an order 135 days past its requested date said only "not fully
   // delivered" -- the same sentence it showed on day one.
+  // Yopilgan partiyadagi kamomad -- yo'lda turgan yuk emas. Ilgari ikkalasi
+  // bitta raqamga qo'shilib ketardi va 2 tonna abadiy «yo'lda» bo'lib qolardi.
+  const unresolved = numberValue(order.summary?.unresolved_shortfall_quantity);
+  if (unresolved > 0) {
+    warnings.push(`Qabul farqi bo'yicha qaror qabul qilinmagan: ${unresolved}`);
+  }
   const inTransit = numberValue(order.summary?.in_transit_quantity);
   if (inTransit > 0) {
     // Number only. Interpolating the unit as well made the extracted pattern

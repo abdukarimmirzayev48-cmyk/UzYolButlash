@@ -64,6 +64,10 @@ class DeliveryBatchItemRead(BaseModel):
     created_at: datetime
     updated_at: datetime
     balance: OrderItemBatchBalance | None = None
+    # Buyurtma qatoridagi narx -- kamomadning pul qiymati shu narx bo'yicha
+    # hisoblanadi va oynada kiritish paytida ko'rsatiladi.
+    unit_price: Decimal | None = None
+    vat_rate: Decimal | None = None
 
 
 class LogisticsBase(BaseModel):
@@ -257,6 +261,31 @@ class DeliveryBatchDeliveryConfirm(BaseModel):
     notes: str | None = None
 
 
+class DeliveryBatchAcceptanceItem(BaseModel):
+    id: int
+    accepted_quantity: Decimal
+    comment: str | None = None
+
+
+class DeliveryBatchAcceptanceConfirm(BaseModel):
+    items: list[DeliveryBatchAcceptanceItem] = Field(default_factory=list)
+    # Farq bo'lsa majburiy -- tekshiruv API qatlamida, chunki u qabul qilingan
+    # miqdorlarga bog'liq.
+    difference_resolution: str | None = None
+    difference_note: str | None = None
+
+
+class DeliveryBatchDifferenceRead(BaseModel):
+    quantity: Decimal
+    amount: Decimal
+    resolution: str | None = None
+    resolution_label: str | None = None
+    note: str | None = None
+    resolved_at: datetime | None = None
+    resolved_by: str | None = None
+    warnings: list[str] = Field(default_factory=list)
+
+
 class DeliveryBatchCompletionConfirm(BaseModel):
     completed_date: date
     notes: str | None = None
@@ -297,6 +326,8 @@ class DeliveryBatchRead(BaseModel):
     supplier_name: str | None
     notes: str | None
     created_by: str | None
+    difference_resolution: str | None = None
+    difference_note: str | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -324,6 +355,7 @@ class DeliveryBatchDetail(DeliveryBatchRead):
     notes_history: list[DeliveryBatchNoteRead] = Field(default_factory=list)
     summary: DeliveryBatchSummary | None = None
     order_item_balances: list[OrderItemBatchBalance] = Field(default_factory=list)
+    difference: DeliveryBatchDifferenceRead | None = None
 
 
 class LogisticsListItem(LogisticsRead):

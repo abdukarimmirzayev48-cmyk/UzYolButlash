@@ -807,7 +807,11 @@ function textField(name, label, value = "", type = "text", options = {}) {
   const mark = cfg.required ? ' <span class="required-mark">*</span>' : "";
   const extra = validationAttrs(cfg);
   if (type === "number") {
-    return `<label>${label}${mark}<input type="text" inputmode="decimal" data-format-number name="${name}" value="${esc(formatNumberInputValue(value))}" ${extra} ${cfg.required ? "required" : ""} /></label>`;
+    // trimFraction: qiymat serverdan keladi, klaviaturadan emas. Decimal(18,3)
+    // «200.000» bo'lib serializatsiya qilinadi va kesilmasa maydonda
+    // «200,000» ko'rinadi -- tizimning qolgan joyida minglar probel bilan
+    // ajratilgani uchun bu ikki yuz ming tonna deb o'qiladi.
+    return `<label>${label}${mark}<input type="text" inputmode="decimal" data-format-number name="${name}" value="${esc(formatNumberInputValue(value, { trimFraction: true }))}" ${extra} ${cfg.required ? "required" : ""} /></label>`;
   }
   if (type === "decimal") {
     return `<label>${label}${mark}<input type="number" data-raw-number ${cfg.step === undefined ? 'step="any"' : ""} name="${name}" value="${esc(value ?? "")}" ${extra} ${cfg.required ? "required" : ""} /></label>`;
@@ -1055,7 +1059,7 @@ function observeDynamicForms() {
 
 function moneyInputField(name, label, value = "", options = {}) {
   const cfg = fieldOptions(options);
-  return `<label>${label}${cfg.required ? ' <span class="required-mark">*</span>' : ""}<input type="text" inputmode="decimal" data-format-number name="${name}" value="${esc(formatNumberInputValue(value))}" ${cfg.required ? "required" : ""} /></label>`;
+  return `<label>${label}${cfg.required ? ' <span class="required-mark">*</span>' : ""}<input type="text" inputmode="decimal" data-format-number name="${name}" value="${esc(formatNumberInputValue(value, { trimFraction: true }))}" ${cfg.required ? "required" : ""} /></label>`;
 }
 
 function fmtMoney(value) {
@@ -1562,7 +1566,12 @@ function batchWarningMessages(batch = {}) {
   const dStatus = batchDocumentStatus(batch);
   if (!logistics || logistics.status === "not_assigned") warnings.push("Transport biriktirilmagan.");
   if (!batchHasAcceptedInput(batch)) warnings.push("Qabul qilingan miqdor hali kiritilmagan.");
-  if (qStatus.key === "difference") warnings.push("Yuklangan va qabul qilingan miqdor farq qiladi.");
+  // Server farqni miqdorda ham, pulda ham hisoblab beradi va qaror qabul
+  // qilinmaganini aytadi -- shunda ogohlantirish «farq bor» degan quruq
+  // jumladan iborat bo'lmaydi.
+  const differenceWarnings = batch.difference?.warnings || [];
+  differenceWarnings.forEach((message) => warnings.push(message));
+  if (!differenceWarnings.length && qStatus.key === "difference") warnings.push("Yuklangan va qabul qilingan miqdor farq qiladi.");
   if (dStatus.key !== "complete") warnings.push("Hujjatlar hali to'liq yuklanmagan.");
   return warnings;
 }
@@ -1570,7 +1579,10 @@ function batchWarningMessages(batch = {}) {
 function batchWarningsPanel(batch) {
   const warnings = batchWarningMessages(batch);
   if (!warnings.length) return "";
-  return `<div class="workflow-warning"><strong>E'tibor kerak</strong><ul>${warnings.map((warning) => `<li>${esc(warning)}</li>`).join("")}</ul></div>`;
+  // warningParts: «matn: qiymat» ko'rinishidagi xabarning matn qismi lug'atdan
+  // o'tadi, qiymati esa tegilmay qoladi. esc() bilan butun jumla bitta tugun
+  // bo'lib qolar va lotincha ko'rinardi.
+  return `<div class="workflow-warning"><strong>E'tibor kerak</strong><ul>${warnings.map((warning) => `<li>${warningParts(warning)}</li>`).join("")}</ul></div>`;
 }
 
 function batchNextAction(batch = {}) {
@@ -1581,7 +1593,12 @@ function batchNextAction(batch = {}) {
   if (["carrier_assigned", "vehicle_assigned", "loading"].includes(logistics.status) && !logistics.actual_pickup_date) return { title: "Haqiqiy yuklash sanasini kiriting", button: "Yuklandi deb belgilash", modal: "loading" };
   if (logistics.status === "loaded") return { title: "Yo'lga chiqdi deb belgilang", button: "Yo'lga chiqdi", action: "transit" };
   if (["in_transit", "arrived", "unloading"].includes(logistics.status) && !logistics.actual_delivery_date) return { title: "Yetkazilgan sanani kiriting", button: "Yetkazildi deb belgilash", modal: "delivery" };
-  if (logistics.actual_delivery_date && !batchHasAcceptedInput(batch)) return { title: "Qabul qilingan miqdorni kiriting", button: "Qabul miqdorini kiritish", path: `/delivery-batches/${batch.id}?tab=quantity` };
+  if (logistics.actual_delivery_date && !batchHasAcceptedInput(batch)) return { title: "Qabul qilingan miqdorni kiriting", button: "Qabul miqdorini kiritish", modal: "acceptance" };
+  // Kamomad aniqlangan, lekin u bilan nima qilinishi hal qilinmagan -- aynan
+  // shu yerda 2 tonna havoda qolib ketardi.
+  if (batchHasAcceptedInput(batch) && batch.difference?.quantity > 0 && !batch.difference?.resolution) {
+    return { title: "Qabul farqi bo'yicha qaror qabul qiling", button: "Farq bo'yicha qaror", modal: "acceptance" };
+  }
   if (batch.status !== "completed" && batchHasAcceptedInput(batch)) return { title: "Partiyani yakunlash", button: "Yakunlash", modal: "completion" };
   if (batch.status !== "completed" && docs.key !== "complete") return { title: "TTN va qabul dalolatnomasini yuklang", button: "Hujjat yuklash", path: `/delivery-batches/${batch.id}?tab=documents` };
   if (batch.status !== "completed") return { title: "Partiyani yakunlash", button: "Yakunlash", modal: "completion" };
@@ -1599,6 +1616,8 @@ function batchNextActionPanel(batch) {
       ? `<button class="btn primary" type="button" data-loading-confirmation>${fmt(action.button)}</button>`
       : action.modal === "delivery"
         ? `<button class="btn primary" type="button" data-delivery-confirmation>${fmt(action.button)}</button>`
+      : action.modal === "acceptance"
+        ? `<button class="btn primary" type="button" data-acceptance-confirmation>${fmt(action.button)}</button>`
       : action.modal === "completion"
         ? `<button class="btn primary" type="button" data-completion-confirmation>${fmt(action.button)}</button>`
       : action.action === "transit"

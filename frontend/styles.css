@@ -4861,6 +4861,47 @@ body.public-layout.sidebar-collapsed .app-shell {
   font-weight: 600;
 }
 
+/* `hidden` atributi UA uslubidan keladi va sahifadagi har qanday `display`
+   qoidasi uni bosib ketadi -- yashirilgan blok ko'rinib turaverardi. */
+[hidden] {
+  display: none !important;
+}
+
+.acceptance-choices {
+  display: grid;
+  gap: 8px;
+  margin: 10px 0;
+}
+
+.acceptance-choice {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: start;
+  gap: 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface);
+  padding: 10px 12px;
+  cursor: pointer;
+}
+
+.acceptance-choice:has(input:checked) {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(15, 107, 82, 0.12);
+}
+
+.acceptance-choice input {
+  width: auto;
+  min-height: 0;
+  margin-top: 3px;
+}
+
+.acceptance-choice small {
+  display: block;
+  color: var(--muted);
+  font-weight: 500;
+}
+
 .field-invalid {
   border-color: var(--danger) !important;
   box-shadow: 0 0 0 2px rgba(200, 60, 60, 0.14);

@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
 from pathlib import Path
 from shutil import copyfileobj
@@ -33,16 +33,19 @@ from backend.app.models.order import Order, OrderItem
 from backend.app.models.procurement import SupplierAddress, SupplierAddressType
 from backend.app.models.transport import Transport
 from backend.app.services import delivery_stats
-from backend.app.services.auth import require_edit
+from backend.app.services.auth import get_current_user, require_edit
 from backend.app.services.order_status import sync_order_status
 from backend.app.services.telegram_bot import notify_driver_of_trip
 from backend.app.services.product_summary import product_summary
+from backend.app.services import batch_difference
 from backend.app.schemas.client import Page
 from backend.app.schemas.delivery import (
+    DeliveryBatchAcceptanceConfirm,
     DeliveryBatchCreate,
     DeliveryBatchCompletionConfirm,
     DeliveryBatchDeliveryConfirm,
     DeliveryBatchDetail,
+    DeliveryBatchDifferenceRead,
     DeliveryBatchDocumentCreate,
     DeliveryBatchDocumentRead,
     DeliveryBatchDocumentUpdate,
@@ -578,13 +581,106 @@ def get_batch_detail(batch_id: int, db: Session = Depends(get_db)):
     batch = load_batch_detail(db, batch_id)
     result = DeliveryBatchDetail.model_validate(batch)
     balance_map = {balance.order_item_id: balance for balance in balances_for_batch(db, batch)}
+    prices = {item.id: item.order_item for item in batch.items}
     items = []
     for item in result.items:
         current = balance_map.get(item.order_item_id)
         if current:
             current = current.model_copy(update={"remaining_quantity_for_planning": qty(current.remaining_quantity_for_planning + item.planned_quantity)})
-        items.append(item.model_copy(update={"balance": current}))
-    return result.model_copy(update={"items": items, "summary": batch_summary(batch), "order_item_balances": balances_for_batch(db, batch)})
+        order_item = prices.get(item.id)
+        items.append(item.model_copy(update={
+            "balance": current,
+            "unit_price": order_item.unit_price if order_item else None,
+            "vat_rate": order_item.vat_rate if order_item else None,
+        }))
+    return result.model_copy(update={
+        "items": items,
+        "summary": batch_summary(batch),
+        "order_item_balances": balances_for_batch(db, batch),
+        "difference": difference_read(batch),
+    })
+
+
+def difference_for(batch: DeliveryBatch) -> batch_difference.Difference:
+    """Partiya bo'yicha kamomad: miqdori, puldagi qiymati va qabul qilingan qaror."""
+    return batch_difference.build_difference(
+        items=[
+            {
+                "loaded_quantity": item.loaded_quantity,
+                "accepted_quantity": item.accepted_quantity,
+                # Mijozga aynan buyurtma narxida faktura qo'yiladi.
+                "unit_price": item.order_item.unit_price if item.order_item else 0,
+                "vat_rate": item.order_item.vat_rate if item.order_item else 0,
+            }
+            for item in batch.items
+        ],
+        resolution=batch.difference_resolution,
+    )
+
+
+def difference_read(batch: DeliveryBatch) -> DeliveryBatchDifferenceRead:
+    difference = difference_for(batch)
+    return DeliveryBatchDifferenceRead(
+        quantity=difference.quantity,
+        amount=difference.amount,
+        resolution=difference.resolution,
+        resolution_label=batch_difference.RESOLUTION_LABELS.get(difference.resolution or ""),
+        note=batch.difference_note,
+        resolved_at=batch.difference_resolved_at,
+        resolved_by=batch.difference_resolved_by,
+        warnings=batch_difference.warnings_for(difference),
+    )
+
+
+@router.post("/{batch_id}/confirm-acceptance", response_model=DeliveryBatchDetail, dependencies=[Depends(require_edit("yetkazib_berish"))])
+def confirm_batch_acceptance(
+    batch_id: int,
+    payload: DeliveryBatchAcceptanceConfirm,
+    db: Session = Depends(get_db),
+    user=Depends(get_current_user),
+):
+    """Qabul qilingan miqdorlar va -- kamomad bo'lsa -- u bilan nima qilinishi.
+
+    Ikkalasi bitta amalda: qabulni yozib, farqni ochiq qoldirib ketish aynan
+    o'sha 2 tonna havoda qolib ketishiga olib kelgan.
+    """
+    batch = load_batch_detail(db, batch_id)
+    if batch.status == BatchStatus.cancelled:
+        raise HTTPException(status_code=422, detail="Bekor qilingan partiyada qabulni tasdiqlab bo'lmaydi.")
+    items = {item.id: item for item in batch.items}
+    for row in payload.items:
+        item = items.get(row.id)
+        if item is None:
+            raise HTTPException(status_code=422, detail="Partiya qatori topilmadi.")
+        if row.accepted_quantity < 0:
+            raise HTTPException(status_code=422, detail="Qabul qilingan miqdor manfiy bo'lishi mumkin emas.")
+        item.accepted_quantity = row.accepted_quantity
+        item.difference_quantity = (item.loaded_quantity or Decimal("0")) - row.accepted_quantity
+        if row.comment is not None:
+            item.comment = row.comment
+
+    difference = difference_for(batch)
+    if difference.exists and difference.quantity > 0:
+        if payload.difference_resolution not in batch_difference.RESOLUTIONS:
+            raise HTTPException(
+                status_code=422,
+                detail=f"{batch_difference.MSG_RESOLUTION_REQUIRED}: {batch_difference.quantity_text(difference.quantity)}",
+            )
+        batch.difference_resolution = payload.difference_resolution
+        batch.difference_note = payload.difference_note
+        batch.difference_resolved_at = datetime.now()
+        batch.difference_resolved_by = getattr(user, "username", None)
+    else:
+        # Farq yopilgan bo'lsa, eski qaror ham keraksiz.
+        batch.difference_resolution = None
+        batch.difference_note = None
+        batch.difference_resolved_at = None
+        batch.difference_resolved_by = None
+
+    batch.status = BatchStatus.quantity_difference if difference.exists else BatchStatus.accepted
+    sync_order_status(batch.order, db=db)
+    db.commit()
+    return get_batch_detail(batch.id, db)
 
 
 @router.post("/{batch_id}/confirm-loading", response_model=DeliveryBatchDetail, dependencies=[Depends(require_edit("yetkazib_berish"))])

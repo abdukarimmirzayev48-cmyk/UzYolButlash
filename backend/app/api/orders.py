@@ -373,7 +373,49 @@ def summary_for(db: Session, order: Order) -> OrderSummary:
             Decimal("0"),
         )
     )
-    in_transit_quantity = qty(max(Decimal("0"), loaded_quantity - delivered_quantity))
+    # «Yo'lda» -- hali o'lchanmagan yuk. Ilgari u butun buyurtma bo'yicha
+    # yuklangandan qabul qilinganni ayirish yo'li bilan hisoblanardi, shuning
+    # uchun yakunlangan partiyadagi kamomad -- 250 dan 248 qabul qilinsa, 2
+    # tonna -- abadiy yo'lda bo'lib qolardi.
+    #
+    # Chegara qabul miqdorining kiritilgani bo'yicha o'tadi: kiritilmagan
+    # bo'lsa, yuk hali yo'lda; kiritilgan bo'lsa, qator o'lchangan va
+    # ayirmasi kamomad -- u alohida ko'rsatiladi va o'z qarorini talab qiladi.
+    live_batches = [batch for batch in order.delivery_batches if batch.status != BatchStatus.cancelled]
+    in_transit_quantity = qty(
+        sum(
+            (
+                item.loaded_quantity or Decimal("0")
+                for batch in live_batches
+                for item in batch.items
+                if item.accepted_quantity is None
+            ),
+            Decimal("0"),
+        )
+    )
+    shortfall_quantity = qty(
+        sum(
+            (
+                max(Decimal("0"), (item.loaded_quantity or Decimal("0")) - item.accepted_quantity)
+                for batch in live_batches
+                for item in batch.items
+                if item.accepted_quantity is not None
+            ),
+            Decimal("0"),
+        )
+    )
+    unresolved_shortfall_quantity = qty(
+        sum(
+            (
+                max(Decimal("0"), (item.loaded_quantity or Decimal("0")) - item.accepted_quantity)
+                for batch in live_batches
+                if not batch.difference_resolution
+                for item in batch.items
+                if item.accepted_quantity is not None
+            ),
+            Decimal("0"),
+        )
+    )
     # Everything already committed to a batch, delivered or not. remaining_
     # quantity counts undelivered goods, so asking "does this order still need
     # a batch?" of it kept asking after every tonne had been planned.
@@ -394,6 +436,8 @@ def summary_for(db: Session, order: Order) -> OrderSummary:
         total_quantity=total_quantity,
         loaded_quantity=loaded_quantity,
         in_transit_quantity=in_transit_quantity,
+        shortfall_quantity=shortfall_quantity,
+        unresolved_shortfall_quantity=unresolved_shortfall_quantity,
         planned_quantity=planned_quantity,
         unplanned_quantity=unplanned_quantity,
         product_subtotal=money(order.product_subtotal),
