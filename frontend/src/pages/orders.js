@@ -397,6 +397,11 @@ function orderWizardContractSummary(state) {
   ])}${section("To'lov shartlari", state.contract.payment_terms ? detailList([["Avans foizi", `${fmt(state.contract.payment_terms.advance_percent)}%`], ["Avans muddati", `${fmt(state.contract.payment_terms.advance_due_days)} kun`], ["Qoldiq foizi", `${fmt(state.contract.payment_terms.remaining_percent)}%`], ["Qoldiq to'lov qoidasi", state.contract.payment_terms.remaining_payment_rule], ["Izoh", state.contract.payment_terms.notes]]) : `<div class="empty">To'lov shartlari kiritilmagan.</div>`)}`;
 }
 
+// A plain literal so the dictionary generator finds it. Interpolated into the
+// row it would sit in a text node that also holds a number and a unit, and no
+// entry can match that.
+const ORDER_NEXT_BALANCE_LABEL = "Keyingi qoldiq:";
+
 function orderWizardProductsTable(state) {
   if (!state.contract) return `<div class="empty">Mahsulot tanlash uchun avval shartnomani tanlang.</div>`;
   const rows = state.balances || [];
@@ -406,7 +411,7 @@ function orderWizardProductsTable(state) {
     const rowSubtotal = quantity * numberValue(balance.unit_price);
     const rowVat = rowSubtotal * numberValue(balance.vat_rate) / 100;
     const after = numberValue(balance.remaining_quantity) - quantity;
-    return `<tr data-order-wizard-row="${balance.contract_item_id}"><td>${fmt(balance.product_name)}</td><td>${fmtQty(balance.contract_quantity, balance.unit)}</td><td>${fmtQty(balance.ordered_quantity, balance.unit)}</td><td>${fmtQty(balance.remaining_quantity, balance.unit)}</td><td><input data-order-wizard-qty="${balance.contract_item_id}" type="number" step="any" min="0" max="${esc(balance.remaining_quantity)}" value="${esc(value)}" /></td><td class="number-cell">${fmtMoney(balance.unit_price)}</td><td>${fmt(balance.vat_rate)}%</td><td class="number-cell"><span data-order-wizard-row-total="${balance.contract_item_id}">${fmtMoney(rowSubtotal + rowVat)}</span><br><small data-order-wizard-row-after="${balance.contract_item_id}">Keyingi qoldiq: ${fmtQty(after, balance.unit)}</small></td></tr>`;
+    return `<tr data-order-wizard-row="${balance.contract_item_id}"><td>${fmt(balance.product_name)}</td><td>${fmtQty(balance.contract_quantity, balance.unit)}</td><td>${fmtQty(balance.ordered_quantity, balance.unit)}</td><td>${fmtQty(balance.remaining_quantity, balance.unit)}</td><td><input data-order-wizard-qty="${balance.contract_item_id}" type="number" step="any" min="0" max="${esc(balance.remaining_quantity)}" value="${esc(value)}" /></td><td class="number-cell">${fmtMoney(balance.unit_price)}</td><td>${fmt(balance.vat_rate)}%</td><td class="number-cell"><span data-order-wizard-row-total="${balance.contract_item_id}">${fmtMoney(rowSubtotal + rowVat)}</span><br><small>${ORDER_NEXT_BALANCE_LABEL} <span data-noloc data-order-wizard-row-after="${balance.contract_item_id}">${fmtQty(after, balance.unit)}</span></small></td></tr>`;
   }, "Shartnoma mahsulotlari topilmadi.")}<p class="helper-text">Buyurtma miqdori shartnomadagi qoldiqdan oshmasligi kerak.</p>`;
 }
 
@@ -421,7 +426,9 @@ function updateOrderWizardProductTotals(state, input) {
   const total = document.querySelector(`[data-order-wizard-row-total="${input.dataset.orderWizardQty}"]`);
   const afterNode = document.querySelector(`[data-order-wizard-row-after="${input.dataset.orderWizardQty}"]`);
   if (total) total.textContent = fmtMoney(rowSubtotal + rowVat);
-  if (afterNode) afterNode.textContent = `Keyingi qoldiq: ${fmtQty(after, balance.unit)}`;
+  // Only the figure is replaced; the label beside it is its own node so the
+  // dictionary translates it once and the live update never touches it.
+  if (afterNode) afterNode.textContent = fmtQty(after, balance.unit);
 }
 
 // The sum is what gets charged; the percent is shown only so the user can

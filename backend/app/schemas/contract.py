@@ -356,7 +356,11 @@ class ContractSummary(BaseModel):
     remaining_quantity: Decimal
     paid_amount: Decimal
     unpaid_amount: Decimal
+    # What the carrier costs us.
     transport_expense_total: Decimal
+    # What the customer is charged for transport -- a different figure, and the
+    # one that reaches their invoice.
+    transport_billed_total: Decimal = Decimal("0")
     # When the money is actually due, and what is late. The terms held the
     # numbers ("10 kun") and nobody ever turned them into a date.
     payment_schedule: list[PaymentDueItem] = Field(default_factory=list)

@@ -423,6 +423,25 @@ def transport_expense_for_contract(db: Session, contract_id: int) -> Decimal:
     return money(amount or Decimal("0"))
 
 
+def transport_billed_for_contract(db: Session, contract_id: int) -> Decimal:
+    """Transport charged to the customer, which is not the same as its cost.
+
+    The card showed only Logistics.cost_amount -- what the carrier bills us --
+    and that is genuinely zero until someone enters it. Meanwhile the order
+    carried a logistics_price of 25 000 000 that had already gone out on an
+    invoice, so a card reading "Transport xarajatlari 0" sat next to a customer
+    being charged for transport. They are two different figures and both belong
+    on screen.
+    """
+    amount = db.scalar(
+        select(func.coalesce(func.sum(Order.logistics_price), 0)).where(
+            Order.contract_id == contract_id,
+            Order.status != OrderStatus.cancelled,
+        )
+    )
+    return money(amount or Decimal("0"))
+
+
 def customer_invoice_totals_for_contract(db: Session, contract_id: int) -> tuple[Decimal, Decimal]:
     row = db.execute(
         select(
@@ -592,7 +611,12 @@ def summary_for(db: Session, contract: Contract) -> ContractSummary:
     delivered_quantity = delivered_quantity_for_contract(db, contract.id)
     advance_amount = money(contract.payment_terms.advance_amount if contract.payment_terms else Decimal("0"))
     paid_amount, unpaid_amount = customer_invoice_totals_for_contract(db, contract.id)
-    remaining_amount = money(contract.total_amount - paid_amount)
+    # What the customer still owes, read from the invoices raised against the
+    # contract. It used to be contract.total_amount minus payments, while
+    # Moliya read the same question off the invoices -- so one contract showed
+    # two different debts (6 022 400 000 here, 8 298 120 000 there) and nothing
+    # said which was real. There is one source now: the invoices.
+    remaining_amount = unpaid_amount
     return ContractSummary(
         subtotal_amount=money(contract.subtotal_amount),
         vat_amount=money(contract.vat_amount),
@@ -606,6 +630,7 @@ def summary_for(db: Session, contract: Contract) -> ContractSummary:
         paid_amount=paid_amount,
         unpaid_amount=unpaid_amount,
         transport_expense_total=transport_expense_for_contract(db, contract.id),
+        transport_billed_total=transport_billed_for_contract(db, contract.id),
         **payment_schedule_for(db, contract, advance_amount),
         overdue_orders=overdue_orders_for(db, contract),
         billing=billing_position_for(db, contract),

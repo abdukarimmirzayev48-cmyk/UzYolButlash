@@ -837,7 +837,15 @@ function formatNumberInputValue(value, options = {}) {
   const wholeNumber = whole === "" ? 0 : Number(whole);
   if (!Number.isFinite(wholeNumber)) return "";
   const grouped = new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 0 }).format(wholeNumber);
-  return `${negative ? "-" : ""}${grouped}${hasSeparator ? "," : ""}${fraction}`;
+  // trimFraction is for a value arriving from the API rather than from the
+  // keyboard. A Decimal(18,3) serialises as "200.000", and keeping those zeros
+  // showed "200,000" in the box -- read as two hundred thousand tonnes, because
+  // everywhere else in the app the thousands separator is a space. While
+  // someone is actually typing the zeros must stay, or "200.50" could never be
+  // reached.
+  const shown = options.trimFraction ? fraction.replace(/0+$/, "") : fraction;
+  const separator = shown || (hasSeparator && !options.trimFraction) ? "," : "";
+  return `${negative ? "-" : ""}${grouped}${separator}${shown}`;
 }
 
 // A field that states its rule in `title` should say that rule when it is
@@ -878,7 +886,10 @@ function setupFormattedNumberInputs(root = document) {
     if (input.type === "number") input.type = "text";
     input.inputMode = "decimal";
     input.dataset.formatNumber = "true";
-    input.value = formatNumberInputValue(input.value);
+    // Setup runs once over a value that came from the server; the input
+    // handler below runs over what the user is typing. Only the first may
+    // tidy the fraction.
+    input.value = formatNumberInputValue(input.value, { trimFraction: true });
     if (input.dataset.formatNumberBound) return;
     input.dataset.formatNumberBound = "true";
     input.addEventListener("input", () => {
@@ -916,9 +927,13 @@ function fmtQty(value, unit = "") {
   if (value === null || value === undefined || value === "") return dash;
   const amount = new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 3 }).format(Number(value));
   if (!unit) return amount;
-  // The unit gets its own node: glued to the number it is one text node the
-  // dictionary cannot match, so "tonna" stayed Latin beside Cyrillic labels.
-  return `<span data-noloc>${amount}</span> <span>${esc(unit)}</span>`;
+  // Plain text, never markup. Wrapping the unit in its own element to get it
+  // translated meant every caller that assigns to textContent -- the wizard
+  // totals, the batch quantity summaries, the supplier dialogs -- printed the
+  // tags as literal text and the number became unreadable. The unit is a small
+  // closed vocabulary, so it can simply be looked up here and the result stays
+  // a string that is safe anywhere.
+  return `${amount} ${localizeText(unit)}`;
 }
 
 function fmtPercent(value) {
