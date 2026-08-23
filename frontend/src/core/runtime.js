@@ -189,6 +189,66 @@ function appDialog({ title, intro = "", subject = "", confirmLabel = "Tasdiqlash
   });
 }
 
+// Oyna ichidagi maydonga tegishli xato oynaning o'zida aytilishi kerak.
+// Ilgari u faqat toast bo'lib chiqardi: ekranning narigi burchagida, 3.6
+// soniyada yo'qoladigan joyda. Foydalanuvchi esa bosilgan tugmaga qarab
+// turadi va «tugma o'lik» degan xulosaga keladi. Endi xabar tugmaning yonida
+// turadi va tuzatilgunga qadar yo'qolmaydi.
+function openModalForm() {
+  // Oynalar body ga qo'shiladi va bir vaqtda bittasi ochiq bo'ladi.
+  // #app-dialog ning o'z xato satri bor va u toast bilan ishlamaydi.
+  const backdrops = document.querySelectorAll(".modal-backdrop:not(#app-dialog)");
+  const backdrop = backdrops[backdrops.length - 1];
+  return backdrop ? backdrop.querySelector("form") || backdrop : null;
+}
+
+function modalErrorHolder(form) {
+  let holder = form.querySelector("[data-modal-error]");
+  if (holder) return holder;
+  holder = document.createElement("div");
+  holder.className = "modal-error";
+  holder.dataset.modalError = "true";
+  const footer = form.querySelector(".modal-footer");
+  const body = form.querySelector(".modal-body");
+  if (footer) footer.insertAdjacentElement("beforebegin", holder);
+  else if (body) body.appendChild(holder);
+  else form.insertAdjacentElement("afterbegin", holder);
+  // Foydalanuvchi biror narsani o'zgartirishi bilan xabar ketadi -- aks holda
+  // tuzatilgandan keyin ham qizarib turaveradi.
+  form.addEventListener("input", () => { holder.hidden = true; });
+  form.addEventListener("change", () => { holder.hidden = true; });
+  return holder;
+}
+
+function showModalError(message, form = openModalForm()) {
+  if (!form || !form.querySelector) return false;
+  const holder = modalErrorHolder(form);
+  holder.textContent = localizeMessage(message);
+  holder.hidden = false;
+  return true;
+}
+
+// Oyna ichidagi maydonga tegishli xato oynaning o'zida aytilishi kerak.
+// Ilgari u faqat toast bo'lib chiqardi: ekranning narigi burchagida, 3.6
+// soniyada yo'qoladigan joyda. Foydalanuvchi esa bosilgan tugmaga qarab
+// turadi va «tugma o'lik» degan xulosaga keladi.
+function modalFormError(form, message, fieldName = "") {
+  showToast(message, true, form || openModalForm());
+  const field = fieldName && form ? form.elements[fieldName] : null;
+  if (field) {
+    field.classList.add("field-invalid");
+    field.focus();
+    const clear = () => {
+      field.classList.remove("field-invalid");
+      field.removeEventListener("input", clear);
+      field.removeEventListener("change", clear);
+    };
+    field.addEventListener("input", clear);
+    field.addEventListener("change", clear);
+  }
+  return undefined;
+}
+
 function confirmMsg(message) {
   return confirm(localizeMessage(message));
 }
@@ -278,13 +338,19 @@ function fmtDate(value) {
   return parts.hour === undefined ? day : `${day} ${parts.hour}:${parts.minute}`;
 }
 
-function showToast(message, isError = false) {
+function showToast(message, isError = false, modalForm = undefined) {
   toast.textContent = localizeMessage(message);
   toast.className = `toast${isError ? " error" : ""}`;
   toast.hidden = false;
   window.setTimeout(() => {
     toast.hidden = true;
   }, 3600);
+  // Oyna ochiq turganda xato xabari o'sha oynada ham takrorlanadi. Toast
+  // ekranning yuqori o'ng burchagida chiqadi va 3.6 soniyada o'chadi -- oynaga
+  // qarab turgan odam uni umuman ko'rmaydi va tugmani ishlamayapti deb
+  // o'ylaydi. Bu yerda qilingani uchun har bir oynadagi tekshiruv birdaniga
+  // shu xatti-harakatga o'tadi.
+  if (isError) showModalError(message, modalForm === undefined ? openModalForm() : modalForm);
 }
 
 const AUTH_EXEMPT_PATHS = ["/api/auth/login", "/api/auth/me", "/api/auth/logout"];
@@ -897,7 +963,23 @@ function setupFieldValidationMessages(root = document) {
     field.addEventListener("invalid", () => {
       if (field.validity.valid) return;
       const message = validationMessageFor(field);
-      if (message) field.setCustomValidity(message);
+      if (!message) return;
+      field.setCustomValidity(message);
+      // Brauzerning o'z ko'chib yuruvchi xabariga tayanib bo'lmaydi: u
+      // birinchi bosishdayoq yo'qoladi va ba'zi holatlarda umuman
+      // ko'rsatilmaydi. Oyna ochiq bo'lsa, xabar oynada ham qoladi.
+      const backdrop = field.closest(".modal-backdrop:not(#app-dialog)");
+      if (backdrop) {
+        showModalError(message, backdrop.querySelector("form") || backdrop);
+        field.classList.add("field-invalid");
+        const clear = () => {
+          field.classList.remove("field-invalid");
+          field.removeEventListener("input", clear);
+          field.removeEventListener("change", clear);
+        };
+        field.addEventListener("input", clear);
+        field.addEventListener("change", clear);
+      }
     });
     // Cleared on edit, otherwise the field stays invalid after being corrected.
     const clear = () => field.setCustomValidity("");

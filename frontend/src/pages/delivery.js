@@ -1319,8 +1319,8 @@ function openLoadingConfirmationModal(batch) {
     event.preventDefault();
     const planned = numberValue(batch.summary?.total_planned_quantity || batch.items?.[0]?.planned_quantity);
     const loaded = numberValue(field(form, "loaded_quantity"));
-    if (!field(form, "actual_loading_date")) return showToast("Haqiqiy yuklash sanasi majburiy.", true);
-    if (!field(form, "loaded_quantity") || loaded <= 0) return showToast("Yuklangan miqdor 0 dan katta bo'lishi kerak.", true);
+    if (!field(form, "actual_loading_date")) return modalFormError(form, "Haqiqiy yuklash sanasi majburiy.", "actual_loading_date");
+    if (!field(form, "loaded_quantity") || loaded <= 0) return modalFormError(form, "Yuklangan miqdor 0 dan katta bo'lishi kerak.", "loaded_quantity");
     let allowOverPlanned = false;
     if (planned && loaded > planned) {
       allowOverPlanned = confirmMsg("Yuklangan miqdor reja miqdoridan oshgan. Davom etasizmi?");
@@ -1381,9 +1381,15 @@ function deliveryConfirmationModal(batch) {
             ["Yuklash manzili", logistics.loading_address],
             ["Yetkazish manzili", logistics.delivery_address],
             ["Reja yetkazish sanasi", logistics.planned_delivery_date || batch.planned_delivery_date],
+            // Taqqoslash aynan shu sana bilan boradi -- ko'rinib tursin.
+            ["Haqiqiy yuklash sanasi", actualLoadingDate],
           ])}</div>
           <div class="grid">
-            ${textField("actual_delivery_date", "Haqiqiy yetkazish sanasi", today, "date", { required: true })}
+            ${textField("actual_delivery_date", "Haqiqiy yetkazish sanasi", today, "date", {
+              required: true,
+              min: actualLoadingDate || undefined,
+              title: "Haqiqiy yetkazish sanasi haqiqiy yuklash sanasidan oldin bo'lishi mumkin emas.",
+            })}
             ${textArea("notes", "Izoh", "")}
           </div>
         </div>
@@ -1411,9 +1417,11 @@ function openDeliveryConfirmationModal(batch) {
     event.preventDefault();
     const actualLoadingDate = logistics.actual_pickup_date || batch.actual_loading_date;
     const actualDeliveryDate = field(form, "actual_delivery_date");
-    if (!actualLoadingDate) return showToast("Yetkazildi deb belgilash uchun avval yuklashni tasdiqlang.", true);
-    if (!actualDeliveryDate) return showToast("Haqiqiy yetkazish sanasi majburiy.", true);
-    if (actualDeliveryDate < actualLoadingDate) return showToast("Haqiqiy yetkazish sanasi haqiqiy yuklash sanasidan oldin bo'lishi mumkin emas.", true);
+    if (!actualLoadingDate) return modalFormError(form, "Yetkazildi deb belgilash uchun avval yuklashni tasdiqlang.");
+    if (!actualDeliveryDate) return modalFormError(form, "Haqiqiy yetkazish sanasi majburiy.", "actual_delivery_date");
+    if (actualDeliveryDate < actualLoadingDate) {
+      return modalFormError(form, "Haqiqiy yetkazish sanasi haqiqiy yuklash sanasidan oldin bo'lishi mumkin emas.", "actual_delivery_date");
+    }
     try {
       await api(`/api/delivery-batches/${batch.id}/confirm-delivery`, {
         method: "POST",

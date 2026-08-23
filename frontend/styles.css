@@ -4848,6 +4848,24 @@ body.public-layout.sidebar-collapsed .app-shell {
   outline-offset: -1px;
 }
 
+/* Oyna ichidagi xato satri: tugmaning yonida turadi va tuzatilgunga qadar
+   yo'qolmaydi -- toast ekranning narigi burchagida 3.6 soniyada o'chardi. */
+.modal-error {
+  margin: 0 20px 12px;
+  border: 1px solid #f0c3c3;
+  border-radius: 6px;
+  background: #fdf2f2;
+  color: var(--danger);
+  padding: 10px 12px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.field-invalid {
+  border-color: var(--danger) !important;
+  box-shadow: 0 0 0 2px rgba(200, 60, 60, 0.14);
+}
+
 .app-dialog-error {
   color: var(--danger);
   font-size: 12px;
