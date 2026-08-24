@@ -678,11 +678,31 @@ function bindRuDateFields(root = app) {
   });
 }
 
+// Ketayotgan so'rovlar soni. Formani ikki marta yuborishdan himoya shu
+// hisobga tayanadi: so'rovlar tugagach «bo'sh» hodisasi chiqadi va tugmalar
+// qaytadan ochiladi.
+let pendingRequests = 0;
+
+function requestStarted() {
+  pendingRequests += 1;
+}
+
+function requestFinished() {
+  pendingRequests = Math.max(0, pendingRequests - 1);
+  if (pendingRequests === 0) document.dispatchEvent(new CustomEvent("bitum:idle"));
+}
+
 async function api(path, options = {}) {
-  const response = await fetch(path, {
-    headers: { "Content-Type": "application/json", ...(options.headers || {}) },
-    ...options,
-  });
+  requestStarted();
+  let response;
+  try {
+    response = await fetch(path, {
+      headers: { "Content-Type": "application/json", ...(options.headers || {}) },
+      ...options,
+    });
+  } finally {
+    requestFinished();
+  }
   if (response.status === 204) return null;
   const body = await response.json().catch(() => ({}));
   if (!response.ok) {
@@ -694,7 +714,13 @@ async function api(path, options = {}) {
 }
 
 async function apiForm(path, formData, options = {}) {
-  const response = await fetch(path, { method: options.method || "POST", body: formData });
+  requestStarted();
+  let response;
+  try {
+    response = await fetch(path, { method: options.method || "POST", body: formData });
+  } finally {
+    requestFinished();
+  }
   const body = await response.json().catch(() => ({}));
   if (!response.ok) {
     handleAuthResponse(path, response);
@@ -758,6 +784,7 @@ function initSidebar() {
 
   localizeDom(document.body);
   observeDynamicForms();
+  guardDoubleSubmit();
   document.title = localizeText(document.title);
   const observer = new MutationObserver((mutations) => {
     mutations.forEach((mutation) => {
@@ -1215,6 +1242,46 @@ function setupFormattedNumberInputs(root = document) {
 // formatlanmasdi -- avtomatik to'ldirilgani «1 724 800 000», qo'lda kiritilgani
 // esa «25000000» bo'lib qolardi. Til kuzatuvchisi allaqachon body ni kuzatadi;
 // bular ham shu yerdan boshqariladi.
+// Formani ikki marta yuborish -- BIT-2026-0005 shartnomasi shu tarzda ikki
+// nusxada yaratilgan: PDF yuklanayotgan yetti soniya davomida ekranda hech
+// narsa o'zgarmagan va operator tugmani qayta bosgan.
+//
+// Yuborish paytida saqlash tugmalari yopiladi va «Saqlanmoqda...» deb turadi.
+// Ular barcha so'rovlar tugagach qaytadan ochiladi; agar ishlovchi umuman
+// so'rov yubormasa (masalan tekshiruv xatosi), qisqa vaqtdan keyin ochiladi.
+const SUBMIT_IDLE_FALLBACK_MS = 400;
+const MSG_SAVING = "Saqlanmoqda...";
+
+function guardDoubleSubmit() {
+  if (document.body.dataset.submitGuardBound) return;
+  document.body.dataset.submitGuardBound = "true";
+  document.addEventListener("submit", (event) => {
+    const form = event.target;
+    if (!(form instanceof HTMLFormElement) || form.dataset.submitBusy === "true") return;
+    const buttons = [...form.querySelectorAll('button[type="submit"], button:not([type])')];
+    if (!buttons.length) return;
+    form.dataset.submitBusy = "true";
+    const labels = buttons.map((button) => button.textContent);
+    buttons.forEach((button, index) => {
+      button.disabled = true;
+      if (index === 0) button.textContent = localizeText(MSG_SAVING);
+    });
+    const release = () => {
+      document.removeEventListener("bitum:idle", release);
+      window.clearTimeout(timer);
+      delete form.dataset.submitBusy;
+      buttons.forEach((button, index) => {
+        button.disabled = false;
+        button.textContent = labels[index];
+      });
+    };
+    const timer = window.setTimeout(() => {
+      if (pendingRequests === 0) release();
+    }, SUBMIT_IDLE_FALLBACK_MS);
+    document.addEventListener("bitum:idle", release);
+  }, true);
+}
+
 function observeDynamicForms() {
   if (document.body.dataset.dynamicFormObserverBound) return;
   document.body.dataset.dynamicFormObserverBound = "true";

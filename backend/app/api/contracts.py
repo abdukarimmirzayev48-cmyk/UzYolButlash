@@ -1136,11 +1136,43 @@ def get_next_contract_number(db: Session = Depends(get_db)):
     return {"contract_number": next_contract_number(db)}
 
 
+MSG_NUMBER_TAKEN = "Bu raqamli shartnoma allaqachon mavjud"
+
+
+def ensure_contract_number_free(db: Session, number: str, exclude_id: int | None = None) -> None:
+    """Bir xil raqamli ikkita shartnoma bo'lmasin.
+
+    BIT-2026-0005 ikki nusxada yaratilgan: PDF yuklanayotgan yetti soniya
+    davomida ekranda hech narsa o'zgarmagan va operator tugmani qayta bosgan.
+    Brauzer tomonidagi himoya ham qo'yildi, lekin oxirgi to'siq shu yerda
+    bo'lishi kerak -- ikkinchi tab, sekin tarmoq yoki qo'lda yuborilgan so'rov
+    ham shu yerda to'xtaydi.
+
+    Bekor qilingan shartnoma raqamni band qilmaydi: raqam qayta ishlatilishi
+    mumkin.
+    """
+    text = (number or "").strip()
+    if not text:
+        return
+    stmt = select(Contract.id).where(
+        func.lower(Contract.contract_number) == text.lower(),
+        Contract.status != ContractStatus.cancelled,
+    )
+    if exclude_id:
+        stmt = stmt.where(Contract.id != exclude_id)
+    if db.scalar(stmt):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"{MSG_NUMBER_TAKEN}: {text}",
+        )
+
+
 @router.post("", response_model=ContractDetail, status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_edit("sotuv"))])
 def create_contract(
     payload: ContractCreate, db: Session = Depends(get_db), user: User = Depends(get_current_user)
 ):
     ensure_optional_client_exists(db, payload.client_id)
+    ensure_contract_number_free(db, payload.contract_number)
     data = payload.model_dump(
         exclude={"items", "payment_terms", "transport_terms", "documents", "initial_note", "created_by"}
     )
@@ -1148,6 +1180,12 @@ def create_contract(
     # so whoever edited a contract could put any name in it -- on a legal
     # document that is not an author field, it is a guess.
     data["created_by"] = user.username
+    # Yangi shartnoma har doim qoralamadan boshlanadi. Sehrgardagi status
+    # ro'yxati holat mashinasini chetlab o'tishga imkon berardi: shartnomani
+    # to'g'ridan-to'g'ri «faol» qilib yaratish mumkin edi, ya'ni «imzolangan»
+    # bosqichi va uning izi umuman bo'lmasdi. Keyingi holatlar kartochkadagi
+    # tugmalar orqali, tarixga yozilib qo'yiladi.
+    data["status"] = ContractStatus.draft
     contract = Contract(**data)
     db.add(contract)
     db.flush()
@@ -1198,6 +1236,8 @@ def update_contract(contract_id: int, payload: ContractUpdate, db: Session = Dep
     data = payload.model_dump(exclude_unset=True, exclude={"items", "payment_terms", "transport_terms"})
     if "client_id" in data:
         ensure_client_exists(db, data["client_id"])
+    if data.get("contract_number"):
+        ensure_contract_number_free(db, data["contract_number"], exclude_id=contract.id)
     update_model(contract, data)
     if payload.items is not None:
         if not payload.items:

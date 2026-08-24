@@ -410,7 +410,6 @@ function contractWizardMainPanel(state) {
     ${textField("contract_date", "Shartnoma sanasi", state.contractDate || "", "date", { required: true })}
     ${textField("valid_until", "Amal qilish muddati", state.validUntil || "", "date", { required: true })}
     ${textField("title", "Sarlavha", state.title || "")}
-    ${selectField("status", "Status", contractStatuses, state.status || "draft", { required: true })}
     ${textArea("notes", "Izoh", state.notes || "")}
   </div>`;
 }
@@ -562,7 +561,7 @@ function contractWizardConfirmPanel(state) {
   return `${clientWarnings.length ? workflowWarningsPanel(["Mijoz ma'lumotlari to'liq emas. Shartnoma yaratilgandan keyin rekvizitlarni tekshiring.", ...clientWarnings]) : ""}
   <div class="confirm-grid">
     ${section("Mijoz", detailList([["Mijoz nomi", state.client?.name], ["STIR", state.client?.inn], ["Telefon", state.client?.phone], ["Yuridik manzil", contractWizardAddressText(contractWizardLegalAddress(state.client))], ["Bank rekvizitlari", contractWizardBankText(contractWizardPrimaryBank(state.client))]]))}
-    ${section("Asosiy ma'lumotlar", detailList([["Shartnoma raqami", state.contractNumber], ["Shartnoma sanasi", state.contractDate], ["Amal qilish muddati", state.validUntil], ["Sarlavha", state.title], ["Status", optionLabel(contractStatuses, state.status)]]))}
+    ${section("Asosiy ma'lumotlar", detailList([["Shartnoma raqami", state.contractNumber], ["Shartnoma sanasi", state.contractDate], ["Amal qilish muddati", state.validUntil], ["Sarlavha", state.title]]))}
     ${section("Mahsulotlar", `${detailList([["Jami miqdor", fmtQty(totals.quantity)], ["Mahsulot oraliq summasi", fmtMoney(totals.subtotal)], ["QQS", fmtMoney(totals.vat)], ["Jami summa", fmtMoney(totals.total)]])}<div class="empty compact">${products || dash}</div>`)}
     ${section("To'lov shartlari", detailList([["Avans foizi", `${fmt(totals.advancePercent)}%`], ["Avans summasi", fmtMoney(totals.advanceAmount)], ["Qoldiq foizi", `${fmt(totals.remainingPercent)}%`], ["Avans muddati, kun", state.advanceDueDays], ["Partiya to'lovi muddati, kun", state.batchPaymentDueDays], ["Qoldiq to'lov qoidasi", state.remainingPaymentRule]]))}
     ${section("Transport shartlari", detailList([["Transport to'lovi turi", optionLabel(transportPaymentTypes, state.transportPaymentType)], ["Yetkazib berish usuli", optionLabel(deliveryMethods, state.deliveryMethod)], ["Izoh", state.transportNotes]]))}
@@ -603,7 +602,6 @@ function syncContractWizardInputs(state) {
   if (form.elements.contract_date) state.contractDate = form.elements.contract_date.value;
   if (form.elements.valid_until) state.validUntil = form.elements.valid_until.value;
   if (form.elements.title) state.title = form.elements.title.value.trim();
-  if (form.elements.status) state.status = form.elements.status.value;
   if (form.elements.notes) state.notes = form.elements.notes.value.trim();
   if (form.elements.advance_percent) state.advancePercent = form.elements.advance_percent.value;
   if (form.elements.advance_due_days) state.advanceDueDays = form.elements.advance_due_days.value;
@@ -646,7 +644,7 @@ function validateContractWizardStep(state, targetStep = state.step) {
   if (targetStep >= 2) {
     if (!state.contractNumber || !state.contractDate || !state.validUntil) return "Shartnoma raqami, shartnoma sanasi va amal qilish muddati majburiy.";
     if (state.validUntil < state.contractDate) return "Amal qilish muddati shartnoma sanasidan oldin bo'lishi mumkin emas.";
-    if (!state.status) return "Statusni tanlang.";
+
   }
   if (targetStep >= 3) {
     const items = state.items || [];
@@ -675,7 +673,9 @@ function collectContractWizardPayload(state) {
     contract_date: state.contractDate,
     valid_until: state.validUntil,
     title: state.title || null,
-    status: state.status || "draft",
+    // Server baribir qoralama qilib yozadi -- bu yerda ham shu turadi, ikkalasi
+    // bir xil gapirsin.
+    status: "draft",
     currency: state.currency || "UZS",
     notes: state.notes || null,
     items: (state.items || []).map((item) => ({
