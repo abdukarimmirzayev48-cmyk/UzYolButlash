@@ -1263,7 +1263,7 @@ async function orderChildForm(order, kind, item = {}) {
     };
   }
   if (kind === "documents") {
-    return { title: item.id ? "Hujjatni tahrirlash" : "Hujjat qo'shish", tab: "documents", path: "documents", body: `<div class="grid">${selectField("document_type", "Hujjat turi", orderDocumentTypes, item.document_type || "other")}${textField("title", "Hujjat nomi", item.title)}${textField("file_url", "Fayl havolasi", item.file_url)}${textField("uploaded_by", "Yuklagan", item.uploaded_by)}</div>`, payload: (form) => ({ document_type: field(form, "document_type"), title: field(form, "title"), file_url: field(form, "file_url"), uploaded_by: field(form, "uploaded_by") }) };
+    return { title: item.id ? "Hujjatni tahrirlash" : "Hujjat qo'shish", tab: "documents", path: "documents", body: `<div class="grid">${selectField("document_type", "Hujjat turi", orderDocumentTypes, item.document_type || "other")}${textField("title", "Hujjat nomi", item.title)}${textField("file_url", "Fayl havolasi", item.file_url)}</div>`, payload: (form) => ({ document_type: field(form, "document_type"), title: field(form, "title"), file_url: field(form, "file_url") }) };
   }
   return { title: "Izoh qo'shish", tab: "notes", path: "notes", body: `<div class="grid">${textArea("note", "Izoh", item.note)}${textField("created_by", "Foydalanuvchi", item.created_by)}</div>`, payload: (form) => ({ note: field(form, "note"), created_by: field(form, "created_by") }) };
 }
@@ -1639,7 +1639,7 @@ function openOrderDocumentModal(order) {
       <div class="modal-header"><h2>Hujjat yuklash</h2><button class="modal-close" type="button" data-modal-close aria-label="Yopish">×</button></div>
       <form id="order-document-modal-form">
         <div class="modal-body"><div class="modal-summary">${orderSummaryForModal(order)}</div>
-          <div class="grid">${selectField("document_type", "Hujjat turi", orderDocumentTypes, "other", { required: true })}${textField("title", "Hujjat nomi", `${order.order_number} hujjati`, "text", { required: true })}${textField("uploaded_by", "Yuklagan")}<label class="form-field">Fayl <span class="required-mark">*</span><input name="file" type="file" required /></label></div>
+          <div class="grid">${selectField("document_type", "Hujjat turi", orderDocumentTypes, "other", { required: true })}${textField("title", "Hujjat nomi", `${order.order_number} hujjati`, "text", { required: true })}<label class="form-field">Fayl <span class="required-mark">*</span><input name="file" type="file" required /></label></div>
         </div>
         <div class="modal-footer"><button class="btn" type="button" data-modal-close>Bekor qilish</button><button class="btn primary" type="submit">Yuklash</button></div>
       </form>

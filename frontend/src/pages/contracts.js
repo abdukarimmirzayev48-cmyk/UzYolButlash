@@ -543,12 +543,11 @@ function contractWizardTransportPanel(state) {
 
 function contractWizardDocumentsPanel(state) {
   const documents = state.documents || [];
-  return `${tableOrEmpty(documents, ["Hujjat turi", "Hujjat nomi", "Fayl", "Yuklagan", ""], (doc, index) => `
+  return `${tableOrEmpty(documents, ["Hujjat turi", "Hujjat nomi", "Fayl", ""], (doc, index) => `
     <tr data-contract-wizard-document="${index}">
       <td><select name="document_type_${index}">${contractDocumentTypes.map(([key, label]) => `<option value="${key}" ${doc.document_type === key ? "selected" : ""}>${label}</option>`).join("")}</select></td>
       <td><input name="document_title_${index}" value="${esc(doc.title || "")}" /></td>
       <td><input type="file" name="document_file_${index}" />${doc.file ? `<small class="helper-text">${esc(doc.file.name)}</small>` : ""}</td>
-      <td><input name="document_uploaded_by_${index}" value="${esc(doc.uploaded_by || "")}" /></td>
       <td><button type="button" class="link-btn" data-contract-wizard-remove-document="${index}">Olib tashlash</button></td>
     </tr>
   `, "Hujjat ma'lumotlari kiritilmagan.")}
@@ -638,7 +637,6 @@ function syncContractWizardInputs(state) {
       document_type: form.elements[`document_type_${index}`]?.value || "other",
       title: form.elements[`document_title_${index}`]?.value.trim() || "",
       file: form.elements[`document_file_${index}`]?.files?.[0] || existingDocuments[index]?.file || null,
-      uploaded_by: form.elements[`document_uploaded_by_${index}`]?.value.trim() || "",
     }));
   }
 }
@@ -664,8 +662,8 @@ function validateContractWizardStep(state, targetStep = state.step) {
     if (!state.remainingPaymentRule) return "Qoldiq to'lov qoidasi majburiy.";
   }
   if (targetStep >= 5 && (!state.transportPaymentType || !state.deliveryMethod)) return "Transport shartlarini tanlang.";
-  if (targetStep >= 6 && (state.documents || []).some((doc) => (doc.file || doc.uploaded_by || doc.document_type !== "other") && !doc.title)) return "Hujjat nomini kiriting yoki bo'sh hujjat qatorini olib tashlang.";
-  if (targetStep >= 6 && (state.documents || []).some((doc) => (doc.title || doc.uploaded_by || doc.document_type !== "other") && !doc.file)) return "Hujjat faylini kompyuterdan tanlang yoki bo'sh hujjat qatorini olib tashlang.";
+  if (targetStep >= 6 && (state.documents || []).some((doc) => (doc.file || doc.document_type !== "other") && !doc.title)) return "Hujjat nomini kiriting yoki bo'sh hujjat qatorini olib tashlang.";
+  if (targetStep >= 6 && (state.documents || []).some((doc) => (doc.title || doc.document_type !== "other") && !doc.file)) return "Hujjat faylini kompyuterdan tanlang yoki bo'sh hujjat qatorini olib tashlang.";
   return null;
 }
 
@@ -714,7 +712,6 @@ async function uploadContractWizardDocuments(contractId, state) {
     const formData = new FormData();
     formData.append("document_type", document.document_type || "other");
     formData.append("title", document.title);
-    if (document.uploaded_by) formData.append("uploaded_by", document.uploaded_by);
     formData.append("file", document.file);
     await apiForm(`/api/contracts/${contractId}/documents/upload`, formData);
   }
@@ -764,7 +761,7 @@ function bindContractWizard(state, draw) {
   }));
   document.querySelector("[data-contract-wizard-add-document]")?.addEventListener("click", async () => {
     syncContractWizardInputs(state);
-    state.documents.push({ document_type: "other", title: "", file: null, uploaded_by: "" });
+    state.documents.push({ document_type: "other", title: "", file: null });
     await draw();
   });
   document.querySelectorAll("[data-contract-wizard-remove-document]").forEach((button) => button.addEventListener("click", async () => {
@@ -1685,13 +1682,11 @@ function contractChildForm(kind, item = {}, products = []) {
       path: "documents",
       multipart: true,
       uploadPath: item.id ? `documents/${item.id}/upload` : "documents/upload",
-      body: `<div class="grid">${selectField("document_type", "Hujjat turi", contractDocumentTypes, item.document_type || "other")}${textField("title", "Hujjat nomi", item.title)}<label>Fayl${item.id ? "" : ' <span class="required-mark">*</span>'}<input type="file" name="file" ${item.id ? "" : "required"} /></label>${textField("uploaded_by", "Yuklagan", item.uploaded_by)}</div>${item.file_url ? `<div class="empty compact">Joriy fayl: <a class="link-btn" target="_blank" href="${esc(item.file_url)}">Ochish</a></div>` : ""}`,
+      body: `<div class="grid">${selectField("document_type", "Hujjat turi", contractDocumentTypes, item.document_type || "other")}${textField("title", "Hujjat nomi", item.title)}<label>Fayl${item.id ? "" : ' <span class="required-mark">*</span>'}<input type="file" name="file" ${item.id ? "" : "required"} /></label></div>${item.file_url ? `<div class="empty compact">Joriy fayl: <a class="link-btn" target="_blank" href="${esc(item.file_url)}">Ochish</a></div>` : ""}`,
       payload: (form) => {
         const formData = new FormData();
         formData.append("document_type", field(form, "document_type") || "other");
         formData.append("title", field(form, "title") || "");
-        const uploadedBy = field(form, "uploaded_by");
-        if (uploadedBy) formData.append("uploaded_by", uploadedBy);
         if (form.elements.file.files[0]) formData.append("file", form.elements.file.files[0]);
         return formData;
       },

@@ -1743,6 +1743,9 @@ function batchWarningMessages(batch = {}) {
   // jumladan iborat bo'lmaydi.
   const differenceWarnings = batch.difference?.warnings || [];
   differenceWarnings.forEach((message) => warnings.push(message));
+  // Shartnomadagi transport shartlari: yetkazib berish usuli va transport
+  // to'lovi turi. Ikkalasi ham server tomonida tekshiriladi.
+  (batch.transport_check?.warnings || []).forEach((message) => warnings.push(message));
   if (!differenceWarnings.length && qStatus.key === "difference") warnings.push("Yuklangan va qabul qilingan miqdor farq qiladi.");
   if (dStatus.key !== "complete") warnings.push("Hujjatlar hali to'liq yuklanmagan.");
   return warnings;

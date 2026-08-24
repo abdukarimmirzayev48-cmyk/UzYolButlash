@@ -506,8 +506,8 @@ function childForm(kind, item = {}) {
   if (kind === "documents") {
     return {
       title: item.id ? "Hujjatni tahrirlash" : "Hujjat qo'shish",
-      body: `<div class="grid">${selectField("document_type", "Hujjat turi", documentTypes, item.document_type || "other")}${textField("title", "Hujjat nomi", item.title, "text", { required: true, maxlength: 255 })}${textField("file_url", "Fayl havolasi", item.file_url, "url", { maxlength: 500, placeholder: "https://..." })}${textField("uploaded_by", "Yuklagan", item.uploaded_by, "text", { maxlength: 120 })}</div>`,
-      payload: (form) => ({ document_type: field(form, "document_type"), title: field(form, "title"), file_url: field(form, "file_url"), uploaded_by: field(form, "uploaded_by") }),
+      body: `<div class="grid">${selectField("document_type", "Hujjat turi", documentTypes, item.document_type || "other")}${textField("title", "Hujjat nomi", item.title, "text", { required: true, maxlength: 255 })}${textField("file_url", "Fayl havolasi", item.file_url, "url", { maxlength: 500, placeholder: "https://..." })})}</div>`,
+      payload: (form) => ({ document_type: field(form, "document_type"), title: field(form, "title"), file_url: field(form, "file_url") }),
     };
   }
   return {

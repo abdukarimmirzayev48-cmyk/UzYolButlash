@@ -26,6 +26,7 @@ from backend.app.models.finance import (
     PaymentAllocation,
     PaymentStatus,
 )
+from backend.app.models.user import User
 from backend.app.models.order import Order
 from backend.app.schemas.client import Page
 from backend.app.schemas.finance import (
@@ -49,7 +50,7 @@ from backend.app.schemas.finance import (
     PaymentSummary,
     PaymentUpdate,
 )
-from backend.app.services.auth import require_edit
+from backend.app.services.auth import get_current_user, require_edit
 from backend.app.services.order_status import sync_order_status
 from backend.app.services.contract_status import sync_contract_status, sync_contracts_for_invoices
 
@@ -535,9 +536,9 @@ def upload_document(
     contract_id: int | None = Form(None),
     invoice_id: int | None = Form(None),
     payment_id: int | None = Form(None),
-    uploaded_by: str | None = Form(None),
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
 ):
     if not file.filename:
         raise HTTPException(status_code=422, detail="Fayl majburiy.")
@@ -561,7 +562,9 @@ def upload_document(
         document_type=document_type,
         title=title,
         file_url=f"/static/uploads/finance/{stored_name}",
-        uploaded_by=uploaded_by,
+        # Hujjatni kim yuklaganini brauzer emas, sessiya aytadi -- ilgari bu
+        # formadagi matn qutisi edi va odatda bo'sh qolardi.
+        uploaded_by=user.username,
     )
     db.add(document)
     db.commit()

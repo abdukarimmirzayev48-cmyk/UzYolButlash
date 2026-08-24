@@ -17,6 +17,7 @@ from backend.app.models.contract import Contract, ContractItem, TransportPayment
 from backend.app.models.delivery import BatchStatus, DeliveryBatch, DeliveryBatchItem
 from backend.app.models.finance import CustomerInvoice, InvoiceStatus
 from backend.app.models.procurement import Procurement, SupplierAddress
+from backend.app.models.user import User
 from backend.app.models.order import (
     FulfillmentType,
     Order,
@@ -56,7 +57,7 @@ from backend.app.schemas.order import (
 )
 from backend.app.services.order_status import MANUAL_ORDER_STATUSES, sync_order_status
 from backend.app.services.contract_status import sync_contract_status
-from backend.app.services.auth import require_edit
+from backend.app.services.auth import get_current_user, require_edit
 from backend.app.services.product_summary import product_summary
 
 
@@ -964,9 +965,9 @@ def upload_document(
     order_id: int,
     document_type: OrderDocumentType = Form(...),
     title: str = Form(...),
-    uploaded_by: str | None = Form(None),
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
 ):
     if not file.filename:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Fayl majburiy.")
@@ -982,7 +983,9 @@ def upload_document(
         document_type=document_type,
         title=title,
         file_url=f"/static/uploads/orders/{stored_name}",
-        uploaded_by=uploaded_by,
+        # Hujjatni kim yuklaganini brauzer emas, sessiya aytadi -- ilgari bu
+        # formadagi matn qutisi edi va odatda bo'sh qolardi.
+        uploaded_by=user.username,
     )
     db.add(document)
     db.flush()

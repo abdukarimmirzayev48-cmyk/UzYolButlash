@@ -29,6 +29,7 @@ from backend.app.models.delivery import (
 )
 from backend.app.models.finance import CustomerInvoice
 from backend.app.models.inventory import StockAllocation
+from backend.app.models.user import User
 from backend.app.models.order import Order, OrderItem
 from backend.app.models.procurement import SupplierAddress, SupplierAddressType
 from backend.app.models.transport import Transport
@@ -37,7 +38,7 @@ from backend.app.services.auth import get_current_user, require_edit
 from backend.app.services.order_status import sync_order_status
 from backend.app.services.telegram_bot import notify_driver_of_trip
 from backend.app.services.product_summary import product_summary
-from backend.app.services import batch_difference
+from backend.app.services import batch_difference, batch_transport_check
 from backend.app.schemas.client import Page
 from backend.app.schemas.delivery import (
     DeliveryBatchAcceptanceConfirm,
@@ -58,6 +59,7 @@ from backend.app.schemas.delivery import (
     DeliveryBatchNoteRead,
     DeliveryBatchNoteUpdate,
     DeliveryBatchSummary,
+    DeliveryBatchTransportCheck,
     DeliveryBatchUpdate,
     LogisticsCreate,
     LogisticsDetail,
@@ -131,6 +133,10 @@ MANUAL_LOGISTICS_STATUSES = {
 
 def qty(value: Decimal | None) -> Decimal:
     return Decimal(value or 0).quantize(QTY)
+
+
+def money(value: Decimal | float | None) -> Decimal:
+    return Decimal(str(value or 0)).quantize(Decimal("0.01"))
 
 
 def update_model(instance: Any, data: dict[str, Any]) -> Any:
@@ -598,6 +604,7 @@ def get_batch_detail(batch_id: int, db: Session = Depends(get_db)):
         "summary": batch_summary(batch),
         "order_item_balances": balances_for_batch(db, batch),
         "difference": difference_read(batch),
+        "transport_check": transport_check_read(batch),
     })
 
 
@@ -615,6 +622,28 @@ def difference_for(batch: DeliveryBatch) -> batch_difference.Difference:
             for item in batch.items
         ],
         resolution=batch.difference_resolution,
+    )
+
+
+def transport_check_read(batch: DeliveryBatch) -> DeliveryBatchTransportCheck:
+    """Partiya transporti shartnomadagi shartlarga mos keladimi."""
+    terms = batch.contract.transport_terms if batch.contract else None
+    logistics = batch.logistics
+    check = batch_transport_check.check_transport(
+        delivery_method=terms.delivery_method.value if terms else None,
+        transport_payment_type=terms.transport_payment_type.value if terms else None,
+        # Logistika modulida temir yo'l yo'q: biriktirilgan har qanday
+        # transport avtotransport hisoblanadi.
+        has_road_transport=bool(
+            logistics and (logistics.vehicle_number or logistics.driver_name or logistics.carrier_name)
+        ),
+        customer_price=logistics.customer_price if logistics else 0,
+    )
+    return DeliveryBatchTransportCheck(
+        delivery_method=check.delivery_method,
+        transport_payment_type=check.transport_payment_type,
+        customer_price=money(check.customer_price),
+        warnings=check.warnings or [],
     )
 
 
@@ -921,9 +950,9 @@ def upload_batch_document(
     batch_id: int,
     document_type: BatchDocumentType = Form(...),
     title: str = Form(...),
-    uploaded_by: str | None = Form(None),
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
 ):
     if not file.filename:
         raise HTTPException(status_code=422, detail="Fayl majburiy.")
@@ -939,7 +968,9 @@ def upload_batch_document(
         document_type=document_type,
         title=title,
         file_url=f"/static/uploads/delivery-batches/{stored_name}",
-        uploaded_by=uploaded_by,
+        # Hujjatni kim yuklaganini brauzer emas, sessiya aytadi -- ilgari bu
+        # formadagi matn qutisi edi va odatda bo'sh qolardi.
+        uploaded_by=user.username,
     )
     db.add(document)
     db.commit()

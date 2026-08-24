@@ -702,8 +702,8 @@ def load_contract_detail(db: Session, contract_id: int) -> Contract:
 @router.post("/parse-pdf", dependencies=[Depends(require_edit("sotuv"))])
 def parse_contract_pdf_endpoint(
     file: UploadFile = File(...),
-    uploaded_by: str | None = Form(None),
     db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
 ):
     stored_path, file_size = store_original_pdf(file)
     try:
@@ -718,7 +718,7 @@ def parse_contract_pdf_endpoint(
             warnings_json=json.dumps([str(exc)], ensure_ascii=False),
             confidence=Decimal("0"),
             status=ContractParseSessionStatus.failed,
-            created_by=uploaded_by,
+            created_by=user.username,
         )
         db.add(session)
         db.commit()
@@ -736,7 +736,7 @@ def parse_contract_pdf_endpoint(
         warnings_json=json.dumps(result.warnings, ensure_ascii=False),
         confidence=result.confidence,
         status=ContractParseSessionStatus.parsed,
-        created_by=uploaded_by,
+        created_by=user.username,
     )
     db.add(session)
     db.flush()
@@ -747,7 +747,7 @@ def parse_contract_pdf_endpoint(
             file_path=relative_storage_path(stored_path) or str(stored_path),
             file_type="application/pdf",
             file_size=file_size,
-            uploaded_by=uploaded_by,
+            uploaded_by=user.username,
         )
     )
     db.commit()
@@ -1361,17 +1361,20 @@ def upload_document(
     contract_id: int,
     document_type: ContractDocumentType = Form(...),
     title: str = Form(...),
-    uploaded_by: str | None = Form(None),
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
 ):
     get_contract_or_404(db, contract_id)
+    # Hujjatni kim yuklaganini brauzer emas, sessiya aytadi. Ilgari bu formadagi
+    # matn qutisi edi: odatda bo'sh qolardi, to'ldirilganda ham istalgan ism
+    # yozish mumkin edi -- ya'ni tarixdagi ism taxmindan boshqa narsa emasdi.
     document = ContractDocument(
         contract_id=contract_id,
         document_type=document_type,
         title=title,
         file_url=store_contract_upload(file),
-        uploaded_by=uploaded_by,
+        uploaded_by=user.username,
     )
     db.add(document)
     db.commit()
@@ -1385,14 +1388,14 @@ def replace_document_file(
     document_id: int,
     document_type: ContractDocumentType = Form(...),
     title: str = Form(...),
-    uploaded_by: str | None = Form(None),
     file: UploadFile | None = File(None),
     db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
 ):
     document = get_child_or_404(db, ContractDocument, contract_id, document_id)
     document.document_type = document_type
     document.title = title
-    document.uploaded_by = uploaded_by
+    document.uploaded_by = user.username
     if file and file.filename:
         document.file_url = store_contract_upload(file)
     db.commit()

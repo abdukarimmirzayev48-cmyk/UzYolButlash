@@ -286,6 +286,13 @@ class DeliveryBatchDifferenceRead(BaseModel):
     warnings: list[str] = Field(default_factory=list)
 
 
+class DeliveryBatchTransportCheck(BaseModel):
+    delivery_method: str | None = None
+    transport_payment_type: str | None = None
+    customer_price: Decimal = Decimal("0")
+    warnings: list[str] = Field(default_factory=list)
+
+
 class DeliveryBatchCompletionConfirm(BaseModel):
     completed_date: date
     notes: str | None = None
@@ -356,6 +363,9 @@ class DeliveryBatchDetail(DeliveryBatchRead):
     summary: DeliveryBatchSummary | None = None
     order_item_balances: list[OrderItemBatchBalance] = Field(default_factory=list)
     difference: DeliveryBatchDifferenceRead | None = None
+    # Shartnomadagi transport shartlari bajarilyaptimi -- bloklamaydi,
+    # faqat ekranda ko'rsatiladi.
+    transport_check: DeliveryBatchTransportCheck | None = None
 
 
 class LogisticsListItem(LogisticsRead):
