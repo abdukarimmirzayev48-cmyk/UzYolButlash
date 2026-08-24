@@ -5534,6 +5534,149 @@ body.public-layout.sidebar-collapsed .app-shell {
 
 /* ---- ro'yxat ustidagi qidiruv maydoni ---- */
 
+/* Qidiruvli tanlov: bitta maydon, bosilganda ichida qidiruvi bor ro'yxat
+   ochiladi. Asl <select> shu yerda qoladi va qiymatni saqlaydi -- u ko'zdan
+   yashiriladi, lekin display:none qilinmaydi: majburiy maydonni brauzer
+   fokuslay olishi kerak. */
+.combo {
+  position: relative;
+  min-width: 0;
+}
+
+/* Kartochka burchaklarini yumaloqlash uchun `overflow: hidden` qo'yilgan --
+   u ochilgan ro'yxatni ham kesib tashlardi. Ichida combo bo'lgan kartochka
+   kesmaydi; burchaklar baribir joyida qoladi, chunki ichidagi hech narsa
+   ulardan chiqmaydi. */
+.card:has(.combo),
+.modal-panel:has(.combo),
+.ops-table-card:has(.combo) {
+  overflow: visible;
+}
+
+.combo-native {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.combo-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  min-height: 38px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface);
+  color: inherit;
+  padding: 8px 12px;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.combo-trigger:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -1px;
+}
+
+.combo-trigger.is-empty .combo-value {
+  color: var(--muted);
+}
+
+.combo-value {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.combo-caret {
+  flex: 0 0 auto;
+  color: var(--muted);
+}
+
+.combo-panel {
+  position: absolute;
+  z-index: 40;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: 0 16px 34px rgba(16, 24, 40, 0.16);
+  padding: 8px;
+}
+
+.combo-search {
+  width: 100%;
+  min-height: 34px;
+  margin-bottom: 6px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 0 10px;
+  font-size: 13px;
+}
+
+.combo-search:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: -1px;
+}
+
+.combo-list {
+  max-height: 260px;
+  overflow-y: auto;
+}
+
+.combo-group {
+  padding: 8px 10px 4px;
+  color: var(--muted);
+  font-size: 11.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.combo-option {
+  display: block;
+  width: 100%;
+  border: 0;
+  border-radius: 5px;
+  background: none;
+  color: inherit;
+  padding: 8px 10px;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.combo-option:hover,
+.combo-option.is-active {
+  background: var(--surface-soft);
+}
+
+.combo-option.is-chosen {
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.combo-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  border-top: 1px solid var(--line);
+  margin-top: 6px;
+  padding-top: 8px;
+  color: var(--muted);
+  font-size: 11.5px;
+  font-weight: 600;
+}
+
 .select-search {
   display: flex;
   align-items: center;

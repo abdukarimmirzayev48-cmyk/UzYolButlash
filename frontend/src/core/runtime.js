@@ -438,58 +438,170 @@ function selectSearch(selectName, placeholder = "Qidirish") {
   </div>`;
 }
 
+// Bitta maydon: bosilganda ichida qidiruvi bor ro'yxat ochiladi. Ilgari
+// qidiruv qutisi <select> ning tepasida alohida turardi -- foydalanuvchi uni
+// ro'yxatning bir qismi deb bilmasdi va 267 ta mijoz ichidan sichqoncha bilan
+// qidirardi.
+//
+// <select> o'z joyida qoladi va qiymatni o'zi saqlaydi: `required`, `change`
+// ishlovchilari va `field()` avvalgidek ishlayveradi -- faqat ustiga ko'rinish
+// qo'yiladi. Shuning uchun chaqiruvchi sahifalarda hech narsa o'zgarmadi.
+
+// Ro'yxat bir yo'la nechta qator chizadi. Qolganini «Barchasini ko'rsatish»
+// ochadi: 267 ta qatorni har bosishda chizish sezilarli sekinlik beradi.
+const COMBO_PAGE = 50;
+
+function comboOptionRows(select) {
+  // Asl <option> tugunlari saqlanadi: ularni new Option() bilan qayta yasash
+  // har qanday data-* atributini yo'qotadi va optgroup larni tekislaydi.
+  return [...select.querySelectorAll("option")].map((option, index) => ({
+    index,
+    value: option.value,
+    label: option.textContent.trim(),
+    haystack: option.textContent.toLowerCase(),
+    group: option.parentElement.tagName === "OPTGROUP" ? option.parentElement.label : null,
+  }));
+}
+
+function buildCombobox(holder, search, select) {
+  const rows = comboOptionRows(select);
+  const real = rows.filter((row) => row.value).length;
+  const placeholder = search.getAttribute("placeholder") || "Qidirish";
+  const emptyLabel = rows.find((row) => !row.value)?.label || "Tanlang";
+
+  const combo = document.createElement("div");
+  combo.className = "combo";
+  combo.innerHTML = `
+    <button type="button" class="combo-trigger" aria-haspopup="listbox" aria-expanded="false">
+      <span class="combo-value"></span><span class="combo-caret" data-noloc>▾</span>
+    </button>
+    <div class="combo-panel" hidden>
+      <input type="search" class="combo-search" placeholder="${esc(placeholder)}" autocomplete="off" />
+      <div class="combo-list" role="listbox"></div>
+      <div class="combo-foot"><span class="combo-count" data-noloc></span><button type="button" class="link-btn combo-more" hidden>Barchasini ko'rsatish</button></div>
+    </div>`;
+  // Combo <select> ning o'z joyiga qo'yiladi, qidiruv qutisining joyiga emas:
+  // aks holda u <label> dan tashqariga chiqib ketadi va yorliq matni
+  // maydonsiz qolib ketardi.
+  select.insertAdjacentElement("beforebegin", combo);
+  combo.appendChild(select);
+  select.classList.add("combo-native");
+  holder.remove();
+
+  const trigger = combo.querySelector(".combo-trigger");
+  const panel = combo.querySelector(".combo-panel");
+  const input = combo.querySelector(".combo-search");
+  const list = combo.querySelector(".combo-list");
+  const count = combo.querySelector(".combo-count");
+  const more = combo.querySelector(".combo-more");
+  let limit = COMBO_PAGE;
+  let active = -1;
+
+  const showValue = () => {
+    const chosen = rows.find((row) => row.value === select.value);
+    const text = chosen && chosen.value ? chosen.label : emptyLabel;
+    trigger.querySelector(".combo-value").textContent = text;
+    trigger.classList.toggle("is-empty", !(chosen && chosen.value));
+  };
+
+  const matches = () => {
+    const query = input.value.trim().toLowerCase();
+    return rows.filter((row) => row.value && (!query || row.haystack.includes(query)));
+  };
+
+  const draw = () => {
+    const found = matches();
+    const shown = found.slice(0, limit);
+    let groupName = null;
+    list.innerHTML = shown.map((row) => {
+      const head = row.group && row.group !== groupName ? `<div class="combo-group">${esc(row.group)}</div>` : "";
+      groupName = row.group;
+      const chosen = row.value === select.value;
+      return `${head}<button type="button" class="combo-option${chosen ? " is-chosen" : ""}" role="option" aria-selected="${chosen}" data-combo-value="${esc(row.value)}">${esc(row.label)}</button>`;
+    }).join("") || `<div class="empty">Topilmadi.</div>`;
+    count.textContent = input.value.trim() ? `${found.length} / ${real}` : `${real} ta`;
+    more.hidden = found.length <= limit;
+    active = -1;
+  };
+
+  const setActive = (step) => {
+    const options = [...list.querySelectorAll(".combo-option")];
+    if (!options.length) return;
+    active = (active + step + options.length) % options.length;
+    options.forEach((option, index) => option.classList.toggle("is-active", index === active));
+    options[active].scrollIntoView({ block: "nearest" });
+  };
+
+  const choose = (value) => {
+    select.value = value;
+    select.dispatchEvent(new Event("change", { bubbles: true }));
+    showValue();
+    close();
+  };
+
+  const open = () => {
+    panel.hidden = false;
+    trigger.setAttribute("aria-expanded", "true");
+    limit = COMBO_PAGE;
+    input.value = "";
+    draw();
+    input.focus();
+  };
+
+  function close() {
+    panel.hidden = true;
+    trigger.setAttribute("aria-expanded", "false");
+  }
+
+  trigger.addEventListener("click", () => (panel.hidden ? open() : close()));
+  input.addEventListener("input", () => { limit = COMBO_PAGE; draw(); });
+  more.addEventListener("click", () => { limit = rows.length; draw(); });
+  list.addEventListener("click", (event) => {
+    const option = event.target.closest("[data-combo-value]");
+    if (option) choose(option.dataset.comboValue);
+  });
+  input.addEventListener("keydown", (event) => {
+    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+      event.preventDefault();
+      setActive(event.key === "ArrowDown" ? 1 : -1);
+    } else if (event.key === "Enter") {
+      event.preventDefault();
+      const option = list.querySelectorAll(".combo-option")[active] || list.querySelector(".combo-option");
+      if (option) choose(option.dataset.comboValue);
+    } else if (event.key === "Escape") {
+      close();
+      trigger.focus();
+    }
+  });
+  // Tashqariga bosilganda yopiladi. Sahifa qayta chizilganda combo DOM dan
+  // chiqib ketadi -- shunda kuzatuvchi ham o'zini olib tashlaydi, aks holda
+  // har chizishda bittadan ishlovchi to'planib boraveradi.
+  const onDocumentClick = (event) => {
+    if (!combo.isConnected) {
+      document.removeEventListener("click", onDocumentClick);
+      return;
+    }
+    if (!panel.hidden && !combo.contains(event.target)) close();
+  };
+  document.addEventListener("click", onDocumentClick);
+  // Qiymat boshqa joydan o'zgarsa (masalan formani to'ldirish), tugma matni
+  // ham yangilanishi kerak.
+  select.addEventListener("change", showValue);
+  // Majburiy maydon bo'sh qolsa brauzer yashirilgan <select> ni fokuslay
+  // olmaydi -- ro'yxatni o'zimiz ochamiz.
+  select.addEventListener("invalid", () => { open(); });
+
+  showValue();
+  draw();
+}
+
 function bindSelectSearch(root = app) {
   root.querySelectorAll("[data-select-filter]").forEach((search) => {
     if (search.dataset.searchBound) return;
     search.dataset.searchBound = "true";
     const select = root.querySelector(`select[name="${search.dataset.selectFilter}"]`);
     if (!select) return;
-    const counter = search.parentElement.querySelector("[data-select-count]");
-    // Keep the original <option> nodes, not just their text. Rebuilding them
-    // with new Option() dropped every data-* attribute and flattened the
-    // optgroups -- which silently broke selects whose options carry data the
-    // form depends on (the product picker filled in nothing at all).
-    const all = [...select.querySelectorAll("option")].map((option) => ({
-      node: option.cloneNode(true),
-      value: option.value,
-      haystack: option.textContent.toLowerCase(),
-      group: option.parentElement.tagName === "OPTGROUP" ? option.parentElement.label : null,
-    }));
-    const real = all.filter((option) => option.value).length;
-
-    const apply = () => {
-      const query = search.value.trim().toLowerCase();
-      const chosen = select.value;
-      // The placeholder row and whatever is currently chosen always stay, so a
-      // filter can never hide the value the form is about to submit.
-      const shown = all.filter((option) => !option.value || !query || option.haystack.includes(query) || option.value === chosen);
-      select.innerHTML = "";
-      let groupName = null;
-      let groupEl = null;
-      shown.forEach((option) => {
-        const node = option.node.cloneNode(true);
-        node.selected = option.value === chosen;
-        if (option.group) {
-          if (option.group !== groupName) {
-            groupEl = document.createElement("optgroup");
-            groupEl.label = option.group;
-            select.appendChild(groupEl);
-            groupName = option.group;
-          }
-          groupEl.appendChild(node);
-        } else {
-          groupName = null;
-          select.appendChild(node);
-        }
-      });
-      select.value = chosen;
-      if (counter) {
-        const matched = shown.filter((option) => option.value).length;
-        counter.textContent = localizeText(query ? `${matched} / ${real}` : `${real} ta`);
-      }
-    };
-    search.addEventListener("input", apply);
-    apply();
+    buildCombobox(search.closest(".select-search") || search, search, select);
   });
 }
 
