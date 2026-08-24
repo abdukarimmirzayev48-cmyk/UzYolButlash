@@ -4889,6 +4889,19 @@ body.public-layout.sidebar-collapsed .app-shell {
   display: none !important;
 }
 
+.price-vat-toggle {
+  margin-bottom: 4px;
+}
+
+.price-hint {
+  display: block;
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 11.5px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
 .acceptance-choices {
   display: grid;
   gap: 8px;

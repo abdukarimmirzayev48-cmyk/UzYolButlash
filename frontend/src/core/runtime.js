@@ -994,6 +994,40 @@ function normalizeNumberInputValue(value) {
     .replace(",", ".");
 }
 
+// Bazada `unit_price` doim QQSsiz narxni anglatadi -- backend `calculate_item`
+// undan miqdorga ko'paytirib oraliq summani, so'ng QQS ni hisoblaydi. Agar
+// foydalanuvchi qog'ozdagi QQS bilan narxni kiritsa va u shundayligicha
+// saqlansa, soliq ikki marta qo'shiladi: 195 000 000 lik shartnoma
+// 218 400 000 bo'lib chiqadi.
+//
+// Shuning uchun kiritish joyida «narx QQS bilan» belgisi bor va bu ikki
+// yordamchi qiymatni ikki tomonga o'giradi.
+const DEFAULT_VAT_RATE = 12;
+
+function vatFactor(vatRate) {
+  const rate = vatRate === "" || vatRate === null || vatRate === undefined ? DEFAULT_VAT_RATE : numberValue(vatRate);
+  return 1 + rate / 100;
+}
+
+// QQS bilan kiritilgan narxdan QQSsiz narxni ajratib oladi.
+function netUnitPrice(value, vatRate, includesVat = true) {
+  const price = numberValue(value);
+  if (!includesVat) return price;
+  const factor = vatFactor(vatRate);
+  return factor ? price / factor : price;
+}
+
+// QQSsiz narxdan QQS bilan narxni chiqaradi.
+function grossUnitPrice(value, vatRate) {
+  return numberValue(value) * vatFactor(vatRate);
+}
+
+// Narx ustuni Numeric(18,4): to'rtta kasr xonasi tiyinlardan ancha aniq va
+// 600 000 / 1.12 kabi cheksiz kasrni yo'qotmaydi.
+function roundUnitPrice(value) {
+  return Math.round(numberValue(value) * 10000) / 10000;
+}
+
 function numberValue(value) {
   const normalized = normalizeNumberInputValue(value);
   const parsed = Number(normalized);

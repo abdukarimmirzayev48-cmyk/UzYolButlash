@@ -94,6 +94,7 @@ function contractItemRow(item = {}, index = 0, products = []) {
       ${textField(`unit_${index}`, "Birlik", item.unit || "tonna")}
       ${textField(`quantity_${index}`, "Miqdor", item.quantity ?? "", "number")}
       ${textField(`unit_price_${index}`, "Birlik narxi", item.unit_price ?? "", "number")}
+      <small class="price-hint" data-row-price-hint></small>
       ${textField(`vat_rate_${index}`, "QQS %", item.vat_rate ?? 12, "number")}
       <button type="button" class="btn danger" data-remove-item>Olib tashlash</button>
     </div>
@@ -105,16 +106,20 @@ function calculateContractForm(form) {
   let subtotal = 0;
   let vat = 0;
   let quantity = 0;
+  const includesVat = Boolean(form.elements.price_includes_vat?.checked);
   rows.forEach((row) => {
     const qtyInput = row.querySelector("[name^='quantity_']");
     const priceInput = row.querySelector("[name^='unit_price_']");
     const vatInput = row.querySelector("[name^='vat_rate_']");
     const rowQty = numberValue(qtyInput.value);
-    const rowSubtotal = rowQty * numberValue(priceInput.value);
+    const netPrice = netUnitPrice(priceInput.value, vatInput.value, includesVat);
+    const rowSubtotal = rowQty * netPrice;
     const rowVat = rowSubtotal * numberValue(vatInput.value || 12) / 100;
     quantity += rowQty;
     subtotal += rowSubtotal;
     vat += rowVat;
+    const hint = row.querySelector("[data-row-price-hint]");
+    if (hint) hint.textContent = contractPriceHint({ net_price: netPrice, vat_rate: vatInput.value }, includesVat);
   });
   const total = subtotal + vat;
   const advancePercent = numberValue(form.elements.advance_percent?.value || 30);
@@ -132,6 +137,7 @@ function calculateContractForm(form) {
 }
 
 function collectContractItems(form) {
+  const includesVat = Boolean(form.elements.price_includes_vat?.checked);
   return [...form.querySelectorAll("[data-item-row]")].map((row) => {
     const get = (prefix) => row.querySelector(`[name^='${prefix}_']`)?.value.trim();
     const getNumber = (prefix) => normalizeNumberInputValue(get(prefix));
@@ -142,7 +148,8 @@ function collectContractItems(form) {
       product_code: get("product_code") || null,
       unit: get("unit"),
       quantity: getNumber("quantity"),
-      unit_price: getNumber("unit_price"),
+      // Serverga doim QQSsiz narx ketadi.
+      unit_price: String(roundUnitPrice(netUnitPrice(getNumber("unit_price"), getNumber("vat_rate") || "12", includesVat))),
       vat_rate: getNumber("vat_rate") || "12",
     };
   }).filter((item) => item.product_name && item.unit && Number(item.quantity) > 0);
@@ -208,6 +215,8 @@ async function contractForm(contract = null) {
           </div>
         `)}
         ${section("Specification", `
+          <label class="inline-check price-vat-toggle"><input type="checkbox" name="price_includes_vat" /><span>Kiritilgan birlik narxi QQS bilan</span></label>
+          <p class="helper-text">Belgi qo'yilsa, kiritilgan raqamdan soliq ajratiladi va bazaga QQSsiz narx yoziladi.</p>
           <div id="contract-items">${rows.map((item, i) => contractItemRow(item, i, products)).join("")}</div>
           <button type="button" class="btn" id="add-item">Mahsulot qo'shish</button>
           <div class="totals-bar">
@@ -348,12 +357,15 @@ function contractWizardTotals(state) {
   let vat = 0;
   const rows = (state.items || []).map((item) => {
     const rowQuantity = numberValue(item.quantity);
-    const rowSubtotal = rowQuantity * numberValue(item.unit_price);
+    // Kiritilgan narx QQS bilan bo'lsa, avval undan soliq ajratiladi -- aks
+    // holda quyida yana 12% qo'shilib, soliq ikki marta hisoblanadi.
+    const netPrice = netUnitPrice(item.unit_price, item.vat_rate, state.priceIncludesVat);
+    const rowSubtotal = rowQuantity * netPrice;
     const rowVat = rowSubtotal * numberValue(item.vat_rate || 12) / 100;
     quantity += rowQuantity;
     subtotal += rowSubtotal;
     vat += rowVat;
-    return { ...item, subtotal: rowSubtotal, vat_amount: rowVat, total_with_vat: rowSubtotal + rowVat };
+    return { ...item, net_price: netPrice, subtotal: rowSubtotal, vat_amount: rowVat, total_with_vat: rowSubtotal + rowVat };
   });
   const total = subtotal + vat;
   const advancePercent = numberValue(state.advancePercent || 30);
@@ -403,11 +415,29 @@ function contractWizardMainPanel(state) {
   </div>`;
 }
 
+// Kiritilgan raqamning ikkinchi ko'rinishi: QQS bilan kiritilgan bo'lsa
+// QQSsizi, aksincha bo'lsa QQS bilani. Foydalanuvchi bazaga nima
+// yozilayotganini ko'rib turadi.
+function contractPriceHint(calc = {}, includesVat = false) {
+  const net = numberValue(calc.net_price ?? calc.unit_price);
+  if (!net) return "";
+  return includesVat
+    ? `${localizeText("QQSsiz")}: ${fmtMoney(net)}`
+    : `${localizeText("QQS bilan")}: ${fmtMoney(grossUnitPrice(net, calc.vat_rate))}`;
+}
+
 function contractWizardProductsPanel(state) {
   const totals = contractWizardTotals(state);
   const rows = state.items || [];
   const products = state.products || [];
-  return `<div class="fixed-item-table cols-contract">${tableOrEmpty(rows, ['Mahsulot <span class="required-mark">*</span>', "Mahsulot kodi", 'Birlik <span class="required-mark">*</span>', 'Miqdor <span class="required-mark">*</span>', 'Birlik narxi <span class="required-mark">*</span>', 'QQS % <span class="required-mark">*</span>', "Oraliq summa", "QQS summasi", "Jami summa", ""], (item, index) => {
+  const includesVat = Boolean(state.priceIncludesVat);
+  const priceHeader = includesVat ? "Birlik narxi (QQS bilan)" : "Birlik narxi (QQSsiz)";
+  return `<label class="inline-check price-vat-toggle">
+    <input type="checkbox" name="price_includes_vat" ${includesVat ? "checked" : ""} />
+    <span>Kiritilgan birlik narxi QQS bilan</span>
+  </label>
+  <p class="helper-text">Shartnomada narx odatda QQS bilan yoziladi. Belgi qo'yilsa, kiritilgan raqamdan soliq ajratiladi va bazaga QQSsiz narx yoziladi.</p>
+  <div class="fixed-item-table cols-contract">${tableOrEmpty(rows, ['Mahsulot <span class="required-mark">*</span>', "Mahsulot kodi", 'Birlik <span class="required-mark">*</span>', 'Miqdor <span class="required-mark">*</span>', `${priceHeader} <span class="required-mark">*</span>`, 'QQS % <span class="required-mark">*</span>', "Oraliq summa", "QQS summasi", "Jami summa", ""], (item, index) => {
     const calc = totals.rows[index] || {};
     return `<tr data-contract-wizard-item="${index}">
       <td>
@@ -419,7 +449,10 @@ function contractWizardProductsPanel(state) {
       <td><input name="product_code_${index}" value="${esc(item.product_code || "")}" /></td>
       <td><input name="unit_${index}" value="${esc(item.unit || "tonna")}" required /></td>
       <td><input type="number" step="any" min="0" name="quantity_${index}" value="${esc(item.quantity || "")}" required /></td>
-      <td><input type="number" step="any" min="0" name="unit_price_${index}" value="${esc(item.unit_price || "")}" required /></td>
+      <td>
+        <input type="number" step="any" min="0" name="unit_price_${index}" value="${esc(item.unit_price || "")}" required />
+        <small class="price-hint" data-contract-row-price-hint="${index}">${contractPriceHint(calc, includesVat)}</small>
+      </td>
       <td><input type="number" step="any" min="0" name="vat_rate_${index}" value="${esc(item.vat_rate ?? 12)}" required /></td>
       <td class="number-cell" data-contract-row-subtotal="${index}">${fmtMoney(calc.subtotal)}</td>
       <td class="number-cell" data-contract-row-vat="${index}">${fmtMoney(calc.vat_amount)}</td>
@@ -443,6 +476,10 @@ function updateContractWizardProductTotals(state) {
     const subtotal = document.querySelector(`[data-contract-row-subtotal="${index}"]`);
     const vat = document.querySelector(`[data-contract-row-vat="${index}"]`);
     const total = document.querySelector(`[data-contract-row-total="${index}"]`);
+    const hint = document.querySelector(`[data-contract-row-price-hint="${index}"]`);
+    if (hint) {
+      hint.textContent = contractPriceHint(item, Boolean(state.priceIncludesVat));
+    }
     if (subtotal) subtotal.textContent = fmtMoney(item.subtotal);
     if (vat) vat.textContent = fmtMoney(item.vat_amount);
     if (total) total.textContent = fmtMoney(item.total_with_vat);
@@ -556,6 +593,7 @@ function syncContractWizardInputs(state) {
   if (form.elements.transport_payment_type) state.transportPaymentType = form.elements.transport_payment_type.value;
   if (form.elements.delivery_method) state.deliveryMethod = form.elements.delivery_method.value;
   if (form.elements.transport_notes) state.transportNotes = form.elements.transport_notes.value.trim();
+  if (form.elements.price_includes_vat) state.priceIncludesVat = form.elements.price_includes_vat.checked;
 
   const itemRows = [...form.querySelectorAll("[data-contract-wizard-item]")];
   if (itemRows.length) {
@@ -627,7 +665,9 @@ function collectContractWizardPayload(state) {
       product_code: item.product_code || null,
       unit: item.unit || "tonna",
       quantity: normalizeNumberInputValue(item.quantity),
-      unit_price: normalizeNumberInputValue(item.unit_price),
+      // Serverga doim QQSsiz narx yuboriladi: backend undan oraliq summani va
+      // QQS ni o'zi hisoblaydi.
+      unit_price: String(roundUnitPrice(netUnitPrice(item.unit_price, item.vat_rate, state.priceIncludesVat))),
       vat_rate: normalizeNumberInputValue(item.vat_rate || "12"),
     })),
     payment_terms: {
@@ -679,12 +719,15 @@ function bindContractWizard(state, draw) {
     }
     syncContractWizardInputs(state);
   });
-  form?.addEventListener("change", (event) => {
+  form?.addEventListener("change", async (event) => {
     if (event.target.closest("[data-contract-wizard-item]")) {
       updateContractWizardProductTotals(state);
       return;
     }
     syncContractWizardInputs(state);
+    // Belgi ustun sarlavhasini ham o'zgartiradi, shuning uchun qadam qaytadan
+    // chiziladi -- faqat raqamlarni yangilash yetmaydi.
+    if (event.target.name === "price_includes_vat") await draw();
   });
   document.querySelector("[data-contract-wizard-add-item]")?.addEventListener("click", async () => {
     syncContractWizardInputs(state);
@@ -748,6 +791,9 @@ async function renderContractWizard() {
     validUntil: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
     title: "",
     status: "draft",
+    // Qog'ozdagi narx odatda QQS bilan yoziladi, bazada esa `unit_price` doim
+    // QQSsiz. Bayroq kiritilgan raqamni qanday tushunishni aytadi.
+    priceIncludesVat: false,
     // Kompaniya faqat so'mda ishlaydi, shuning uchun valyuta so'ralmaydi --
     // maydon bazada qoladi va doim UZS bo'lib yuboriladi.
     currency: "UZS",
@@ -1569,8 +1615,9 @@ function contractChildForm(kind, item = {}, products = []) {
         ${textField("product_code", "Kodi", item.product_code || "")}
         ${textField("unit", "Birlik", item.unit || "tonna")}
         ${textField("quantity", "Miqdor", item.quantity ?? "", "number")}
-        ${textField("unit_price", "Birlik narxi", item.unit_price ?? "", "number")}
+        ${textField("unit_price", "Birlik narxi (QQSsiz)", item.unit_price ?? "", "number")}
         ${textField("vat_rate", "QQS %", item.vat_rate ?? 12, "number")}
+        <label class="inline-check price-vat-toggle"><input type="checkbox" name="price_includes_vat" /><span>Kiritilgan narx QQS bilan</span></label>
       </div>`,
       payload: (form) => ({
         product_id: form.elements.product_id?.value ? Number(form.elements.product_id.value) : null,
@@ -1578,7 +1625,13 @@ function contractChildForm(kind, item = {}, products = []) {
         product_code: field(form, "product_code") || null,
         unit: field(form, "unit"),
         quantity: field(form, "quantity"),
-        unit_price: field(form, "unit_price"),
+        // Bazada `unit_price` doim QQSsiz: belgi qo'yilgan bo'lsa soliq
+        // ajratib olinadi, aks holda soliq ikki marta hisoblanadi.
+        unit_price: String(roundUnitPrice(netUnitPrice(
+          normalizeNumberInputValue(field(form, "unit_price")),
+          normalizeNumberInputValue(field(form, "vat_rate") || "12"),
+          Boolean(form.elements.price_includes_vat?.checked),
+        ))),
         vat_rate: field(form, "vat_rate") || "12",
       }),
     };
