@@ -6063,3 +6063,335 @@ body.public-layout.sidebar-collapsed .app-shell {
 .row-overdue > td:first-child {
   box-shadow: inset 3px 0 0 #d9534f;
 }
+
+/* ---- Xaridlar sahifasi: statistik kartalar, filtr paneli, chiplar ---- */
+
+.breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 6px;
+  color: var(--muted);
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.stat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 14px;
+  margin: 16px 0 18px;
+}
+
+.stat-card {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 14px;
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+  padding: 16px;
+}
+
+.stat-icon {
+  width: 44px;
+  height: 44px;
+  border-radius: 10px;
+  background: var(--surface-soft) center / 22px 22px no-repeat;
+}
+
+/* Belgilar SVG bo'lib inline turadi: tashqi fayl ham, shrift ham kerak
+   emas, rangi esa kartaning ma'nosiga qarab o'zgaradi. */
+.stat-icon-cart {
+  background-color: #e8f5f0;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%230f6b52' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><circle cx='9' cy='21' r='1'/><circle cx='20' cy='21' r='1'/><path d='M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6'/></svg>");
+}
+
+.stat-icon-pulse {
+  background-color: #e8f0fb;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%232f6fd0' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M22 12h-4l-3 9L9 3l-3 9H2'/></svg>");
+}
+
+.stat-icon-bag {
+  background-color: #e8f5f0;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%230f6b52' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z'/><path d='M3 6h18'/><path d='M16 10a4 4 0 0 1-8 0'/></svg>");
+}
+
+.stat-icon-clock {
+  background-color: #fdf3e3;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23c98a1e' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><circle cx='12' cy='12' r='10'/><path d='M12 6v6l4 2'/></svg>");
+}
+
+.stat-body {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.stat-label {
+  color: var(--muted);
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.stat-value {
+  font-size: 22px;
+  font-weight: 750;
+  overflow-wrap: break-word;
+}
+
+.stat-hint {
+  color: var(--muted);
+  font-size: 11.5px;
+}
+
+.procurements-page .ops-commandbar {
+  gap: 16px;
+}
+
+/* Qidiruv chapda va keng: umumiy qoida uni o'ngga surib qo'yadi. */
+.procurements-page .ops-search {
+  flex: 1;
+  margin-left: 0;
+  min-width: 0;
+}
+
+.procurements-page .ops-search input[type="search"] {
+  width: min(520px, 100%);
+}
+
+.procurements-page .ops-command-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 0 0 auto;
+}
+
+.filter-anchor {
+  position: relative;
+}
+
+.filter-badge {
+  display: inline-grid;
+  place-items: center;
+  min-width: 18px;
+  height: 18px;
+  margin-left: 6px;
+  border-radius: 9px;
+  background: var(--accent);
+  color: #ffffff;
+  padding: 0 5px;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.filter-panel {
+  position: absolute;
+  z-index: 30;
+  top: calc(100% + 8px);
+  right: 0;
+  width: min(460px, 92vw);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+  box-shadow: 0 18px 40px rgba(16, 24, 40, 0.16);
+  padding: 16px;
+}
+
+.filter-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.filter-field {
+  display: grid;
+  grid-template-columns: 92px minmax(0, 1fr);
+  gap: 12px;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.filter-label {
+  color: var(--muted);
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.filter-range {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  gap: 8px;
+  align-items: center;
+}
+
+.filter-dash {
+  color: var(--muted);
+}
+
+.filter-control {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.filter-panel-foot {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.chip-select {
+  position: relative;
+  min-width: 0;
+}
+
+.chip-select > summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface);
+  padding: 6px 10px;
+  min-height: 34px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.chip-select > summary::-webkit-details-marker {
+  display: none;
+}
+
+.chip-box {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+}
+
+.chip-placeholder {
+  color: var(--muted);
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border-radius: 4px;
+  background: var(--surface-soft);
+  padding: 2px 6px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.chip button,
+.active-chip button {
+  border: 0;
+  background: none;
+  color: var(--muted);
+  padding: 0;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.chip-caret {
+  color: var(--muted);
+}
+
+.chip-menu {
+  position: absolute;
+  z-index: 2;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  max-height: 220px;
+  overflow-y: auto;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface);
+  box-shadow: 0 12px 24px rgba(16, 24, 40, 0.14);
+  padding: 6px;
+}
+
+.chip-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border-radius: 4px;
+  padding: 6px 8px;
+  cursor: pointer;
+}
+
+.chip-option:hover {
+  background: var(--surface-soft);
+}
+
+.chip-option input {
+  width: auto;
+  min-height: 0;
+  margin: 0;
+}
+
+.active-chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.active-chip .chip-text > span {
+  display: inline;
+}
+
+.active-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface-soft);
+  padding: 5px 9px;
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+/* Ustunlar kengligi ichidagi matnga qarab o'smasin. */
+.procurements-page .ops-table {
+  table-layout: fixed;
+  width: 100%;
+  min-width: 1200px;
+}
+
+.procurements-page .ops-table th {
+  white-space: normal;
+  vertical-align: bottom;
+  overflow-wrap: break-word;
+  overflow: hidden;
+}
+
+.procurements-page .ops-table td {
+  overflow-wrap: break-word;
+}
+
+.procurements-page .ops-table :is(th, td):nth-child(1) { width: 16%; }
+.procurements-page .ops-table :is(th, td):nth-child(2) { width: 7%; }
+.procurements-page .ops-table :is(th, td):nth-child(3) { width: 13%; }
+.procurements-page .ops-table :is(th, td):nth-child(4) { width: 17%; }
+.procurements-page .ops-table :is(th, td):nth-child(5) { width: 12%; }
+.procurements-page .ops-table :is(th, td):nth-child(6) { width: 8%; }
+.procurements-page .ops-table :is(th, td):nth-child(7) { width: 11%; }
+.procurements-page .ops-table :is(th, td):nth-child(8) { width: 7%; }
+.procurements-page .ops-table :is(th, td):nth-child(9) { width: 9%; }
+
+@media (max-width: 720px) {
+  .filter-field {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 4px;
+  }
+}

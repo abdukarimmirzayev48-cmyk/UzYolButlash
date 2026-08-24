@@ -367,9 +367,29 @@ class ProcurementListItem(ProcurementRead):
     contract: ContractRead
     order: OrderRead
     product: str | None = None
+    unit: str | None = None
     required_quantity: Decimal
     selected_quantity: Decimal
     selected_suppliers_count: int
+    offers_count: int = 0
+    # Kelishilgan summa bo'lsa o'sha, bo'lmasa taxminiy -- ekrandagi «summa»
+    # ustuni ham, filtri ham shu raqamga tayanadi.
+    purchase_amount: Decimal = Decimal("0")
+
+
+class ProcurementStatCards(BaseModel):
+    total: int
+    active_recent: int
+    awaiting_confirmation: int
+    total_amount: Decimal
+
+
+class ProcurementOverview(BaseModel):
+    """Kartochkalardagi raqamlar va filtr ro'yxatlari -- bitta so'rovda."""
+
+    stats: ProcurementStatCards
+    clients: list[dict] = Field(default_factory=list)
+    products: list[str] = Field(default_factory=list)
 
 
 class ProcurementDetail(ProcurementRead):

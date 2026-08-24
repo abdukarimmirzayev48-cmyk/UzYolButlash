@@ -1,8 +1,9 @@
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal, ROUND_HALF_UP
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from fastapi.responses import StreamingResponse
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session, selectinload
 
@@ -27,6 +28,8 @@ from backend.app.models.procurement import (
     ProcurementNote,
 )
 from backend.app.services.auth import require_edit
+from backend.app.services import procurement_export
+from backend.app.services.product_summary import product_summary
 from backend.app.services.order_status import sync_order_status
 from backend.app.schemas.client import Page
 from backend.app.schemas.procurement import (
@@ -36,10 +39,12 @@ from backend.app.schemas.procurement import (
     ProcurementDocumentUpdate,
     ProcurementDetail,
     ProcurementListItem,
+    ProcurementOverview,
     ProcurementNoteCreate,
     ProcurementNoteRead,
     ProcurementNoteUpdate,
     ProcurementRead,
+    ProcurementStatCards,
     ProcurementSummary,
     SupplierAddressBase,
     SupplierAddressRead,
@@ -176,6 +181,12 @@ def serialize_supplier_list_item(supplier: Supplier) -> SupplierListItem:
     )
 
 
+def purchase_amount_of(procurement: Procurement) -> Decimal:
+    """Xarid summasi: kelishilgani bo'lsa o'sha, bo'lmasa taxminiysi."""
+    final = money(procurement.final_purchase_amount)
+    return final if final > 0 else money(procurement.estimated_purchase_amount)
+
+
 def serialize_procurement_list_item(procurement: Procurement) -> ProcurementListItem:
     summary = procurement_summary(procurement)
     return ProcurementListItem(
@@ -183,10 +194,13 @@ def serialize_procurement_list_item(procurement: Procurement) -> ProcurementList
         client=procurement.client,
         contract=procurement.contract,
         order=procurement.order,
-        product=procurement.items[0].product_name if procurement.items else None,
+        product=product_summary([item.product_name for item in procurement.items]),
+        unit=procurement.items[0].unit if procurement.items else None,
         required_quantity=summary.required_quantity,
         selected_quantity=summary.selected_quantity,
         selected_suppliers_count=summary.selected_suppliers_count,
+        offers_count=summary.offers_count,
+        purchase_amount=purchase_amount_of(procurement),
     )
 
 
@@ -568,6 +582,135 @@ def delete_supplier_note(supplier_id: int, item_id: int, db: Session = Depends(g
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
+# Ekranda ko'rinadigan ustunlar bo'yicha saralash. Kalitlar frontend bilan
+# bir xil: bir joyda o'zgarsa, ikkinchisi ham o'zgarishi kerak.
+PROCUREMENT_SORTS = {
+    "number": Procurement.procurement_number,
+    "date": Procurement.procurement_date,
+    "client": Client.name,
+    "order": Order.order_number,
+    "status": Procurement.status,
+}
+
+# «Tasdiq kutilmoqda» -- takliflar kelgan, lekin ta'minotchi hali
+# tasdiqlanmagan xaridlar.
+AWAITING_STATUSES = (ProcurementStatus.offers_received, ProcurementStatus.supplier_selected)
+CLOSED_STATUSES = (ProcurementStatus.completed, ProcurementStatus.cancelled)
+RECENT_DAYS = 30
+
+
+def procurement_filters(
+    *,
+    search: str | None = None,
+    statuses: list[str] | None = None,
+    client_id: int | None = None,
+    contract_id: int | None = None,
+    order_id: int | None = None,
+    product: str | None = None,
+    date_from: date | None = None,
+    date_to: date | None = None,
+) -> list:
+    """Ro'yxat, statistika va eksport bitta filtr to'plamidan foydalanadi --
+    shunda ekrandagi va fayldagi ma'lumot hech qachon farq qilmaydi."""
+    filters = []
+    if search:
+        value = f"%{search}%"
+        filters.append(
+            or_(
+                Procurement.procurement_number.ilike(value),
+                Order.order_number.ilike(value),
+                Client.name.ilike(value),
+                Contract.contract_number.ilike(value),
+                ProcurementItem.product_name.ilike(value),
+            )
+        )
+    if statuses:
+        filters.append(Procurement.status.in_(statuses))
+    if client_id:
+        filters.append(Procurement.client_id == client_id)
+    if contract_id:
+        filters.append(Procurement.contract_id == contract_id)
+    if order_id:
+        filters.append(Procurement.order_id == order_id)
+    if product:
+        filters.append(ProcurementItem.product_name.ilike(f"%{product}%"))
+    if date_from:
+        filters.append(Procurement.procurement_date >= date_from)
+    if date_to:
+        filters.append(Procurement.procurement_date <= date_to)
+    return filters
+
+
+def procurement_base_query(filters: list, supplier_id: int | None = None):
+    stmt = (
+        select(Procurement)
+        .join(Order, Procurement.order_id == Order.id)
+        .join(Client, Procurement.client_id == Client.id)
+        .join(Contract, Procurement.contract_id == Contract.id)
+        .outerjoin(ProcurementItem, ProcurementItem.procurement_id == Procurement.id)
+        .options(
+            selectinload(Procurement.client),
+            selectinload(Procurement.contract),
+            selectinload(Procurement.order),
+            selectinload(Procurement.items),
+            selectinload(Procurement.offers).selectinload(SupplierOffer.items),
+        )
+        .distinct()
+    )
+    if supplier_id:
+        stmt = stmt.outerjoin(SupplierOffer, SupplierOffer.procurement_id == Procurement.id).where(
+            SupplierOffer.supplier_id == supplier_id
+        )
+    if filters:
+        stmt = stmt.where(*filters)
+    return stmt
+
+
+def apply_procurement_sort(stmt, sort: str | None, order: str | None):
+    column = PROCUREMENT_SORTS.get(sort or "")
+    if column is None:
+        return stmt.order_by(Procurement.created_at.desc())
+    return stmt.order_by(column.desc() if order == "desc" else column.asc())
+
+
+def parse_statuses(value: str | None) -> list[str]:
+    """Vergul bilan ajratilgan statuslar. Noma'lumlari jimgina tashlanadi --
+    manzil qatoridagi eski kalit butun ro'yxatni bo'sh qoldirmasligi kerak."""
+    known = {item.value for item in ProcurementStatus}
+    return [part.strip() for part in (value or "").split(",") if part.strip() in known]
+
+
+def amount_in_range(procurement: Procurement, minimum: Decimal | None, maximum: Decimal | None) -> bool:
+    """Summa bo'yicha filtr Python tomonida: u ikkita ustundan hisoblanadi va
+    SQL da takrorlash ikkalasini bir-biridan uzoqlashtirish xavfini tug'diradi."""
+    amount = purchase_amount_of(procurement)
+    if minimum is not None and amount < minimum:
+        return False
+    if maximum is not None and amount > maximum:
+        return False
+    return True
+
+
+@procurement_router.get("/overview", response_model=ProcurementOverview)
+def procurement_overview(db: Session = Depends(get_db)):
+    """Kartochkalardagi to'rt raqam va filtr ro'yxatlari."""
+    rows = db.scalars(procurement_base_query([])).unique().all()
+    since = date.today() - timedelta(days=RECENT_DAYS)
+    recent = [row for row in rows if row.procurement_date and row.procurement_date >= since]
+    clients = {row.client_id: row.client.name for row in rows if row.client}
+    products = sorted({item.product_name for row in rows for item in row.items if item.product_name})
+    return ProcurementOverview(
+        stats=ProcurementStatCards(
+            total=len(rows),
+            active_recent=sum(1 for row in recent if row.status not in CLOSED_STATUSES),
+            awaiting_confirmation=sum(1 for row in recent if row.status in AWAITING_STATUSES),
+            total_amount=money(sum((purchase_amount_of(row) for row in rows), Decimal("0"))),
+        ),
+        clients=[{"id": key, "name": value} for key, value in sorted(clients.items(), key=lambda pair: pair[1])],
+        products=products,
+    )
+
+
 @procurement_router.get("", response_model=Page[ProcurementListItem])
 def list_procurements(
     db: Session = Depends(get_db),
@@ -579,46 +722,76 @@ def list_procurements(
     contract_id: int | None = None,
     order_id: int | None = None,
     supplier_id: int | None = None,
+    product: str | None = None,
+    date_from: date | None = None,
+    date_to: date | None = None,
+    amount_min: Decimal | None = None,
+    amount_max: Decimal | None = None,
+    sort: str | None = None,
+    order: str | None = None,
 ):
-    stmt = (
-        select(Procurement)
-        .join(Order)
-        .join(Client, Procurement.client_id == Client.id)
-        .join(Contract, Procurement.contract_id == Contract.id)
-        .outerjoin(ProcurementItem)
-        .options(
-            selectinload(Procurement.client),
-            selectinload(Procurement.contract),
-            selectinload(Procurement.order),
-            selectinload(Procurement.items),
-            selectinload(Procurement.offers).selectinload(SupplierOffer.items),
-        )
-        .distinct()
+    filters = procurement_filters(
+        search=search,
+        statuses=parse_statuses(status_filter),
+        client_id=client_id,
+        contract_id=contract_id,
+        order_id=order_id,
+        product=product,
+        date_from=date_from,
+        date_to=date_to,
     )
-    if supplier_id:
-        stmt = stmt.outerjoin(SupplierOffer).where(SupplierOffer.supplier_id == supplier_id)
-    if search:
-        value = f"%{search}%"
-        stmt = stmt.where(
-            or_(
-                Procurement.procurement_number.ilike(value),
-                Order.order_number.ilike(value),
-                Client.name.ilike(value),
-                Contract.contract_number.ilike(value),
-                ProcurementItem.product_name.ilike(value),
-            )
-        )
-    if status_filter:
-        stmt = stmt.where(Procurement.status == status_filter)
-    if client_id:
-        stmt = stmt.where(Procurement.client_id == client_id)
-    if contract_id:
-        stmt = stmt.where(Procurement.contract_id == contract_id)
-    if order_id:
-        stmt = stmt.where(Procurement.order_id == order_id)
-    total = db.scalar(select(func.count()).select_from(stmt.subquery())) or 0
-    rows = db.scalars(stmt.order_by(Procurement.created_at.desc()).offset((page - 1) * page_size).limit(page_size)).unique()
-    return Page(items=[serialize_procurement_list_item(row) for row in rows], total=total, page=page, page_size=page_size)
+    stmt = apply_procurement_sort(procurement_base_query(filters, supplier_id), sort, order)
+    rows = list(db.scalars(stmt).unique())
+    if amount_min is not None or amount_max is not None:
+        rows = [row for row in rows if amount_in_range(row, amount_min, amount_max)]
+    total = len(rows)
+    start = (page - 1) * page_size
+    page_rows = rows[start : start + page_size]
+    return Page(
+        items=[serialize_procurement_list_item(row) for row in page_rows],
+        total=total,
+        page=page,
+        page_size=page_size,
+    )
+
+
+@procurement_router.get("/export.xlsx")
+def export_procurements(
+    db: Session = Depends(get_db),
+    search: str | None = None,
+    status_filter: str | None = Query(default=None, alias="status"),
+    client_id: int | None = None,
+    supplier_id: int | None = None,
+    product: str | None = None,
+    date_from: date | None = None,
+    date_to: date | None = None,
+    amount_min: Decimal | None = None,
+    amount_max: Decimal | None = None,
+    sort: str | None = None,
+    order: str | None = None,
+    lang: str = Query(default="cyr"),
+    filter_note: str = Query(default="", max_length=500),
+):
+    """Ekrandagi tanlov -- to'liq, sahifalanmagan holda."""
+    filters = procurement_filters(
+        search=search,
+        statuses=parse_statuses(status_filter),
+        client_id=client_id,
+        product=product,
+        date_from=date_from,
+        date_to=date_to,
+    )
+    stmt = apply_procurement_sort(procurement_base_query(filters, supplier_id), sort, order)
+    rows = [row for row in db.scalars(stmt).unique() if amount_in_range(row, amount_min, amount_max)]
+    stream = procurement_export.build_workbook(
+        [serialize_procurement_list_item(row) for row in rows], lang=lang, filter_note=filter_note
+    )
+    stamp = date.today().isoformat()
+    return StreamingResponse(
+        stream,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="xaridlar-{stamp}.xlsx"'},
+    )
 
 
 @procurement_router.post("", response_model=ProcurementDetail, status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_edit("taminot"))])
