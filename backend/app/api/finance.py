@@ -247,6 +247,8 @@ def ensure_not_over_billing(db: Session, invoice: CustomerInvoice) -> None:
 
     if invoice.contract_id is None or invoice.invoice_type is InvoiceType.adjustment:
         return
+    contract = db.get(Contract, invoice.contract_id)
+    terms = contract.payment_terms if contract else None
     order_totals = db.scalars(
         select(Order.total_amount).where(
             Order.contract_id == invoice.contract_id,
@@ -261,6 +263,7 @@ def ensure_not_over_billing(db: Session, invoice: CustomerInvoice) -> None:
     ).all()
     position = contract_billing.build_position(
         order_totals=list(order_totals),
+        advance_allowance=terms.advance_amount if terms else Decimal("0"),
         invoices=[
             {"type": i.invoice_type.value, "amount": i.total_amount, "paid_amount": i.paid_amount}
             for i in invoices

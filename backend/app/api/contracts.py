@@ -577,6 +577,7 @@ def delivery_plan_for(db: Session, contract: Contract) -> DeliveryPlanRead:
 
 def billing_position_for(db: Session, contract: Contract) -> BillingPositionRead:
     """What has been billed on this contract against what is owed."""
+    terms = contract.payment_terms
     order_totals = db.scalars(
         select(Order.total_amount).where(
             Order.contract_id == contract.id,
@@ -591,6 +592,7 @@ def billing_position_for(db: Session, contract: Contract) -> BillingPositionRead
     ).all()
     position = contract_billing.build_position(
         order_totals=list(order_totals),
+        advance_allowance=terms.advance_amount if terms else Decimal("0"),
         invoices=[
             {"type": invoice.invoice_type.value, "amount": invoice.total_amount, "paid_amount": invoice.paid_amount}
             for invoice in invoices

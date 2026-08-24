@@ -25,6 +25,9 @@ MSG_ADVANCE_NOT_OFFSET = "Avans hisob-fakturasi partiya hisoblaridan chegirilmag
 class BillingPosition:
     # Sum of the orders raised under the contract -- what the customer owes.
     billable: Decimal = Decimal("0")
+    # The advance agreed in the payment terms. It is owed from the contract
+    # date, before any order exists, so it raises the ceiling on its own.
+    advance_allowance: Decimal = Decimal("0")
     # Every non-cancelled invoice on the contract, whatever its type.
     invoiced: Decimal = Decimal("0")
     paid: Decimal = Decimal("0")
@@ -32,19 +35,40 @@ class BillingPosition:
     advance_paid: Decimal = Decimal("0")
 
     @property
+    def ceiling(self) -> Decimal:
+        """The most that may be invoiced on this contract right now.
+
+        Normally that is the value of the orders raised. But an advance is
+        payable from the contract date, before anyone has raised a single
+        order -- that is the whole point of an advance -- so on a contract with
+        no orders yet the ceiling is the agreed advance. Taking the larger of
+        the two keeps the original protection intact: on the contract that was
+        over-billed by 2 106 720 000, the orders came to 7 191 400 000 against
+        an advance of 2 106 720 000, so the ceiling stays at the orders and the
+        double-charged advance is still caught.
+        """
+        return max(self.billable, self.advance_allowance)
+
+    @property
     def remaining_to_bill(self) -> Decimal:
         """What may still be invoiced without over-charging."""
-        return self.billable - self.invoiced
+        return self.ceiling - self.invoiced
 
     @property
     def over_billed(self) -> Decimal:
-        return max(Decimal("0"), self.invoiced - self.billable)
+        return max(Decimal("0"), self.invoiced - self.ceiling)
 
 
-def build_position(*, order_totals: list[Decimal], invoices: list[dict]) -> BillingPosition:
+def build_position(
+    *,
+    order_totals: list[Decimal],
+    invoices: list[dict],
+    advance_allowance: Decimal = Decimal("0"),
+) -> BillingPosition:
     """`invoices` carries one dict per non-cancelled invoice:
     {type, amount, paid_amount}."""
     position = BillingPosition()
+    position.advance_allowance = Decimal(advance_allowance or 0)
     position.billable = sum((Decimal(value or 0) for value in order_totals), Decimal("0"))
     for invoice in invoices:
         amount = Decimal(invoice.get("amount") or 0)
