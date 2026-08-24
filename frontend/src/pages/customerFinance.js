@@ -66,7 +66,7 @@ function collectFinanceItems(form) {
 
 async function invoiceForm(invoice = null) {
   const params = invoice ? new URLSearchParams() : new URLSearchParams(location.search);
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayIso();
   let prefillContract = null;
   if (params.get("contract_id")) {
     try {
@@ -316,7 +316,7 @@ function autoDistributePaymentAmount(invoices = [], amount = 0) {
 }
 
 async function paymentForm(payment = null) {
-  const today = new Date().toISOString().slice(0,10);
+  const today = todayIso();
   const params = payment ? new URLSearchParams() : new URLSearchParams(location.search);
   let selectedClientId = payment?.client_id || params.get("client_id");
   if (!selectedClientId && params.get("contract_id")) {

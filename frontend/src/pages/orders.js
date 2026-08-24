@@ -141,7 +141,7 @@ async function orderForm(order = null) {
   const stockLots = await api("/api/stock-lots?available_only=true&page_size=100").catch(() => ({ items: [] }));
   const balances = order ? order.contract_item_balances : [];
   const items = order?.items?.length ? order.items : [{}];
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayIso();
   const supplierStatus = order?.supplier_status || "not_selected";
   const supplierDisplay = order?.supplier_name || (order?.supplier_id ? `ID ${order.supplier_id}` : "Xarid jarayonida avtomatik tanlanadi");
   const sourceDefault = order?.source_type || new URLSearchParams(location.search).get("source_type") || "other";
@@ -678,7 +678,7 @@ async function renderOrderWizard() {
   const preselectedContractId = params.get("contract_id") ? Number(params.get("contract_id")) : null;
   const state = {
     step: 1,
-    orderDate: new Date().toISOString().slice(0, 10),
+    orderDate: todayIso(),
     sourceType: params.get("source_type") || "other",
     fulfillmentType: "direct_supplier_to_customer",
     markupAmount: "",
@@ -1010,7 +1010,7 @@ function orderFinanceSummary(invoices = []) {
   const total = active.reduce((sum, invoice) => sum + numberValue(invoice.total_amount), 0);
   const paid = active.reduce((sum, invoice) => sum + numberValue(invoice.paid_amount), 0);
   const remaining = active.reduce((sum, invoice) => sum + numberValue(invoice.remaining_amount), 0);
-  const overdue = active.some((invoice) => numberValue(invoice.remaining_amount) > 0 && invoice.due_date && invoice.due_date < new Date().toISOString().slice(0, 10));
+  const overdue = active.some((invoice) => numberValue(invoice.remaining_amount) > 0 && invoice.due_date && invoice.due_date < todayIso());
   return { invoices: active, total, paid, remaining, overdue };
 }
 
@@ -1462,7 +1462,7 @@ async function openOrderInvoiceModal(order, related = {}) {
   const batches = (await api(`/api/delivery-batches?order_id=${order.id}&page_size=100`).catch(() => ({ items: [] }))).items || [];
   const invoices = related.invoices || (await api(`/api/customer-invoices?order_id=${order.id}&page_size=100`)).items || [];
   const finance = orderFinanceSummary(invoices);
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayIso();
   // The position has to come from the contract, not the order: the advance is
   // raised against the contract and carries no order id, so an order-level sum
   // cannot see it. That is how every batch got billed in full and the advance
@@ -1579,7 +1579,7 @@ async function openOrderPaymentModal(order, related = {}) {
   const invoices = (related.invoices || (await api(`/api/customer-invoices?order_id=${order.id}&page_size=100`)).items || []).filter((invoice) => invoice.status !== "cancelled" && numberValue(invoice.remaining_amount) > 0);
   const selected = invoices.length === 1 ? invoices[0] : invoices[0] || null;
   const finance = orderFinanceSummary(related.invoices || invoices);
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayIso();
   showOrderModal(`<div class="modal-backdrop" data-modal-close>
     <section class="modal-panel" role="dialog" aria-modal="true">
       <div class="modal-header"><h2>Mijoz to'lovini kiritish</h2><button class="modal-close" type="button" data-modal-close aria-label="Yopish">×</button></div>

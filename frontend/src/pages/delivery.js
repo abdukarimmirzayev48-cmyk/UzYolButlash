@@ -532,7 +532,7 @@ async function enrichBatchWizardState(state, orderId) {
   state.balances.forEach((balance) => {
     state.quantities[balance.order_item_id] = numberValue(balance.remaining_quantity_for_planning) > 0 ? balance.remaining_quantity_for_planning : "";
   });
-  state.plannedLoadingDate ||= new Date().toISOString().slice(0, 10);
+  state.plannedLoadingDate ||= todayIso();
   state.plannedDeliveryDate ||= state.order.required_date || state.plannedLoadingDate;
   state.supplierName = state.order.supplier_name || "";
   state.supplierId = state.order.supplier_id || null;
@@ -680,7 +680,7 @@ function validateBatchWizardStep(state, targetStep = state.step) {
 }
 
 function collectBatchWizardPayload(state) {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayIso();
   return {
     order_id: state.order.id,
     batch_number: generatedBatchNumber(state.order.order_number),
@@ -882,7 +882,7 @@ async function batchForm(batch = null) {
   const orders = await fetchOrdersForSelect(prefillOrderId);
   const order = prefillOrderId ? await api(`/api/orders/${prefillOrderId}`) : null;
   const balances = batch ? batch.order_item_balances : prefillOrderId ? await api(`/api/delivery-batches/order/${prefillOrderId}/balances`) : [];
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayIso();
   const rows = batch?.items?.length ? batch.items : batchRowsFromBalances(balances);
   const logistics = batch?.logistics || {};
   const transportOptions = await fetchTransportsForSelect(logistics.carrier_id);
@@ -1266,7 +1266,7 @@ function loadingConfirmationModal(batch) {
   const logistics = batch.logistics || {};
   const quantity = batch.summary?.total_planned_quantity || batch.items?.[0]?.planned_quantity;
   const unit = batch.items?.[0]?.unit || "";
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayIso();
   const canLoad = ["carrier_assigned", "vehicle_assigned", "loading"].includes(logistics.status) || batch.status === "ready_for_loading";
   return `<div class="modal-backdrop" data-modal-close>
     <section class="modal-panel" role="dialog" aria-modal="true" aria-labelledby="loading-modal-title">
@@ -1502,7 +1502,7 @@ function deliveryConfirmationModal(batch) {
   const logistics = batch.logistics || {};
   const loadedQuantity = batch.summary?.total_loaded_quantity || batch.items?.[0]?.loaded_quantity;
   const unit = batch.items?.[0]?.unit || "";
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayIso();
   const actualLoadingDate = logistics.actual_pickup_date || batch.actual_loading_date;
   const canDeliver = Boolean(logistics.id) && Boolean(actualLoadingDate) && ["loaded", "in_transit", "arrived", "unloading"].includes(logistics.status);
   const warning = !logistics.id || (!logistics.vehicle_number && !logistics.carrier_name && !logistics.driver_name)
@@ -1625,7 +1625,7 @@ function completionValidation(batch, finance = {}) {
 function completionConfirmationModal(batch, finance = {}) {
   const logistics = batch.logistics || {};
   const unit = batch.items?.[0]?.unit || "";
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayIso();
   const validation = completionValidation(batch, finance);
   return `<div class="modal-backdrop" data-modal-close>
     <section class="modal-panel" role="dialog" aria-modal="true" aria-labelledby="completion-modal-title">

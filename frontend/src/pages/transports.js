@@ -148,7 +148,7 @@ function fuelLogModal(transportId, log, onSaved) {
       </div>
       <form id="fuel-log-form">
         <div class="modal-body">
-          ${textField("entry_date", "Sana", log?.entry_date || new Date().toISOString().slice(0, 10), "date", { required: true })}
+          ${textField("entry_date", "Sana", log?.entry_date || todayIso(), "date", { required: true })}
           ${selectField("entry_type", "Turi", fuelEntryTypes, log?.entry_type || "added")}
           ${textField("amount_liters", "Miqdori (litr)", log?.amount_liters ?? "", "number", { required: true, step: "0.01", min: "0.01" })}
           ${textField("cost_amount", "Narxi (so'm)", log?.cost_amount ?? "", "number", { step: "0.01", min: "0" })}

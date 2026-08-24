@@ -187,7 +187,7 @@ async function contractForm(contract = null) {
     api("/api/products"),
   ]);
   _contractPageProducts = products;
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayIso();
   const oneYearLater = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
   const payment = contract?.payment_terms || {};
   const transport = contract?.transport_terms || {};
@@ -497,7 +497,7 @@ function updateContractWizardProductTotals(state) {
 function contractWizardPaymentPanel(state) {
   const totals = contractWizardTotals(state);
   return `<div class="grid">
-    ${textField("advance_percent", "Avans foizi", state.advancePercent ?? "30", "number", { required: true })}
+    ${textField("advance_percent", "Avans foizi", state.advancePercent ?? "30", "number", { required: true, min: 0, max: 100 })}
     ${readonlyField("advance_amount", "Avans summasi", fmtMoney(totals.advanceAmount))}
     ${readonlyField("remaining_percent", "Qoldiq foizi", `${fmt(totals.remainingPercent)}%`)}
     ${textField("advance_due_days", "Avans muddati, kun", state.advanceDueDays ?? "10", "number", { required: true })}
@@ -506,10 +506,31 @@ function contractWizardPaymentPanel(state) {
     ${textArea("payment_notes", "Izoh", state.paymentNotes || "")}
   </div>
   ${summaryCards([
-    ["Avans summasi", fmtMoney(totals.advanceAmount)],
-    ["Qolgan to'lov", fmtMoney(totals.remainingAmount)],
-    ["Qoldiq foizi", `${fmt(totals.remainingPercent)}%`],
+    ["Avans summasi", `<span data-payment-advance-amount>${fmtMoney(totals.advanceAmount)}</span>`],
+    ["Qolgan to'lov", `<span data-payment-remaining-amount>${fmtMoney(totals.remainingAmount)}</span>`],
+    ["Qoldiq foizi", `<span data-payment-remaining-percent>${fmt(totals.remainingPercent)}%</span>`],
   ])}`;
+}
+
+// Avans foizi o'zgarganda qoldiq foizi, avans summasi va kartalar darrov
+// yangilanishi kerak. Ilgari bu qadam faqat bir marta -- ochilganda --
+// chizilardi: 30 ni 40 ga o'zgartirsangiz ham «Qoldiq foizi» 70% bo'lib
+// turaverardi va foydalanuvchi shartlar umuman ishlamayapti deb o'ylardi.
+// To'liq qayta chizish o'rniga faqat raqamlar almashtiriladi, aks holda
+// terayotgan paytda kursor maydondan uchib ketadi.
+function updateContractWizardPaymentTotals(state) {
+  const form = document.querySelector("#contract-wizard-form");
+  if (!form || !form.elements.advance_percent) return;
+  const totals = contractWizardTotals(state);
+  if (form.elements.advance_amount) form.elements.advance_amount.value = fmtMoney(totals.advanceAmount);
+  if (form.elements.remaining_percent) form.elements.remaining_percent.value = `${totals.remainingPercent}%`;
+  const set = (selector, value) => {
+    const node = document.querySelector(selector);
+    if (node) node.textContent = value;
+  };
+  set("[data-payment-advance-amount]", fmtMoney(totals.advanceAmount));
+  set("[data-payment-remaining-amount]", fmtMoney(totals.remainingAmount));
+  set("[data-payment-remaining-percent]", `${totals.remainingPercent}%`);
 }
 
 function contractWizardTransportPanel(state) {
@@ -718,6 +739,7 @@ function bindContractWizard(state, draw) {
       return;
     }
     syncContractWizardInputs(state);
+    if (event.target.name === "advance_percent") updateContractWizardPaymentTotals(state);
   });
   form?.addEventListener("change", async (event) => {
     if (event.target.closest("[data-contract-wizard-item]")) {
@@ -779,7 +801,7 @@ function bindContractWizard(state, draw) {
 }
 
 async function renderContractWizard() {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayIso();
   const params = new URLSearchParams(location.search);
   const state = {
     step: 1,
@@ -1760,7 +1782,7 @@ function contractInvoiceDefaultAmount(contract, invoiceType, state = {}) {
 
 function contractInvoiceModal(contract, state = {}) {
   const type = state.invoiceType || "advance";
-  const invoiceDate = state.invoiceDate || new Date().toISOString().slice(0, 10);
+  const invoiceDate = state.invoiceDate || todayIso();
   const dueDate = state.dueDate || contractInvoiceDefaultDueDate(contract, type, invoiceDate);
   const advanceAmount = numberValue(contract.payment_terms?.advance_amount || contract.summary?.advance_amount);
   const defaultAmount = contractInvoiceDefaultAmount(contract, type, state);
@@ -1810,7 +1832,7 @@ async function openContractInvoiceModal(contract) {
   ]);
   const state = {
     invoiceType: "advance",
-    invoiceDate: new Date().toISOString().slice(0, 10),
+    invoiceDate: todayIso(),
     dueDate: "",
     amount: contractInvoiceDefaultAmount(contract, "advance"),
     notes: "",

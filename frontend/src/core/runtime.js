@@ -939,27 +939,53 @@ function readonlyField(name, label, value = "", type = "text", options = {}) {
   return `<label>${label}<input type="${type}" name="${name}" value="${esc(value ?? "")}" readonly /></label>`;
 }
 
+// Sana arifmetikasi UTC da bajariladi va UTC da qaytariladi.
+//
+// Ilgari sana `new Date("2026-08-24T00:00:00")` bilan -- ya'ni MAHALLIY yarim
+// tunda -- o'qilib, `toISOString()` bilan qaytarilardi. Toshkent UTC+5, shuning
+// uchun mahalliy yarim tun UTC da avvalgi kunning 19:00 i: har bir natija bir
+// kunga kam chiqardi. «Partiya to'lovi muddati: 7 kun» aslida 6 kun berardi,
+// avans muddati esa dam olish kuniga tushib qolardi.
+function parseIsoDate(dateString) {
+  const parts = String(dateString || "").slice(0, 10).split("-").map(Number);
+  if (parts.length !== 3 || parts.some((part) => !Number.isFinite(part))) return new Date(NaN);
+  return new Date(Date.UTC(parts[0], parts[1] - 1, parts[2]));
+}
+
+function toIsoDate(date) {
+  return Number.isNaN(date.getTime()) ? "" : date.toISOString().slice(0, 10);
+}
+
+// Bugungi sana foydalanuvchining soatiga ko'ra, UTC ga ko'ra emas: soat 05:00
+// gacha `new Date().toISOString()` kechagi kunni qaytarardi.
+function todayIso() {
+  const now = new Date();
+  return toIsoDate(new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate())));
+}
+
 function addDays(dateString, days = 0) {
   const value = Number(days);
-  const date = new Date(`${dateString}T00:00:00`);
-  if (Number.isFinite(value)) date.setDate(date.getDate() + value);
-  return date.toISOString().slice(0, 10);
+  const date = parseIsoDate(dateString);
+  if (Number.isNaN(date.getTime())) return "";
+  if (Number.isFinite(value)) date.setUTCDate(date.getUTCDate() + value);
+  return toIsoDate(date);
 }
 
 // Skips Saturday/Sunday only (standard Mon-Fri work week) — does not account
 // for public holidays, since this app has no holiday calendar to check against.
 function addBusinessDays(dateString, days = 0) {
   const value = Number(days);
-  const date = new Date(`${dateString}T00:00:00`);
-  if (!Number.isFinite(value) || value === 0) return date.toISOString().slice(0, 10);
+  const date = parseIsoDate(dateString);
+  if (Number.isNaN(date.getTime())) return "";
+  if (!Number.isFinite(value) || value === 0) return toIsoDate(date);
   const step = value > 0 ? 1 : -1;
   let remaining = Math.trunc(Math.abs(value));
   while (remaining > 0) {
-    date.setDate(date.getDate() + step);
-    const day = date.getDay();
+    date.setUTCDate(date.getUTCDate() + step);
+    const day = date.getUTCDay();
     if (day !== 0 && day !== 6) remaining -= 1;
   }
-  return date.toISOString().slice(0, 10);
+  return toIsoDate(date);
 }
 
 function textArea(name, label, value = "", options = {}) {
