@@ -31,6 +31,18 @@ TOLERANCE = Decimal("1")
 MSG_LINE_PRICE = "Buyurtma narxi shartnoma narxidan farq qiladi"
 MSG_MARKUP = "Shartnoma narxi ustiga ustama qo'shilgan"
 MSG_LOGISTICS_INCLUDED = "Shartnomada transport narxga kiritilgan, lekin buyurtmada alohida hisoblangan"
+MSG_LOGISTICS_CUSTOMER_PAYS = "Shartnoma bo'yicha transportni mijoz o'zi to'laydi, lekin buyurtmada undan undirilmoqda"
+
+# Shartnomadagi transport to'lovi turlari. Faqat bittasida transportni mijozga
+# alohida hisob qilish mumkin.
+TRANSPORT_INCLUDED = "included"
+TRANSPORT_SEPARATE = "separate_invoice"
+TRANSPORT_CUSTOMER_PAYS = "customer_pays_directly"
+
+TRANSPORT_WARNINGS = {
+    TRANSPORT_INCLUDED: MSG_LOGISTICS_INCLUDED,
+    TRANSPORT_CUSTOMER_PAYS: MSG_LOGISTICS_CUSTOMER_PAYS,
+}
 
 
 @dataclass
@@ -75,7 +87,7 @@ def build_check(
     markup_amount: Decimal,
     logistics_price: Decimal,
     charged_total: Decimal,
-    transport_separate: bool,
+    transport_payment_type: str,
 ) -> OrderContractCheck:
     """`items` carries one dict per order line:
 
@@ -84,6 +96,7 @@ def build_check(
     contract_unit_price is None for a line not tied to a contract line -- an
     extra the contract never mentioned, which is itself worth saying.
     """
+    transport_separate = transport_payment_type == TRANSPORT_SEPARATE
     check = OrderContractCheck(transport_separate=transport_separate)
 
     for item in items:
@@ -139,7 +152,11 @@ def build_check(
 
     if check.markup_amount > TOLERANCE:
         check.warnings.append(f"{MSG_MARKUP}: {money_text(check.markup_amount)}")
+    # Xabar shartnomadagi turga qarab tanlanadi: «narxga kiritilgan» va
+    # «mijoz o'zi to'laydi» -- ikkita boshqa-boshqa holat va ularni bitta
+    # jumla bilan aytish operatorni chalg'itadi.
     if check.logistics_price > TOLERANCE and not transport_separate:
-        check.warnings.append(f"{MSG_LOGISTICS_INCLUDED}: {money_text(check.logistics_price)}")
+        message = TRANSPORT_WARNINGS.get(transport_payment_type, MSG_LOGISTICS_INCLUDED)
+        check.warnings.append(f"{message}: {money_text(check.logistics_price)}")
 
     return check

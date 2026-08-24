@@ -1425,6 +1425,8 @@ const uzCyrillic = {
   "Shartnoma bo'yicha mahsulot summasi": "Шартнома бўйича маҳсулот суммаси",
   "Shartnoma bo'yicha ortiqcha hisob qo'yilgan": "Шартнома бўйича ортиқча ҳисоб қўйилган",
   "Shartnoma bo'yicha to'lov muddati o'tdi": "Шартнома бўйича тўлов муддати ўтди",
+  "Shartnoma bo'yicha transport uchun alohida hisob qo'yib bo'lmaydi": "Шартнома бўйича транспорт учун алоҳида ҳисоб қўйиб бўлмайди",
+  "Shartnoma bo'yicha transportni mijoz o'zi to'laydi, lekin buyurtmada undan undirilmoqda": "Шартнома бўйича транспортни мижоз ўзи тўлайди, лекин буюртмада ундан ундирилмоқда",
   "Shartnoma bo'yicha yetkazilmagan qoldiq mavjud.": "Шартнома бўйича етказилмаган қолдиқ мавжуд.",
   "Shartnoma butunlay o'chiriladi. Buyurtmalari yoki partiyalari bo'lsa server ruxsat bermaydi.": "Шартнома бутунлай ўчирилади. Буюртмалари ёки партиялари бўлса сервер рухсат бермайди.",
   "Shartnoma foydasi topilmadi.": "Шартнома фойдаси топилмади.",

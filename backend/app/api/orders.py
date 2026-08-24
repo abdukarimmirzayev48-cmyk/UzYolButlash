@@ -653,10 +653,12 @@ def contract_check_for(db: Session, order: Order) -> OrderContractCheckRead:
     """Compare what this order charges with what its contract fixed."""
     contract = order.contract
     transport_terms = contract.transport_terms if contract else None
-    transport_separate = (
-        transport_terms.transport_payment_type is TransportPaymentType.separate_invoice
+    # Shartlar yozilmagan bo'lsa «alohida» deb qabul qilinadi: ayblashdan ko'ra
+    # jim turgan ma'qul.
+    transport_payment_type = (
+        transport_terms.transport_payment_type.value
         if transport_terms
-        else True  # no terms recorded: assume separate rather than accuse
+        else order_contract_check.TRANSPORT_SEPARATE
     )
     contract_prices = {item.id: item.unit_price for item in (contract.items if contract else [])}
     check = order_contract_check.build_check(
@@ -673,7 +675,7 @@ def contract_check_for(db: Session, order: Order) -> OrderContractCheckRead:
         markup_amount=order.markup_amount,
         logistics_price=order.logistics_price,
         charged_total=order.total_amount,
-        transport_separate=transport_separate,
+        transport_payment_type=transport_payment_type,
     )
     return OrderContractCheckRead(
         contract_goods_amount=check.contract_goods_amount,

@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session, selectinload
 from backend.app.core.paths import UPLOADS_DIR
 from backend.app.db.session import get_db
 from backend.app.models.client import Client
-from backend.app.models.contract import Contract
+from backend.app.models.contract import Contract, TransportPaymentType
 from backend.app.models.delivery import DeliveryBatch, Logistics
 from backend.app.models.finance import (
     CustomerInvoice,
@@ -128,6 +128,40 @@ def validate_invoice_links(db: Session, invoice: CustomerInvoice) -> None:
         raise HTTPException(status_code=422, detail="Ushbu hisob-faktura turi uchun contract_id majburiy.")
     if invoice.invoice_type in {InvoiceType.batch_payment, InvoiceType.transport} and (not invoice.order_id or not invoice.delivery_batch_id):
         raise HTTPException(status_code=422, detail="Ushbu hisob-faktura turi uchun order_id va delivery_batch_id majburiy.")
+    ensure_transport_billable(db, invoice)
+
+
+def ensure_transport_billable(db: Session, invoice: CustomerInvoice) -> None:
+    """Transport hisobi shartnoma ruxsat bergandagina qo'yiladi.
+
+    Shartnomaning transport sharti uchta qiymatdan biri bo'ladi va faqat
+    bittasida -- «alohida hisob-faktura qilinadi» -- transportni mijozga
+    alohida hisob qilish mumkin. Qolgan ikkitasida pul allaqachon mahsulot
+    narxida yoki mijoz tashuvchiga o'zi to'laydi, ya'ni bunday hisob mijozdan
+    ikkinchi marta pul so'raydi.
+
+    Ilgari bu shart faqat buyurtma kartochkasida ogohlantirish bo'lib chiqardi,
+    hisobni esa hech narsa to'xtatmasdi.
+    """
+    if invoice.invoice_type is not InvoiceType.transport or not invoice.contract_id:
+        return
+    contract = db.get(Contract, invoice.contract_id)
+    terms = contract.transport_terms if contract else None
+    if terms is None or terms.transport_payment_type is TransportPaymentType.separate_invoice:
+        return
+    label = TRANSPORT_TERM_LABELS.get(terms.transport_payment_type, "")
+    raise HTTPException(
+        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        detail=f"{MSG_TRANSPORT_NOT_BILLABLE}: {label}",
+    )
+
+
+MSG_TRANSPORT_NOT_BILLABLE = "Shartnoma bo'yicha transport uchun alohida hisob qo'yib bo'lmaydi"
+
+TRANSPORT_TERM_LABELS = {
+    TransportPaymentType.included: "transport mahsulot narxiga kiritilgan",
+    TransportPaymentType.customer_pays_directly: "transportni mijoz o'zi to'laydi",
+}
 
 
 def load_invoice(db: Session, invoice_id: int) -> CustomerInvoice:
