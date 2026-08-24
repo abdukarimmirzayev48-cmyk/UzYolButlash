@@ -399,7 +399,6 @@ function contractWizardMainPanel(state) {
     ${textField("valid_until", "Amal qilish muddati", state.validUntil || "", "date", { required: true })}
     ${textField("title", "Sarlavha", state.title || "")}
     ${selectField("status", "Status", contractStatuses, state.status || "draft", { required: true })}
-    ${selectField("currency", "Valyuta", [["UZS", "UZS"]], state.currency || "UZS", { required: true })}
     ${textArea("notes", "Izoh", state.notes || "")}
   </div>`;
 }
@@ -506,7 +505,7 @@ function contractWizardConfirmPanel(state) {
   return `${clientWarnings.length ? workflowWarningsPanel(["Mijoz ma'lumotlari to'liq emas. Shartnoma yaratilgandan keyin rekvizitlarni tekshiring.", ...clientWarnings]) : ""}
   <div class="confirm-grid">
     ${section("Mijoz", detailList([["Mijoz nomi", state.client?.name], ["STIR", state.client?.inn], ["Telefon", state.client?.phone], ["Yuridik manzil", contractWizardAddressText(contractWizardLegalAddress(state.client))], ["Bank rekvizitlari", contractWizardBankText(contractWizardPrimaryBank(state.client))]]))}
-    ${section("Asosiy ma'lumotlar", detailList([["Shartnoma raqami", state.contractNumber], ["Shartnoma sanasi", state.contractDate], ["Amal qilish muddati", state.validUntil], ["Sarlavha", state.title], ["Status", optionLabel(contractStatuses, state.status)], ["Valyuta", state.currency]]))}
+    ${section("Asosiy ma'lumotlar", detailList([["Shartnoma raqami", state.contractNumber], ["Shartnoma sanasi", state.contractDate], ["Amal qilish muddati", state.validUntil], ["Sarlavha", state.title], ["Status", optionLabel(contractStatuses, state.status)]]))}
     ${section("Mahsulotlar", `${detailList([["Jami miqdor", fmtQty(totals.quantity)], ["Mahsulot oraliq summasi", fmtMoney(totals.subtotal)], ["QQS", fmtMoney(totals.vat)], ["Jami summa", fmtMoney(totals.total)]])}<div class="empty compact">${products || dash}</div>`)}
     ${section("To'lov shartlari", detailList([["Avans foizi", `${fmt(totals.advancePercent)}%`], ["Avans summasi", fmtMoney(totals.advanceAmount)], ["Qoldiq foizi", `${fmt(totals.remainingPercent)}%`], ["Avans muddati, kun", state.advanceDueDays], ["Partiya to'lovi muddati, kun", state.batchPaymentDueDays], ["Qoldiq to'lov qoidasi", state.remainingPaymentRule]]))}
     ${section("Transport shartlari", detailList([["Transport to'lovi turi", optionLabel(transportPaymentTypes, state.transportPaymentType)], ["Yetkazib berish usuli", optionLabel(deliveryMethods, state.deliveryMethod)], ["Izoh", state.transportNotes]]))}
@@ -548,7 +547,6 @@ function syncContractWizardInputs(state) {
   if (form.elements.valid_until) state.validUntil = form.elements.valid_until.value;
   if (form.elements.title) state.title = form.elements.title.value.trim();
   if (form.elements.status) state.status = form.elements.status.value;
-  if (form.elements.currency) state.currency = form.elements.currency.value;
   if (form.elements.notes) state.notes = form.elements.notes.value.trim();
   if (form.elements.advance_percent) state.advancePercent = form.elements.advance_percent.value;
   if (form.elements.advance_due_days) state.advanceDueDays = form.elements.advance_due_days.value;
@@ -591,7 +589,7 @@ function validateContractWizardStep(state, targetStep = state.step) {
   if (targetStep >= 2) {
     if (!state.contractNumber || !state.contractDate || !state.validUntil) return "Shartnoma raqami, shartnoma sanasi va amal qilish muddati majburiy.";
     if (state.validUntil < state.contractDate) return "Amal qilish muddati shartnoma sanasidan oldin bo'lishi mumkin emas.";
-    if (!state.status || !state.currency) return "Status va valyutani tanlang.";
+    if (!state.status) return "Statusni tanlang.";
   }
   if (targetStep >= 3) {
     const items = state.items || [];
@@ -750,6 +748,8 @@ async function renderContractWizard() {
     validUntil: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
     title: "",
     status: "draft",
+    // Kompaniya faqat so'mda ishlaydi, shuning uchun valyuta so'ralmaydi --
+    // maydon bazada qoladi va doim UZS bo'lib yuboriladi.
     currency: "UZS",
     notes: "",
     items: [{ product_id: null, product_name: "", product_code: "", unit: "tonna", quantity: "", unit_price: "", vat_rate: "12" }],
@@ -1359,7 +1359,6 @@ function contractGeneralTab(contract) {
         ["Mijoz", contract.customer_name || contract.client?.name],
         ["Sarlavha", contract.title],
         ["Status", statusLabel(contract.status)],
-        ["Valyuta", contract.currency],
         ["Didox ID", contract.didox_id],
         ["Rouming ID", contract.rouming_id],
         ["Izoh", contract.notes],
