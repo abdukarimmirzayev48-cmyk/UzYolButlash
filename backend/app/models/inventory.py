@@ -95,6 +95,33 @@ class ExchangeTicket(Base, TimestampMixin):
 
     supplier: Mapped["Supplier"] = relationship()
     stock_lot: Mapped["StockLot | None"] = relationship(back_populates="ticket", uselist=False)
+    intakes: Mapped[list["ExchangeTicketIntake"]] = relationship(
+        back_populates="ticket", cascade="all, delete-orphan", order_by="ExchangeTicketIntake.intake_date"
+    )
+
+
+class ExchangeTicketIntake(Base, TimestampMixin):
+    """Ticket bo'yicha bir marta olib kelingan mol.
+
+    Ticket -- bu kvota: unda ko'rsatilgan miqdor bir yo'la emas, bo'lib-bo'lib
+    olinadi. Ilgari ticket ochilishi bilan butun miqdor zaxiraga tushardi, ya'ni
+    hali ta'minotchi bazasidan chiqmagan mol ham bizniki bo'lib hisoblanardi va
+    kvotada qancha qolganini bilishning iloji yo'q edi.
+
+    Har bir qabul zaxirani o'sha miqdorga oshiradi va o'z harakatini yozadi.
+    """
+
+    __tablename__ = "exchange_ticket_intakes"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    ticket_id: Mapped[int] = mapped_column(ForeignKey("exchange_tickets.id", ondelete="CASCADE"), index=True)
+    intake_date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
+    quantity: Mapped[Decimal] = mapped_column(Numeric(18, 3), nullable=False)
+    document_number: Mapped[str | None] = mapped_column(String(128))
+    notes: Mapped[str | None] = mapped_column(Text)
+    created_by: Mapped[str | None] = mapped_column(String(255))
+
+    ticket: Mapped["ExchangeTicket"] = relationship(back_populates="intakes")
 
 
 class StockLocation(Base, TimestampMixin):

@@ -10,6 +10,7 @@ from backend.app.db.session import get_db
 from backend.app.models.delivery import DeliveryBatch, Logistics
 from backend.app.models.inventory import (
     ExchangeTicket,
+    ExchangeTicketIntake,
     ExchangeTicketStatus,
     StockAllocation,
     StockAllocationStatus,
@@ -25,6 +26,8 @@ from backend.app.models.procurement import Supplier, SupplierAddress, SupplierAd
 from backend.app.schemas.client import Page
 from backend.app.schemas.inventory import (
     ExchangeTicketCreate,
+    ExchangeTicketIntakeCreate,
+    ExchangeTicketIntakeRead,
     ExchangeTicketRead,
     ExchangeTicketUpdate,
     StockAllocationCreate,
@@ -32,7 +35,9 @@ from backend.app.schemas.inventory import (
     StockLotDetail,
     StockLotSummary,
     StockMovementRead,
+    TicketBalanceRead,
 )
+from backend.app.services import ticket_balance as ticket_balance_service
 from backend.app.services.auth import require_edit
 from backend.app.services.order_status import sync_order_status
 
@@ -140,6 +145,13 @@ def update_stock_status(lot: StockLot) -> None:
 
 
 def ensure_stock_lot_for_ticket(db: Session, ticket: ExchangeTicket) -> StockLot:
+    """Ticketning zaxira partiyasi -- bo'sh idish.
+
+    Ilgari bu yerda butun ticket miqdori zaxiraga tushardi, ya'ni ta'minotchi
+    bazasidan hali chiqmagan mol ham bizniki bo'lib hisoblanardi va kvotada
+    qancha qolganini bilishning iloji yo'q edi. Endi partiya nol miqdor bilan
+    ochiladi, mol esa har bir qabul bilan qo'shiladi.
+    """
     existing = db.scalars(select(StockLot).where(StockLot.ticket_id == ticket.id)).first()
     if existing:
         return existing
@@ -154,8 +166,8 @@ def ensure_stock_lot_for_ticket(db: Session, ticket: ExchangeTicket) -> StockLot
         product_id=ticket.product_id,
         product_name=ticket.product_name,
         unit=ticket.unit,
-        quantity_initial=qty(ticket.quantity),
-        quantity_available=qty(ticket.quantity),
+        quantity_initial=Decimal("0"),
+        quantity_available=Decimal("0"),
         quantity_reserved=Decimal("0"),
         unit_cost=money(ticket.unit_price),
         currency="UZS",
@@ -163,14 +175,26 @@ def ensure_stock_lot_for_ticket(db: Session, ticket: ExchangeTicket) -> StockLot
     )
     db.add(lot)
     db.flush()
+    return lot
+
+
+def apply_intake_to_stock(db: Session, ticket: ExchangeTicket, intake: ExchangeTicketIntake) -> StockLot:
+    """Olib kelingan molni zaxiraga qo'shadi va harakatini yozadi."""
+    lot = ensure_stock_lot_for_ticket(db, ticket)
+    amount = qty(intake.quantity)
+    lot.quantity_initial = qty(lot.quantity_initial + amount)
+    lot.quantity_available = qty(lot.quantity_available + amount)
+    # Narx ticketda o'zgargan bo'lishi mumkin; tannarx doim oxirgi kelishuvdan.
+    lot.unit_cost = money(ticket.unit_price)
+    update_stock_status(lot)
     add_stock_movement(
         db,
         lot,
         StockMovementType.purchase_in,
-        lot.quantity_initial,
-        to_location_id=location.id,
-        notes=f"Birja ticketi: {ticket.ticket_number}",
-        created_by=ticket.created_by or "system",
+        amount,
+        to_location_id=lot.stock_location_id,
+        notes=f"Ticket bo'yicha qabul: {intake.document_number or ticket.ticket_number}",
+        created_by=intake.created_by or "system",
     )
     return lot
 
@@ -203,6 +227,25 @@ def stock_lot_summary(lot: StockLot) -> StockLotSummary:
     )
 
 
+def ticket_balance(ticket: ExchangeTicket) -> TicketBalanceRead:
+    lot = ticket.stock_lot
+    balance = ticket_balance_service.build_balance(
+        quota=ticket.quantity,
+        intakes=[intake.quantity for intake in ticket.intakes],
+        available=lot.quantity_available if lot else Decimal("0"),
+        reserved=lot.quantity_reserved if lot else Decimal("0"),
+    )
+    return TicketBalanceRead(
+        quota=qty(balance.quota),
+        taken=qty(balance.taken),
+        remaining_on_ticket=qty(balance.remaining_on_ticket),
+        available=qty(balance.available),
+        reserved=qty(balance.reserved),
+        shipped=qty(balance.shipped),
+        warnings=ticket_balance_service.warnings_for(balance),
+    )
+
+
 def ticket_read(ticket: ExchangeTicket) -> ExchangeTicketRead:
     stock_lot = stock_lot_summary(ticket.stock_lot) if ticket.stock_lot else None
     return ExchangeTicketRead(
@@ -229,6 +272,8 @@ def ticket_read(ticket: ExchangeTicket) -> ExchangeTicketRead:
         created_at=ticket.created_at,
         updated_at=ticket.updated_at,
         stock_lot=stock_lot,
+        intakes=[ExchangeTicketIntakeRead.model_validate(intake) for intake in ticket.intakes],
+        balance=ticket_balance(ticket),
     )
 
 
@@ -247,6 +292,7 @@ def list_exchange_tickets(
 ):
     stmt = select(ExchangeTicket).options(
         selectinload(ExchangeTicket.supplier),
+        selectinload(ExchangeTicket.intakes),
         selectinload(ExchangeTicket.stock_lot).selectinload(StockLot.supplier),
         selectinload(ExchangeTicket.stock_lot).selectinload(StockLot.stock_location),
     )
@@ -295,20 +341,25 @@ def create_exchange_ticket(payload: ExchangeTicketCreate, db: Session = Depends(
     return get_exchange_ticket(ticket.id, db)
 
 
-@router.get("/exchange-tickets/{ticket_id}", response_model=ExchangeTicketRead)
-def get_exchange_ticket(ticket_id: int, db: Session = Depends(get_db)):
+def load_ticket(db: Session, ticket_id: int) -> ExchangeTicket:
     ticket = db.scalars(
         select(ExchangeTicket)
         .where(ExchangeTicket.id == ticket_id)
         .options(
             selectinload(ExchangeTicket.supplier),
+            selectinload(ExchangeTicket.intakes),
             selectinload(ExchangeTicket.stock_lot).selectinload(StockLot.supplier),
             selectinload(ExchangeTicket.stock_lot).selectinload(StockLot.stock_location),
         )
     ).first()
     if not ticket:
         raise HTTPException(status_code=404, detail="Ticket topilmadi.")
-    return ticket_read(ticket)
+    return ticket
+
+
+@router.get("/exchange-tickets/{ticket_id}", response_model=ExchangeTicketRead)
+def get_exchange_ticket(ticket_id: int, db: Session = Depends(get_db)):
+    return ticket_read(load_ticket(db, ticket_id))
 
 
 @router.patch("/exchange-tickets/{ticket_id}", response_model=ExchangeTicketRead, dependencies=[Depends(require_edit("taminot"))])
@@ -316,8 +367,17 @@ def update_exchange_ticket(ticket_id: int, payload: ExchangeTicketUpdate, db: Se
     ticket = db.get(ExchangeTicket, ticket_id)
     if not ticket:
         raise HTTPException(status_code=404, detail="Ticket topilmadi.")
-    if ticket.stock_lot and any(value is not None for value in (payload.quantity, payload.unit_price, payload.product_name, payload.unit)):
-        raise HTTPException(status_code=422, detail="Zaxira yaratilgan ticket mahsulot ma'lumotlarini tahrirlab bo'lmaydi.")
+    # Zaxira partiyasi endi ticket ochilishi bilan bo'sh holda yaratiladi,
+    # shuning uchun uning borligi tahrirni to'sish uchun asos emas. Chegara --
+    # mol allaqachon olib kelinganmi yoki yo'qmi.
+    taken = sum((intake.quantity for intake in ticket.intakes), Decimal("0"))
+    if taken > 0 and any(value is not None for value in (payload.product_name, payload.unit, payload.unit_price)):
+        raise HTTPException(status_code=422, detail="Mol qabul qilingan ticketning mahsulot ma'lumotlarini tahrirlab bo'lmaydi.")
+    if payload.quantity is not None and qty(payload.quantity) < qty(taken):
+        raise HTTPException(
+            status_code=422,
+            detail=f"Ticket miqdori olib kelingan miqdordan kam bo'lishi mumkin emas: {ticket_balance_service.quantity_text(qty(taken))}",
+        )
     data = payload.model_dump(exclude_unset=True)
     if "supplier_id" in data:
         supplier = db.get(Supplier, data["supplier_id"])
@@ -342,6 +402,62 @@ def open_exchange_ticket(ticket_id: int, db: Session = Depends(get_db)):
     ticket.status = ExchangeTicketStatus.opened
     recalculate_ticket(ticket)
     ensure_stock_lot_for_ticket(db, ticket)
+    db.commit()
+    return get_exchange_ticket(ticket.id, db)
+
+
+@router.post("/exchange-tickets/{ticket_id}/intakes", response_model=ExchangeTicketRead, status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_edit("taminot"))])
+def create_ticket_intake(ticket_id: int, payload: ExchangeTicketIntakeCreate, db: Session = Depends(get_db)):
+    """Ticket kvotasidan bir marta olib kelingan molni yozadi."""
+    ticket = load_ticket(db, ticket_id)
+    if ticket.status == ExchangeTicketStatus.cancelled:
+        raise HTTPException(status_code=422, detail="Bekor qilingan ticket bo'yicha mol qabul qilib bo'lmaydi.")
+    if ticket.status == ExchangeTicketStatus.draft:
+        raise HTTPException(status_code=422, detail="Mol qabul qilishdan oldin ticketni oching.")
+    taken = sum((intake.quantity for intake in ticket.intakes), Decimal("0"))
+    if qty(taken + payload.quantity) > qty(ticket.quantity):
+        remaining = ticket_balance_service.quantity_text(qty(max(Decimal("0"), ticket.quantity - taken)))
+        raise HTTPException(
+            status_code=422,
+            detail=f"{ticket_balance_service.MSG_OVER_INTAKE}: {remaining}",
+        )
+    intake = ExchangeTicketIntake(ticket_id=ticket.id, **payload.model_dump())
+    db.add(intake)
+    db.flush()
+    apply_intake_to_stock(db, ticket, intake)
+    db.commit()
+    return get_exchange_ticket(ticket.id, db)
+
+
+@router.delete("/exchange-tickets/{ticket_id}/intakes/{intake_id}", response_model=ExchangeTicketRead, dependencies=[Depends(require_edit("taminot"))])
+def delete_ticket_intake(ticket_id: int, intake_id: int, db: Session = Depends(get_db)):
+    """Xato kiritilgan qabulni olib tashlaydi.
+
+    Mol allaqachon buyurtmaga biriktirilgan yoki jo'natilgan bo'lsa, uni ortga
+    qaytarib bo'lmaydi: zaxira erkin qismidan kam bo'lgan miqdorni ayirish
+    hisobni manfiyga olib boradi.
+    """
+    ticket = load_ticket(db, ticket_id)
+    intake = next((row for row in ticket.intakes if row.id == intake_id), None)
+    if not intake:
+        raise HTTPException(status_code=404, detail="Qabul yozuvi topilmadi.")
+    lot = ticket.stock_lot
+    amount = qty(intake.quantity)
+    if not lot or lot.quantity_available < amount:
+        raise HTTPException(status_code=422, detail="Bu qabul mahsuloti allaqachon ishlatilgan, uni olib tashlab bo'lmaydi.")
+    lot.quantity_initial = qty(lot.quantity_initial - amount)
+    lot.quantity_available = qty(lot.quantity_available - amount)
+    update_stock_status(lot)
+    add_stock_movement(
+        db,
+        lot,
+        StockMovementType.adjustment,
+        -amount,
+        from_location_id=lot.stock_location_id,
+        notes=f"Qabul bekor qilindi: {intake.document_number or ticket.ticket_number}",
+        created_by="system",
+    )
+    db.delete(intake)
     db.commit()
     return get_exchange_ticket(ticket.id, db)
 

@@ -155,9 +155,25 @@ def transliterate(text: str) -> str:
     return "".join(result)
 
 
+# Alohida so'zlar: OVERRIDES butun satrga mos kelgandagina ishlaydi, bular esa
+# jumla ichida ham uchraydi. `ticket` -> «тиккет» bo'lib chiqardi, chunki `ck`
+# ikkita harf sifatida o'giriladi.
+WORD_FIXES = {
+    "тиккет": "тикет",
+    "Тиккет": "Тикет",
+    "ТИККЕТ": "ТИКЕТ",
+}
+
+_WORD_FIX_RE = re.compile("|".join(re.escape(key) for key in WORD_FIXES))
+
+
+def apply_word_fixes(text: str) -> str:
+    return _WORD_FIX_RE.sub(lambda m: WORD_FIXES[m.group(0)], text)
+
+
 def translate(text: str) -> str:
     """Override table first, then transliteration."""
     stripped = text.strip()
     if stripped in OVERRIDES:
         return text.replace(stripped, OVERRIDES[stripped])
-    return transliterate(text)
+    return apply_word_fixes(transliterate(text))

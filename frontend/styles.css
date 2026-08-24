@@ -963,6 +963,28 @@ body.sidebar-collapsed .app-shell {
   gap: 0;
 }
 
+/* workflowTimeline() oddiy <div><span>yorliq</span><strong>qiymat</strong></div>
+   chiqaradi -- .timeline-row emas. Uslub berilmagani uchun yorliq bilan qiymat
+   yopishib, «Yaratildi24.08.2026» bo'lib o'qilardi. */
+.workflow-timeline > div {
+  display: grid;
+  grid-template-columns: minmax(160px, 1fr) 2fr;
+  gap: 12px;
+  align-items: baseline;
+  border-bottom: 1px solid var(--line);
+  padding: 10px 0;
+}
+
+.workflow-timeline > div:last-child {
+  border-bottom: 0;
+}
+
+.workflow-timeline > div > span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
 .timeline-row {
   display: grid;
   grid-template-columns: 18px minmax(160px, 1fr) 2fr;

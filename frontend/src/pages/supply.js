@@ -92,10 +92,10 @@ async function renderExchangeTicketsList() {
     counter: `${fmt(data.total)} ta ticket`,
     formId: "exchange-ticket-search-form",
     filters: `<input name="search" placeholder="Ticket, ta'minotchi, mahsulot" value="${esc(params.get("search") || "")}" /><select name="status"><option value="">Status</option>${exchangeTicketStatuses.map(([key, label]) => `<option value="${key}" ${params.get("status") === key ? "selected" : ""}>${label}</option>`).join("")}</select><label class="inline-check"><input type="checkbox" name="overdue_only" value="true" ${params.get("overdue_only") === "true" ? "checked" : ""} /> Muddati o'tgan</label>`,
-    headers: ["Ticket №", "Sana", "Ta'minotchi", "Mahsulot", "Miqdor", "Birlik narxi", "Jami summa", "To'lov turi", "To'lov muddati", "Qoldiq kun", "Status", ""],
-    rows: data.items.map((ticket) => `<tr><td><button class="ops-primary-link" data-nav="/exchange-tickets/${ticket.id}">${fmt(ticket.ticket_number)}</button></td><td>${fmt(ticket.ticket_date)}</td><td>${fmt(ticket.supplier_name)}</td><td>${fmt(ticket.product_name)}</td><td>${fmtQty(ticket.quantity, ticket.unit)}</td><td class="ops-money">${fmtMoney(ticket.unit_price)}</td><td class="ops-money">${fmtMoney(ticket.total_amount)}</td><td>${fmt(optionLabel(ticketPaymentTypes, ticket.payment_type))}</td><td>${fmt(ticket.due_date)}</td><td>${fmt(daysUntil(ticket.due_date))}</td><td>${statusBadge(ticket.status)}</td><td><div class="ops-row-actions"><button class="link-btn" data-nav="/exchange-tickets/${ticket.id}">Ochish</button>${ticket.stock_lot ? `<button class="link-btn" data-nav="/stock/${ticket.stock_lot.id}">Zaxira</button>` : ""}</div></td></tr>`).join(""),
+    headers: ["Ticket №", "Sana", "Ta'minotchi", "Mahsulot", "Kvota", "Olingan", "Kvotada qolgan", "Zaxirada erkin", "Jami summa", "To'lov muddati", "Qoldiq kun", "Status", ""],
+    rows: data.items.map((ticket) => `<tr><td><button class="ops-primary-link" data-nav="/exchange-tickets/${ticket.id}">${fmt(ticket.ticket_number)}</button></td><td>${fmt(ticket.ticket_date)}</td><td>${fmt(ticket.supplier_name)}</td><td>${fmt(ticket.product_name)}</td><td>${fmtQty(ticket.quantity, ticket.unit)}</td><td>${fmtQty(ticket.balance?.taken, ticket.unit)}</td><td class="${numberValue(ticket.balance?.remaining_on_ticket) > 0 ? "ops-warning" : ""}">${fmtQty(ticket.balance?.remaining_on_ticket, ticket.unit)}</td><td>${fmtQty(ticket.balance?.available, ticket.unit)}</td><td class="ops-money">${fmtMoney(ticket.total_amount)}</td><td>${fmt(ticket.due_date)}</td><td>${fmt(daysUntil(ticket.due_date))}</td><td>${statusBadge(ticket.status)}</td><td><div class="ops-row-actions"><button class="link-btn" data-nav="/exchange-tickets/${ticket.id}">Ochish</button>${ticket.stock_lot ? `<button class="link-btn" data-nav="/stock/${ticket.stock_lot.id}">Zaxira</button>` : ""}</div></td></tr>`).join(""),
     emptyText: "Birja ticketlari topilmadi.",
-    colspan: 11,
+    colspan: 13,
     footer: opsFooter(data, "exchange-ticket"),
   });
   bindOpsSearch("exchange-ticket-search-form", "/exchange-tickets", ["search", "status", "overdue_only"]);
@@ -244,14 +244,95 @@ async function renderNewExchangeTicket() {
   });
 }
 
+// Ticketda ikkita har xil qoldiq bor va ularni chalkashtirmaslik kerak:
+// kvotada qolgan -- ta'minotchidan yana olish mumkin bo'lgani; zaxirada erkin
+// -- olib kelingan, lekin hali buyurtmaga biriktirilmagani.
+function ticketIntakeRow(ticket, intake, editable) {
+  return `<tr>
+    <td>${fmtDayOnly(intake.intake_date)}</td>
+    <td>${fmtQty(intake.quantity, ticket.unit)}</td>
+    <td>${fmt(intake.document_number)}</td>
+    <td>${fmt(intake.notes)}</td>
+    <td>${editable ? `<button type="button" class="link-btn" data-intake-remove="${intake.id}">Olib tashlash</button>` : ""}</td>
+  </tr>`;
+}
+
+function ticketIntakeForm(ticket) {
+  const remaining = numberValue(ticket.balance?.remaining_on_ticket);
+  if (remaining <= 0) {
+    return `<div class="empty">Ticket kvotasi to'liq olib bo'lingan.</div>`;
+  }
+  return `<form id="ticket-intake-form" class="grid">
+    ${textField("intake_date", "Qabul sanasi", new Date().toISOString().slice(0, 10), "date", { required: true })}
+    ${textField("quantity", "Olingan miqdor", "", "number", { required: true, min: 0, max: remaining, title: "Olingan miqdor kvotada qolgan miqdordan oshmasligi kerak." })}
+    ${textField("document_number", "Hujjat raqami (TTN)", "")}
+    ${textField("notes", "Izoh", "")}
+    <div class="form-footer"><button class="btn primary" type="submit">Qabulni saqlash</button></div>
+  </form>`;
+}
+
 async function renderExchangeTicketDetail(id) {
   const ticket = await api(`/api/exchange-tickets/${id}`);
   const lot = ticket.stock_lot;
-  const warnings = [];
+  const balance = ticket.balance || {};
+  const editable = canEdit("taminot");
+  const warnings = [...(balance.warnings || [])];
   const dueDays = daysUntil(ticket.due_date);
   if (typeof dueDays === "number" && dueDays <= 7 && !["paid", "closed", "cancelled"].includes(ticket.status)) warnings.push(`Ticket to'lov muddati tugashiga ${dueDays} kun qoldi.`);
   if (!lot) warnings.push("Zaxira partiyasi hali yaratilmagan.");
-  app.innerHTML = `<div class="page">${workflowHeader({ title: ticket.ticket_number, subtitle: subtitleLine([{value:ticket.supplier_name,raw:true},{value:ticket.product_name,raw:true},{value:fmtDayOnly(ticket.ticket_date),raw:true}]), backPath: "/exchange-tickets", actions: [{ label: "Zaxirani ko'rish", path: lot ? `/stock/${lot.id}` : "/stock", primary: Boolean(lot) }, { label: "Hujjat yuklash", path: `/exchange-tickets/${ticket.id}#documents` }] })}${workflowStatusGrid([["Ticket holati", statusBadge(ticket.status)], ["Zaxira holati", lot ? statusBadge(lot.stock_status) : statusChip({ label: "Yaratilmagan", tone: "warning" })], ["To'lov holati", statusChip({ label: optionLabel(exchangeTicketStatuses, ticket.status), tone: dueDays < 0 ? "warning" : "muted" })], ["Hujjat holati", statusChip({ label: "Keyingi bosqich", tone: "muted" })]])}${summaryCards([["Miqdor", fmtQty(ticket.quantity, ticket.unit)], ["Birlik narxi", fmtMoney(ticket.unit_price)], ["Jami summa", fmtMoney(ticket.total_amount)], ["To'lov muddati", fmt(ticket.due_date)], ["Qoldiq kun", fmt(dueDays)], ["Mavjud zaxira", lot ? fmtQty(lot.quantity_available, lot.unit) : dash]])}${workflowWarningsPanel(warnings)}${workflowNextActionPanel(!lot ? { title: "Ticketni oching", button: "Ticketni ochish", path: `/exchange-tickets/${ticket.id}` } : { title: "Zaxira buyurtmaga ajratishga tayyor", button: "Zaxirani ko'rish", path: `/stock/${lot.id}`, done: true })}${workflowTabs("general", [["general", "Umumiy"], ["product", "Mahsulot"], ["stock", "Zaxira"], ["finance", "Moliya"], ["documents", "Hujjatlar"], ["history", "Tarix"]], "exchange-ticket-tab")}${section("Umumiy", detailList([["Ticket raqami", ticket.ticket_number], ["Ticket sanasi", ticket.ticket_date], ["Ta'minotchi", ticket.supplier_name], ["Status", optionLabel(exchangeTicketStatuses, ticket.status)], ["Izoh", ticket.notes]]))}${section("Mahsulot", detailList([["Mahsulot", ticket.product_name], ["Miqdor", fmtQty(ticket.quantity, ticket.unit)], ["Birlik narxi", fmtMoney(ticket.unit_price)], ["Oraliq summa", fmtMoney(ticket.subtotal_amount)], ["QQS", fmtMoney(ticket.vat_amount)], ["Jami summa", fmtMoney(ticket.total_amount)]]))}${section("Zaxira", lot ? detailList([["Zaxira partiyasi", lot.ticket_number], ["Joylashuv", lot.location_name], ["Manzil", lot.location_address], ["Dastlabki miqdor", fmtQty(lot.quantity_initial, lot.unit)], ["Mavjud miqdor", fmtQty(lot.quantity_available, lot.unit)], ["Band qilingan", fmtQty(lot.quantity_reserved, lot.unit)], ["Status", optionLabel(stockStatuses, lot.stock_status)]]) : `<div class="empty">Zaxira partiyasi hali yaratilmagan.</div>`)}${section("Moliya", detailList([["To'lov turi", optionLabel(ticketPaymentTypes, ticket.payment_type)], ["To'lov muddati, kun", ticket.payment_term_days], ["To'lov muddati", ticket.due_date], ["Qoldiq kun", dueDays], ["Kreditor summa", fmtMoney(ticket.total_amount)]]))}${section("Hujjatlar", `<div class="empty" id="documents">Ticket hujjatlari keyingi bosqichda ulanadi.</div>`)}${section("Tarix", workflowTimeline([["Yaratildi", fmtDate(ticket.created_at)], ["Status", optionLabel(exchangeTicketStatuses, ticket.status)], ["Yangilandi", fmtDate(ticket.updated_at)]]))}</div>`;
+  app.innerHTML = `<div class="page">${workflowHeader({ title: ticket.ticket_number, subtitle: subtitleLine([{value:ticket.supplier_name,raw:true},{value:ticket.product_name,raw:true},{value:fmtDayOnly(ticket.ticket_date),raw:true}]), backPath: "/exchange-tickets", actions: [{ label: "Zaxirani ko'rish", path: lot ? `/stock/${lot.id}` : "/stock", primary: Boolean(lot) }, { label: "Hujjat yuklash", path: `/exchange-tickets/${ticket.id}#documents` }] })}${workflowStatusGrid([["Ticket holati", statusBadge(ticket.status)], ["Zaxira holati", lot ? statusBadge(lot.stock_status) : statusChip({ label: "Yaratilmagan", tone: "warning" })], ["To'lov holati", statusChip({ label: optionLabel(exchangeTicketStatuses, ticket.status), tone: dueDays < 0 ? "warning" : "muted" })], ["Hujjat holati", statusChip({ label: "Keyingi bosqich", tone: "muted" })]])}${summaryCards([
+      ["Kvota", fmtQty(balance.quota ?? ticket.quantity, ticket.unit)],
+      ["Olingan", fmtQty(balance.taken, ticket.unit)],
+      ["Kvotada qolgan", fmtQty(balance.remaining_on_ticket, ticket.unit)],
+      ["Zaxirada erkin", fmtQty(balance.available, ticket.unit)],
+      ["Band qilingan", fmtQty(balance.reserved, ticket.unit)],
+      ["Mijozga ketgan", fmtQty(balance.shipped, ticket.unit)],
+      ["Jami summa", fmtMoney(ticket.total_amount)],
+      ["To'lov muddati", fmt(ticket.due_date)],
+      ["Qoldiq kun", fmt(dueDays)],
+    ])}${workflowWarningsPanel(warnings)}${workflowNextActionPanel(
+      !lot ? { title: "Ticketni oching", button: "Ticketni ochish", path: `/exchange-tickets/${ticket.id}` }
+      : numberValue(balance.remaining_on_ticket) > 0 ? { title: "Ticket bo'yicha molni qabul qiling", button: "Mol qabul qilish", path: `/exchange-tickets/${ticket.id}#intakes` }
+      : numberValue(balance.available) > 0 ? { title: "Zaxira buyurtmaga ajratishga tayyor", button: "Zaxirani ko'rish", path: `/stock/${lot.id}`, done: true }
+      : { title: "Ticket bo'yicha mol to'liq ishlatilgan", button: "Zaxirani ko'rish", path: `/stock/${lot.id}`, done: true })}${workflowTabs("general", [["general", "Umumiy"], ["product", "Mahsulot"], ["intakes", "Qabullar"], ["stock", "Zaxira"], ["finance", "Moliya"], ["documents", "Hujjatlar"], ["history", "Tarix"]], "exchange-ticket-tab")}${section("Umumiy", detailList([["Ticket raqami", ticket.ticket_number], ["Ticket sanasi", ticket.ticket_date], ["Ta'minotchi", ticket.supplier_name], ["Status", optionLabel(exchangeTicketStatuses, ticket.status)], ["Izoh", ticket.notes]]))}${section("Mahsulot", detailList([["Mahsulot", ticket.product_name], ["Miqdor", fmtQty(ticket.quantity, ticket.unit)], ["Birlik narxi", fmtMoney(ticket.unit_price)], ["Oraliq summa", fmtMoney(ticket.subtotal_amount)], ["QQS", fmtMoney(ticket.vat_amount)], ["Jami summa", fmtMoney(ticket.total_amount)]]))}${section("Qabullar", `<div id="intakes">${tableOrEmpty(ticket.intakes || [], ["Sana", "Miqdor", "Hujjat", "Izoh", ""], (intake) => ticketIntakeRow(ticket, intake, editable), "Ticket bo'yicha hali mol olinmagan.")}${editable ? ticketIntakeForm(ticket) : ""}</div>`)}
+    ${section("Zaxira", lot ? detailList([["Zaxira partiyasi", lot.ticket_number], ["Joylashuv", lot.location_name], ["Manzil", lot.location_address], ["Olib kelingan jami", fmtQty(lot.quantity_initial, lot.unit)], ["Zaxirada erkin", fmtQty(lot.quantity_available, lot.unit)], ["Band qilingan", fmtQty(lot.quantity_reserved, lot.unit)], ["Status", optionLabel(stockStatuses, lot.stock_status)]]) : `<div class="empty">Zaxira partiyasi hali yaratilmagan.</div>`)}${section("Moliya", detailList([["To'lov turi", optionLabel(ticketPaymentTypes, ticket.payment_type)], ["To'lov muddati, kun", ticket.payment_term_days], ["To'lov muddati", ticket.due_date], ["Qoldiq kun", dueDays], ["Kreditor summa", fmtMoney(ticket.total_amount)]]))}${section("Hujjatlar", `<div class="empty" id="documents">Ticket hujjatlari keyingi bosqichda ulanadi.</div>`)}${section("Tarix", workflowTimeline([["Yaratildi", fmtDate(ticket.created_at)], ["Status", optionLabel(exchangeTicketStatuses, ticket.status)], ["Yangilandi", fmtDate(ticket.updated_at)]]))}</div>`;
+
+  document.querySelector("#ticket-intake-form")?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const form = event.currentTarget;
+    try {
+      await api(`/api/exchange-tickets/${id}/intakes`, {
+        method: "POST",
+        body: JSON.stringify({
+          intake_date: field(form, "intake_date"),
+          quantity: normalizeNumberInputValue(field(form, "quantity")),
+          document_number: field(form, "document_number") || null,
+          notes: field(form, "notes") || null,
+        }),
+      });
+      showToast("Qabul saqlandi.");
+      await renderExchangeTicketDetail(id);
+    } catch (error) {
+      showToast(error.message, true);
+    }
+  });
+
+  app.querySelectorAll("[data-intake-remove]").forEach((button) => button.addEventListener("click", async () => {
+    const confirmed = await appDialog({
+      title: "Qabulni olib tashlash",
+      intro: "Bu miqdor zaxiradan ayiriladi. Mol allaqachon buyurtmaga biriktirilgan bo'lsa, amal bajarilmaydi.",
+      confirmLabel: "Olib tashlash",
+      tone: "danger",
+    });
+    if (!confirmed.confirmed) return;
+    try {
+      await api(`/api/exchange-tickets/${id}/intakes/${button.dataset.intakeRemove}`, { method: "DELETE" });
+      showToast("Qabul olib tashlandi.");
+      await renderExchangeTicketDetail(id);
+    } catch (error) {
+      showToast(error.message, true);
+    }
+  }));
 }
 
 async function renderStockList() {

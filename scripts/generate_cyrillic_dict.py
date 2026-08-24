@@ -20,7 +20,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from uz_translit import _PAIRS, PROTECTED, translate  # noqa: E402
+from uz_translit import _PAIRS, PROTECTED, WORD_FIXES, translate  # noqa: E402
 
 _PAIRS_FOR_JS = [[a, b] for a, b in _PAIRS]
 
@@ -30,6 +30,10 @@ _PAIRS_FOR_JS = [[a, b] for a, b in _PAIRS]
 JS_TRANSLITERATOR = """
 const uzCyrillicPairs = __PAIRS__;
 const uzCyrillicProtected = __PROTECTED__;
+// Oddiy o'girish xato qiladigan alohida so'zlar. Python tomonidagi
+// scripts/uz_translit.py WORD_FIXES bilan bir xil bo'lishi shart.
+const uzCyrillicWordFixes = __WORD_FIXES__;
+const _uzWordFixRe = new RegExp(Object.keys(uzCyrillicWordFixes).join("|"), "g");
 
 const _uzKeepRe = new RegExp(
   [
@@ -62,7 +66,8 @@ function transliterateToCyrillic(text) {
     out += _uzTranslitWord(text.slice(cursor, m.index)) + m[0];
     cursor = m.index + m[0].length;
   }
-  return out + _uzTranslitWord(text.slice(cursor));
+  out += _uzTranslitWord(text.slice(cursor));
+  return out.replace(_uzWordFixRe, (found) => uzCyrillicWordFixes[found]);
 }
 """
 
@@ -335,7 +340,10 @@ def main() -> None:
         f"const uzCyrillic = {body};\n\n"
         f"// Templates carrying live values; {{n}} stands in for each interpolation.\n"
         f"const uzCyrillicPatterns = {pat_body};\n\n"
-        + JS_TRANSLITERATOR.replace("__PAIRS__", pairs).replace("__PROTECTED__", protected),
+        + JS_TRANSLITERATOR
+        .replace("__PAIRS__", pairs)
+        .replace("__PROTECTED__", protected)
+        .replace("__WORD_FIXES__", json.dumps(WORD_FIXES, ensure_ascii=False)),
         encoding="utf-8",
     )
     # A protected brand only keeps its Latin form on a word boundary, so an
