@@ -1709,6 +1709,12 @@ function workflowWarningsPanel(messages, title = "E'tibor kerak") {
 
 function workflowNextActionPanel(action = {}) {
   if (!action.title) return "";
+  // Ba'zi bosqichlarning amali shu sahifaning pastida turadi. Boshqa
+  // sahifaga o'tkazish o'rniga o'sha joyga olib tushamiz: sahifani
+  // almashtirmaydigan tugma bosilganda hech narsa qilmagandek ko'rinadi.
+  if (action.anchor) {
+    return `<section class="next-action-panel ${action.done ? "done" : ""}"><div><span>Keyingi amal</span><strong>${fmt(action.title)}</strong></div><a class="btn primary" href="${esc(action.anchor)}">${fmt(action.button || "Ochish")}</a></section>`;
+  }
   const attrs = action.modal ? `data-${esc(action.modal)}` : action.path ? `data-nav="${esc(action.path)}"` : "";
   const button = attrs ? `<button class="btn primary" ${attrs}>${fmt(action.button || "Ochish")}</button>` : "";
   return `<section class="next-action-panel ${action.done ? "done" : ""}"><div><span>Keyingi amal</span><strong>${fmt(action.title)}</strong></div>${button}</section>`;
@@ -1881,6 +1887,75 @@ function batchStepState(batch = {}) {
     documents: docs.key === "complete",
     completed: batch.status === "completed",
   };
+}
+
+// Shartnomaning quvuri. Ilgari «Keyingi amal» faqat pul kelgan-kelmaganiga
+// qarardi, shuning uchun avans hisob-fakturasi yaratilgandan keyin ham
+// «Hisob yarating» deb turaverardi -- oyna esa o'sha payt «bu shartnoma uchun
+// avans hisob-fakturasi allaqachon mavjud» deb ogohlantirardi. Ikkalasi bir
+// vaqtda ekranda turishi mumkin emas.
+//
+// Bosqichlar bittadan ketma-ket bajariladi va har biri o'z belgisiga ega:
+// bajarilgani, hozirgisi, keyingilari.
+function contractStepState(contract = {}) {
+  const summary = contract.summary || {};
+  const billing = summary.billing || {};
+  const status = contract.status;
+  const advanceExpected = numberValue(summary.advance_amount) > 0;
+  const closed = ["completed", "cancelled"].includes(status);
+  return {
+    client: Boolean(contract.client_id),
+    signed: ["signed", "active", "completed", "expired"].includes(status),
+    active: ["active", "completed", "expired"].includes(status),
+    // Avans kutilmasa, bu ikki bosqich o'z-o'zidan bajarilgan hisoblanadi.
+    advance_invoiced: !advanceExpected || numberValue(billing.advance_invoiced) > 0,
+    advance_paid: !advanceExpected || numberValue(billing.advance_paid) > 0,
+    ordered: numberValue(summary.unordered_quantity) <= 0 && numberValue(summary.ordered_quantity) > 0,
+    delivered: numberValue(summary.remaining_quantity) <= 0 && numberValue(summary.delivered_quantity) > 0,
+    settled: numberValue(summary.unpaid_amount) <= 0 && numberValue(summary.paid_amount) > 0,
+    completed: closed,
+  };
+}
+
+const CONTRACT_STEPS = [
+  ["client", "Mijoz"],
+  ["signed", "Imzolangan"],
+  ["active", "Faol"],
+  ["advance_invoiced", "Avans hisobi"],
+  ["advance_paid", "Avans to'langan"],
+  ["ordered", "Buyurtmalar"],
+  ["delivered", "Yetkazildi"],
+  ["settled", "To'langan"],
+  ["completed", "Yakunlandi"],
+];
+
+function contractWorkflowStepper(contract) {
+  const state = contractStepState(contract);
+  const firstOpen = CONTRACT_STEPS.findIndex(([key]) => !state[key]);
+  const currentIndex = firstOpen === -1 ? CONTRACT_STEPS.length - 1 : firstOpen;
+  return `<div class="workflow-stepper contract-stepper">${CONTRACT_STEPS.map(([key, label], index) => {
+    const cls = state[key] && index < currentIndex ? "completed" : index === currentIndex ? "current" : state[key] ? "completed" : "upcoming";
+    return `<div class="workflow-step ${cls}"><span class="workflow-dot">${index + 1}</span><span>${label}</span></div>`;
+  }).join("")}</div>`;
+}
+
+// Keyingi amal -- quvurdagi birinchi bajarilmagan bosqich. Har bir bosqich
+// o'z tugmasini olib keladi, shunda ekrandagi tavsiya va tugma bir narsani
+// aytadi.
+function contractNextAction(contract = {}) {
+  const state = contractStepState(contract);
+  const id = contract.id;
+  if (!state.client) return { title: "Shartnomani mijozga bog'lang", button: "Mijozni bog'lash", modal: "contract-link-client" };
+  if (contract.status === "cancelled") return { title: "Shartnoma bekor qilingan", button: "Tarixni ko'rish", path: `/contracts/${id}?tab=notes`, done: true };
+  if (!state.signed) return { title: "Shartnomani imzolangan deb belgilang", button: "Status o'zgartirish", anchor: "#contract-status" };
+  if (!state.active) return { title: "Shartnomani faollashtiring", button: "Status o'zgartirish", anchor: "#contract-status" };
+  if (!state.advance_invoiced) return { title: "Avans hisob-fakturasini yarating", button: "Hisob yaratish", modal: "contract-invoice-modal" };
+  if (!state.advance_paid) return { title: "Avans to'lovini kiriting", button: "To'lov qo'shish", path: `/customer-payments/new?client_id=${contract.client_id}&contract_id=${id}` };
+  if (!state.ordered) return { title: "Shartnoma bo'yicha buyurtma yarating", button: "Buyurtma yaratish", path: `/orders/new?contract_id=${id}` };
+  if (!state.delivered) return { title: "Yetkazib berish davom etmoqda", button: "Buyurtmalarni ko'rish", path: `/contracts/${id}?tab=orders` };
+  if (!state.settled) return { title: "Qolgan to'lovni undiring", button: "Moliyani ko'rish", path: `/contracts/${id}?tab=payment` };
+  if (!state.completed) return { title: "Shartnomani yakunlang", button: "Status o'zgartirish", anchor: "#contract-status" };
+  return { title: "Shartnoma bo'yicha barcha bosqichlar yakunlangan", button: "Tarixni ko'rish", path: `/contracts/${id}?tab=notes`, done: true };
 }
 
 function batchWorkflowStepper(batch) {

@@ -897,6 +897,22 @@ body.sidebar-collapsed .app-shell {
   overflow-x: auto;
 }
 
+/* Shartnoma quvurida to'qqizta bosqich bor -- partiyanikidan bittaga ko'p,
+   shuning uchun ustunlar torroq. */
+/* Havola bilan tushilgan bo'lim ko'z bilan topilsin. */
+#contract-status:target > .card {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+#contract-status {
+  scroll-margin-top: 90px;
+}
+
+.contract-stepper {
+  grid-template-columns: repeat(9, minmax(86px, 1fr));
+}
+
 .workflow-step {
   display: grid;
   grid-template-columns: minmax(0, 1fr);

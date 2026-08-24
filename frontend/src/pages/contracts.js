@@ -1355,7 +1355,7 @@ function contractHeader(contract) {
     // One template literal on one line, so the dictionary can match it as a
     // "{n} ..." pattern; split across lines it matches nothing.
     warnings.push(`${overdueCount} ta to'lov muddati o'tgan, jami ${fmtMoney(contract.summary.overdue_amount)}, eng kechikkani ${contract.summary.max_overdue_days} kun.`);
-  } else if (numberValue(contract.summary?.advance_amount) > 0 && numberValue(contract.summary?.paid_amount) <= 0) {
+  } else if (numberValue(contract.summary?.advance_amount) > 0 && numberValue(contract.summary?.billing?.advance_paid) <= 0) {
     const advance = (contract.summary?.payment_schedule || []).find((item) => item.kind === "advance");
     warnings.push(advance?.due_date
       ? `Avans to'lovi hali kelmagan. Muddat: ${fmtDayOnly(advance.due_date)}.`
@@ -1367,13 +1367,14 @@ function contractHeader(contract) {
   // is closed the moment the contract is saved.
   (contract.parse_warnings || []).forEach((warning) => warnings.push(warning));
   const editable = canEdit("sotuv");
-  const nextAction = !contract.client_id ? {title:"Shartnoma mijozga bog'lanmagan. Buyurtma yaratishdan oldin mijozni bog'lang.",button:"Mijozni bog'lash",modal:"contract-link-client"} : numberValue(contract.summary?.paid_amount)<=0 && numberValue(contract.summary?.advance_amount)>0 ? {title:"Avans hisob-fakturasini yarating yoki to'lovni kiriting",button:"Hisob yaratish",modal:"contract-invoice-modal"} : numberValue(contract.summary?.unordered_quantity)>0 ? {title:"Shartnoma bo'yicha buyurtma yarating",button:"Buyurtma yaratish",path:`/orders/new?contract_id=${contract.id}`} : numberValue(contract.summary?.remaining_quantity)>0 ? {title:"Buyurtmalar bo'yicha yetkazib berish davom etmoqda",button:"Buyurtmalarni ko'rish",path:`/contracts/${contract.id}?tab=orders`} : {title:"Shartnoma yakunlashga tayyor",button:"Tarix",path:`/contracts/${contract.id}?tab=notes`,done:true};
+  const nextAction = contractNextAction(contract);
   return `
     ${workflowHeader({title:contract.contract_number,subtitle:`<span data-noloc>${fmt(contract.customer_name || contract.client?.name)}</span><span data-noloc> · ${fmtDayOnly(contract.contract_date)} — ${fmtDayOnly(contract.valid_until)} · </span><span>${fmt(statusLabel(contract.status))}</span>`,backPath:"/contracts",fullEditPath:editable ? `/contracts/${contract.id}/edit` : "",actions: editable ? [...(contract.client_id ? [{label:"Buyurtma yaratish",path:`/orders/new?contract_id=${contract.id}`,primary:true}] : [{label:"Mijozni bog'lash",modal:"contract-link-client",primary:true}]),{label:"Hujjat yuklash",path:`/contracts/${contract.id}?tab=documents`},{label:"O'chirish",modal:"contract-remove"}] : [{label:"Hujjat yuklash",path:`/contracts/${contract.id}?tab=documents`}]})}
     ${workflowStatusGrid([["Shartnoma holati",statusBadge(contract.status)],["Buyurtmalar holati",statusChip(numberValue(contract.summary?.remaining_quantity)>0?{label:"Jarayonda",tone:"warning"}:{label:"Yopilgan",tone:"success"})],["To'lov holati",statusChip(numberValue(contract.summary?.remaining_amount)>0?{label:"Qoldiq bor",tone:"warning"}:{label:"Yopilgan",tone:"success"})],["Yetkazib berish holati",statusChip(numberValue(contract.summary?.remaining_quantity)>0?{label:"Qoldiq bor",tone:"warning"}:{label:"To'liq",tone:"success"})]])}
     ${summaryCards([["Jami summa",fmtMoney(contract.summary?.total_amount)],["Jami miqdor",fmtQty(contract.summary?.total_quantity, contractUnit(contract))],["Yetkazilgan",fmtQty(contract.summary?.delivered_quantity, contractUnit(contract))],["Qoldiq",fmtQty(contract.summary?.remaining_quantity, contractUnit(contract))],["Avans summasi",fmtMoney(contract.summary?.advance_amount)],["To'langan summa",fmtMoney(contract.summary?.paid_amount)],["Qolgan to'lov (hisoblar bo'yicha)",fmtMoney(contract.summary?.remaining_amount)],["Transport (mijozga)",fmtMoney(contract.summary?.transport_billed_total)],["Transport xarajati (bizga)",fmtMoney(contract.summary?.transport_expense_total)]])}
     ${workflowWarningsPanel(warnings)}
     ${nextAction.done || !nextAction.modal || canEdit(contractActionModule(nextAction.modal)) ? workflowNextActionPanel(nextAction) : workflowNextActionPanel({ title: nextAction.title })}
+    ${contractWorkflowStepper(contract)}
   `;
 }
 
@@ -1435,7 +1436,7 @@ function contractGeneralTab(contract) {
   + section("Yetkazib berish rejasi", deliveryPlanHtml(contract))
   + (lateOrdersHtml(contract) ? section("Muddati o'tgan buyurtmalar", lateOrdersHtml(contract)) : "")
   + section("To'lov muddatlari", paymentScheduleHtml(contract))
-  + (canEdit("sotuv") ? section("Holatni o'zgartirish", contractTransitionsHtml(contract)) : "")
+  + (canEdit("sotuv") ? `<div id="contract-status">${section("Holatni o'zgartirish", contractTransitionsHtml(contract))}</div>` : "")
   + section("Holat tarixi", tableOrEmpty(contract.status_history, ["Sana", "Oldingi holat", "Yangi holat", "Izoh", "Kim"], (item) => `
       <tr><td>${fmtDate(item.created_at)}</td><td>${fmt(item.old_status_label)}</td><td>${fmt(item.new_status_label)}</td><td>${fmt(item.comment)}</td><td>${fmt(item.changed_by)}</td></tr>
     `, "Holat tarixi mavjud emas."))
