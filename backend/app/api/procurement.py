@@ -11,6 +11,7 @@ from backend.app.db.session import get_db
 from backend.app.models.client import Client
 from backend.app.models.contract import Contract
 from backend.app.models.order import Order, OrderItem, OrderStatus, SupplierStatus
+from backend.app.models.user import User
 from backend.app.models.procurement import (
     Procurement,
     ProcurementItem,
@@ -27,8 +28,8 @@ from backend.app.models.procurement import (
     ProcurementDocument,
     ProcurementNote,
 )
-from backend.app.services.auth import require_edit
-from backend.app.services import procurement_export
+from backend.app.services.auth import get_current_user, require_edit
+from backend.app.services import procurement_export, procurement_workflow
 from backend.app.services.product_summary import product_summary
 from backend.app.services.order_status import sync_order_status
 from backend.app.schemas.client import Page
@@ -45,6 +46,7 @@ from backend.app.schemas.procurement import (
     ProcurementNoteUpdate,
     ProcurementRead,
     ProcurementStatCards,
+    ProcurementStatusUpdate,
     ProcurementSummary,
     SupplierAddressBase,
     SupplierAddressRead,
@@ -319,6 +321,15 @@ def validate_selection_limits(procurement: Procurement) -> None:
             )
 
 
+# Bitta xaridda bir nechta ta'minotchi tanlanganda buyurtmaga shu yoziladi.
+MSG_MULTIPLE_SUPPLIERS = "Bir nechta ta'minotchi"
+MSG_BAD_TRANSITION = "Bu holatdan bunday o'tish mumkin emas"
+MSG_STATUS_CHANGED = "Holat o'zgartirildi"
+
+# Ekranda ko'rinadigan yorliqlar -- eksport bilan bitta manbadan.
+PROCUREMENT_STATUS_LABELS = procurement_export.STATUS_LABELS["lat"]
+
+
 def update_order_supplier_from_procurement(db: Session, procurement: Procurement) -> None:
     selected_offers = []
     for offer in procurement.offers:
@@ -337,7 +348,7 @@ def update_order_supplier_from_procurement(db: Session, procurement: Procurement
         procurement.order.supplier_name = supplier_name
     else:
         procurement.order.supplier_id = None
-        procurement.order.supplier_name = "Multiple suppliers"
+        procurement.order.supplier_name = MSG_MULTIPLE_SUPPLIERS
     confirmed = procurement.status in {
         ProcurementStatus.supplier_confirmed,
         ProcurementStatus.purchase_approved,
@@ -812,11 +823,65 @@ def create_procurement(payload: ProcurementCreate, db: Session = Depends(get_db)
     return get_procurement(procurement.id, db)
 
 
+def available_transitions(procurement: Procurement) -> list[dict]:
+    """Bu holatdan qaysi holatga o'tish mumkin -- yorliqlari bilan."""
+    return [
+        {**move, "label": PROCUREMENT_STATUS_LABELS.get(move["status"], move["status"])}
+        for move in procurement_workflow.transitions_from(procurement.status)
+    ]
+
+
 @procurement_router.get("/{procurement_id}", response_model=ProcurementDetail)
 def get_procurement(procurement_id: int, db: Session = Depends(get_db)):
     procurement = load_procurement_detail(db, procurement_id)
     result = ProcurementDetail.model_validate(procurement)
-    return result.model_copy(update={"summary": procurement_summary(procurement)})
+    return result.model_copy(update={
+        "summary": procurement_summary(procurement),
+        "available_transitions": available_transitions(procurement),
+    })
+
+
+@procurement_router.patch("/{procurement_id}/status", response_model=ProcurementDetail, dependencies=[Depends(require_edit("taminot"))])
+def update_procurement_status(
+    procurement_id: int,
+    payload: ProcurementStatusUpdate,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Xarid holatini qo'lda o'zgartirish.
+
+    Ta'minotchi tasdiqlangunga qadar holat takliflardan avtomatik hisoblanadi,
+    shuning uchun u bosqichlarga qo'lda tegilmaydi: ikkita manba bir maydonni
+    tortishtirsa, ekrandagi raqam bilan holat bir-biriga zid bo'lib qoladi.
+
+    Xaridning alohida holat tarixi jadvali yo'q, shuning uchun har bir
+    o'zgarish izohlar tarixiga yoziladi -- kim, qachon va nega.
+    """
+    procurement = load_procurement_detail(db, procurement_id)
+    current = procurement.status
+    if payload.status == current:
+        return get_procurement(procurement.id, db)
+    kind = procurement_workflow.transition_kind(current, payload.status)
+    if kind is None:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"{MSG_BAD_TRANSITION}: {PROCUREMENT_STATUS_LABELS.get(current.value, current.value)}",
+        )
+    comment = (payload.comment or "").strip()
+    if kind in {"backward", "cancel", "issue"} and not comment:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=procurement_workflow.MSG_COMMENT_REQUIRED,
+        )
+    procurement.status = payload.status
+    old_label = PROCUREMENT_STATUS_LABELS.get(current.value, current.value)
+    new_label = PROCUREMENT_STATUS_LABELS.get(payload.status.value, payload.status.value)
+    note = f"{MSG_STATUS_CHANGED}: {old_label} → {new_label}"
+    if comment:
+        note = f"{note}. {comment}"
+    db.add(ProcurementNote(procurement_id=procurement.id, note=note, created_by=user.username))
+    db.commit()
+    return get_procurement(procurement.id, db)
 
 
 @procurement_router.post("/{procurement_id}/documents", response_model=ProcurementDocumentRead, status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_edit("taminot"))])
@@ -885,13 +950,15 @@ def create_supplier_offer(procurement_id: int, payload: SupplierOfferCreate, db:
     supplier = db.get(Supplier, payload.supplier_id) if payload.supplier_id else None
     if payload.supplier_id and not supplier:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Ta'minotchi mavjud emas.")
-    offer = SupplierOffer(
-        procurement_id=procurement.id,
-        **payload.model_dump(exclude={"items"}, exclude_unset=True),
-    )
+    offer = SupplierOffer(**payload.model_dump(exclude={"items"}, exclude_unset=True))
     if supplier:
         offer.supplier_name = supplier.name
-    db.add(offer)
+    # Aloqa orqali qo'shiladi, `procurement_id` ni qo'lda yozib qo'yish orqali
+    # emas: aks holda taklif xaridning `offers` ro'yxatiga tushmaydi va
+    # quyidagi recalculate uni ko'rmaydi. Shu sababli yangi taklifning jami
+    # summasi 0 bo'lib qolardi -- prodda TOT-OFFER-2026-01 aynan shunday:
+    # narxi 5 600 000, 550 tonna tanlangan, jami esa 0.
+    procurement.offers.append(offer)
     procurement_items = {item.id: item for item in procurement.items}
     for item_payload in payload.items:
         procurement_item = procurement_items.get(item_payload.procurement_item_id)

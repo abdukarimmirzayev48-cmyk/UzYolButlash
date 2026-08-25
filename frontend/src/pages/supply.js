@@ -699,7 +699,8 @@ async function renderProcurementDetail(id) {
       : { title: "Xarid partiya yaratishga tayyor", button: "Buyurtmani ochish", path: `/orders/${p.order_id}?tab=batches`, done: true };
   const headerActions = [{label:"Buyurtmani ochish",path:`/orders/${p.order_id}`}];
   if (editable) headerActions.push({label:"Taklif qo'shish",path:`/procurements/${p.id}#supplier-offer-form`,primary:true});
-  app.innerHTML = `<div class="page">${workflowHeader({title:p.procurement_number,subtitle:subtitleLine([{value:p.client?.name,raw:true},{value:p.order?.order_number,raw:true},{value:optionLabel(procurementStatuses,p.status)}]),backPath:"/procurements",actions:headerActions})}${workflowStatusGrid([["Xarid holati",statusBadge(p.status)],["Takliflar holati",statusChip(p.offers?.length?{label:`${p.offers.length} ta taklif`,tone:"success"}:{label:"Taklif kutilmoqda",tone:"warning"})],["Tanlangan miqdor",fmtQty(p.summary?.selected_quantity)],["Ta'minotchi tasdiqi",statusChip(p.summary?.selected_suppliers_count?{label:"Tasdiqlangan",tone:"success"}:{label:"Kutilmoqda",tone:"muted"})]])}${summaryCards([["Talab miqdori",fmtQty(p.summary?.required_quantity)],["Tanlangan",fmtQty(p.summary?.selected_quantity)],["Qoldiq",fmtQty(p.summary?.remaining_quantity)],["Takliflar",fmt(p.summary?.offers_count)],["Ta'minotchilar",fmt(p.summary?.selected_suppliers_count)],["Yakuniy xarid",fmtMoney(p.summary?.final_purchase_amount)]])}${workflowWarningsPanel(warnings)}${workflowNextActionPanel(nextAction)}${workflowTabs("items",[["items","Mahsulotlar"],["offers","Takliflar"],["finance","Moliya"],["history","Tarix"]],"procurement-tab")}${section("Mahsulotlar", tableOrEmpty(p.items,["Mahsulot","Birlik","Talab miqdori","Xarid qilingan"],(item)=>`<tr><td>${fmt(item.product_name)}</td><td>${fmt(item.unit)}</td><td>${fmtQty(item.required_quantity,item.unit)}</td><td>${fmtQty(item.purchased_quantity,item.unit)}</td></tr>`,"Mahsulotlar topilmadi."))}${section("Takliflar", `${editable ? `<div class="actions"><button class="btn primary" type="button" onclick="document.querySelector('#supplier-offer-box')?.setAttribute('open','open'); document.querySelector('#supplier-offer-form')?.scrollIntoView({behavior:'smooth',block:'start'});">Taklif qo'shish</button></div>` : ""}${tableOrEmpty(p.offers,["Taklif","Ta'minotchi","Sana","Status","Jami","Mahsulotlar","Amallar"],(offer)=>`<tr><td>${fmt(offer.offer_number)}</td><td>${fmt(offer.supplier_name)}</td><td>${fmt(offer.offer_date)}</td><td>${fmt(optionLabel(supplierOfferStatuses,offer.status))}</td><td>${fmtMoney(offer.total_amount)}</td><td>${offer.items.map((item)=>`<div class="inline-edit"><span>${fmt(item.product_name)}: ${fmtQty(item.offered_quantity,item.unit)} taklif, ${fmtQty(item.selected_quantity,item.unit)} tanlangan</span>${editable ? `<input type="number" step="any" value="${esc(item.selected_quantity)}" data-offer-item-qty="${item.id}" /><button class="link-btn" data-offer-item-select="${item.id}">Miqdorni yangilash</button>` : ""}</div>`).join("")}</td><td>${editable ? `<button class="link-btn" data-offer-confirm="${offer.id}">Tasdiqlash</button>` : ""}</td></tr>`,"Takliflar hali kiritilmagan.")}`)}${editable ? section("Ta'minotchi taklifini qo'shish", `<details id="supplier-offer-box" class="action-form-box"><summary>Taklif formasini ochish</summary><form id="supplier-offer-form"><div class="grid"><label>Ta'minotchi<select name="supplier_id"><option value="">Ro'yxatdan tanlanmagan</option>${supplierOptions}</select></label>${textField("supplier_name","Ta'minotchi nomi")}${textField("offer_number","Taklif raqami")}${textField("offer_date","Taklif sanasi",todayIso(),"date")}${selectField("status","Status",supplierOfferStatuses,"received")}${textField("estimated_delivery_cost","Taxminiy yetkazish xarajati",0,"number")}${textArea("delivery_terms","Yetkazib berish shartlari")}${textArea("payment_terms","To'lov shartlari")}${textArea("notes","Izoh")}</div><div id="supplier-offer-items">${p.items.map(procurementOfferItemRow).join("")}</div><div class="form-footer"><button class="btn primary">Taklifni saqlash</button></div></form></details>`) : ""}${section("Moliya", detailList([["Yakuniy xarid summasi", fmtMoney(p.summary?.final_purchase_amount)], ["Ta'minotchilar soni", p.summary?.selected_suppliers_count], ["Buyurtma", p.order?.order_number]]))}${section("Tarix", workflowTimeline([["Yaratildi", fmtDate(p.created_at)], ["Holat", optionLabel(procurementStatuses, p.status)], ["Yangilandi", fmtDate(p.updated_at)]]))}</div>`;
+  app.innerHTML = `<div class="page">${workflowHeader({title:p.procurement_number,subtitle:subtitleLine([{value:p.client?.name,raw:true},{value:p.order?.order_number,raw:true},{value:optionLabel(procurementStatuses,p.status)}]),backPath:"/procurements",actions:headerActions})}${workflowStatusGrid([["Xarid holati",statusBadge(p.status)],["Takliflar holati",statusChip(p.offers?.length?{label:`${p.offers.length} ta taklif`,tone:"success"}:{label:"Taklif kutilmoqda",tone:"warning"})],["Tanlangan miqdor",fmtQty(p.summary?.selected_quantity)],["Ta'minotchi tasdiqi",statusChip(p.summary?.selected_suppliers_count?{label:"Tasdiqlangan",tone:"success"}:{label:"Kutilmoqda",tone:"muted"})]])}${summaryCards([["Talab miqdori",fmtQty(p.summary?.required_quantity)],["Tanlangan",fmtQty(p.summary?.selected_quantity)],["Qoldiq",fmtQty(p.summary?.remaining_quantity)],["Takliflar",fmt(p.summary?.offers_count)],["Ta'minotchilar",fmt(p.summary?.selected_suppliers_count)],["Yakuniy xarid",fmtMoney(p.summary?.final_purchase_amount)]])}${workflowWarningsPanel(warnings)}${workflowNextActionPanel(nextAction)}${workflowTabs("items",[["items","Mahsulotlar"],["offers","Takliflar"],["finance","Moliya"],["history","Tarix"]],"procurement-tab")}${section("Mahsulotlar", tableOrEmpty(p.items,["Mahsulot","Birlik","Talab miqdori","Xarid qilingan"],(item)=>`<tr><td>${fmt(item.product_name)}</td><td>${fmt(item.unit)}</td><td>${fmtQty(item.required_quantity,item.unit)}</td><td>${fmtQty(item.purchased_quantity,item.unit)}</td></tr>`,"Mahsulotlar topilmadi."))}${section("Takliflar", `${editable ? `<div class="actions"><button class="btn primary" type="button" onclick="document.querySelector('#supplier-offer-box')?.setAttribute('open','open'); document.querySelector('#supplier-offer-form')?.scrollIntoView({behavior:'smooth',block:'start'});">Taklif qo'shish</button></div>` : ""}${tableOrEmpty(p.offers,["Taklif","Ta'minotchi","Sana","Status","Jami","Mahsulotlar","Amallar"],(offer)=>`<tr><td>${fmt(offer.offer_number)}</td><td>${fmt(offer.supplier_name)}</td><td>${fmt(offer.offer_date)}</td><td>${fmt(optionLabel(supplierOfferStatuses,offer.status))}</td><td>${fmtMoney(offer.total_amount)}</td><td>${offer.items.map((item)=>`<div class="inline-edit"><span>${fmt(item.product_name)}: ${fmtQty(item.offered_quantity,item.unit)} taklif, ${fmtQty(item.selected_quantity,item.unit)} tanlangan</span>${editable ? `<input type="number" step="any" value="${esc(item.selected_quantity)}" data-offer-item-qty="${item.id}" /><button class="link-btn" data-offer-item-select="${item.id}">Miqdorni yangilash</button>` : ""}</div>`).join("")}</td><td>${editable ? `<button class="link-btn" data-offer-confirm="${offer.id}">Tasdiqlash</button>` : ""}</td></tr>`,"Takliflar hali kiritilmagan.")}`)}${editable ? section("Ta'minotchi taklifini qo'shish", `<details id="supplier-offer-box" class="action-form-box"><summary>Taklif formasini ochish</summary><form id="supplier-offer-form"><div class="grid"><label>Ta'minotchi<select name="supplier_id"><option value="">Ro'yxatdan tanlanmagan</option>${supplierOptions}</select></label>${textField("supplier_name","Ta'minotchi nomi")}${textField("offer_number","Taklif raqami")}${textField("offer_date","Taklif sanasi",todayIso(),"date")}${selectField("status","Status",supplierOfferStatuses,"received")}${textField("estimated_delivery_cost","Taxminiy yetkazish xarajati",0,"number")}${textArea("delivery_terms","Yetkazib berish shartlari")}${textArea("payment_terms","To'lov shartlari")}${textArea("notes","Izoh")}</div><div id="supplier-offer-items">${p.items.map(procurementOfferItemRow).join("")}</div><div class="form-footer"><button class="btn primary">Taklifni saqlash</button></div></form></details>`) : ""}${section("Moliya", detailList([["Yakuniy xarid summasi", fmtMoney(p.summary?.final_purchase_amount)], ["Ta'minotchilar soni", p.summary?.selected_suppliers_count], ["Buyurtma", p.order?.order_number]]))}${editable ? section("Holatni o'zgartirish", procurementTransitionsHtml(p)) : ""}${section("Izohlar tarixi", tableOrEmpty(p.notes_history, ["Sana", "Foydalanuvchi", "Izoh"], (item) => `<tr><td>${fmtDate(item.created_at)}</td><td>${fmt(item.created_by)}</td><td>${fmt(item.note)}</td></tr>`, "Izohlar hali yo'q."))}${section("Tarix", workflowTimeline([["Yaratildi", fmtDate(p.created_at)], ["Holat", optionLabel(procurementStatuses, p.status)], ["Yangilandi", fmtDate(p.updated_at)]]))}</div>`;
+  bindProcurementStatusActions(p);
   document.querySelector("#supplier-offer-form")?.addEventListener("submit", async (event) => {
     event.preventDefault();
     const form = event.currentTarget;
@@ -727,6 +728,91 @@ async function renderProcurementDetail(id) {
       showToast("Ta'minotchi taklifi tasdiqlandi.");
       await renderProcurementDetail(id);
     } catch (error) { showToast(error.message, true); }
+  }));
+}
+
+// Taklif formasidagi bitta mahsulot qatori.
+//
+// Bu funksiya va quyidagi collectSupplierOfferItems umuman yozilmagan ekan:
+// xarid kartochkasi ularni chaqirardi va sahifa «procurementOfferItemRow is
+// not defined» degan yozuvdan boshqa hech narsa ko'rsatmasdi. Ya'ni xaridni
+// ochishning iloji yo'q edi -- modul ishlatilmaganining sababi ham shu.
+function procurementOfferItemRow(item, index) {
+  return `<div class="item-row" data-offer-item-row data-procurement-item="${item.id}">
+    ${readonlyField(`offer_product_${index}`, "Mahsulot", item.product_name)}
+    ${readonlyField(`offer_unit_${index}`, "Birlik", item.unit)}
+    ${textField(`offer_quantity_${index}`, "Taklif miqdori", item.required_quantity ?? "", "number")}
+    ${textField(`offer_price_${index}`, "Birlik narxi (QQSsiz)", "", "number")}
+    ${textField(`offer_vat_${index}`, "QQS %", 12, "number")}
+  </div>`;
+}
+
+// Miqdori kiritilmagan qator yuborilmaydi: ta'minotchi hamma mahsulotga
+// taklif bermasligi mumkin.
+function collectSupplierOfferItems(form) {
+  return [...form.querySelectorAll("[data-offer-item-row]")]
+    .map((row) => {
+      const get = (prefix) => normalizeNumberInputValue(row.querySelector(`[name^='${prefix}_']`)?.value || "");
+      return {
+        procurement_item_id: Number(row.dataset.procurementItem),
+        offered_quantity: get("offer_quantity"),
+        unit_price: get("offer_price") || "0",
+        vat_rate: get("offer_vat") || "12",
+      };
+    })
+    .filter((item) => numberValue(item.offered_quantity) > 0);
+}
+
+// Xarid holati: ta'minotchi tasdiqlangunga qadar u takliflardan avtomatik
+// hisoblanadi, undan keyingi bosqichlar esa jismoniy ish -- ularni faqat odam
+// biladi. Shuning uchun tugmalar shu bosqichdan boshlab paydo bo'ladi.
+function procurementTransitionsHtml(procurement) {
+  const moves = procurement.available_transitions || [];
+  if (!moves.length) return `<div class="empty">Bu holatdan status o'zgartirilmaydi.</div>`;
+  const order = { forward: 0, backward: 1, issue: 2, cancel: 3 };
+  const buttons = [...moves]
+    .sort((a, b) => order[a.direction] - order[b.direction])
+    .map((move) => {
+      const cls = move.direction === "forward" ? "btn primary" : move.direction === "cancel" ? "btn danger" : "btn";
+      const prefix = move.direction === "backward" ? `<span>Orqaga qaytarish</span><span data-noloc>\u2190</span>` : "";
+      // Yorliq mahalliy ro'yxatdan olinadi -- shunda u lug'atdan o'tadi va
+      // serverdagi matn bilan ikki xil bo'lib qolmaydi.
+      const label = optionLabel(procurementStatuses, move.status) || move.label;
+      return `<button class="${cls}" type="button" data-procurement-status="${esc(move.status)}" data-procurement-direction="${esc(move.direction)}">${prefix}<span>${esc(label)}</span></button>`;
+    })
+    .join("");
+  const hint = moves.some((move) => move.direction !== "forward")
+    ? `<p class="form-hint">Orqaga qaytarish, muammo va bekor qilish uchun sabab yozish shart — u izohlar tarixiga yoziladi.</p>`
+    : "";
+  return `${hint}<div class="actions">${buttons}</div>`;
+}
+
+function bindProcurementStatusActions(procurement) {
+  app.querySelectorAll("[data-procurement-status]").forEach((button) => button.addEventListener("click", async () => {
+    const direction = button.dataset.procurementDirection;
+    const label = button.textContent.trim();
+    const needsComment = direction !== "forward";
+    const result = await appDialog({
+      title: "Xarid holatini o'zgartirish",
+      intro: needsComment
+        ? "Sabab izohlar tarixiga yoziladi va keyin ham ko'rinadi."
+        : "Xarid keyingi bosqichga o'tkaziladi.",
+      subject: `${procurement.procurement_number} — ${label}`,
+      confirmLabel: label,
+      tone: direction === "cancel" ? "danger" : "primary",
+      comment: needsComment ? { label: "Sabab", optional: false } : null,
+    });
+    if (!result.confirmed) return;
+    try {
+      await api(`/api/procurements/${procurement.id}/status`, {
+        method: "PATCH",
+        body: JSON.stringify({ status: button.dataset.procurementStatus, comment: result.comment }),
+      });
+      showToast("Xarid holati o'zgartirildi.");
+      await renderProcurementDetail(procurement.id);
+    } catch (error) {
+      showToast(error.message, true);
+    }
   }));
 }
 

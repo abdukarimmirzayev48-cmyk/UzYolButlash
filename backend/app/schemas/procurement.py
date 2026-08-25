@@ -392,6 +392,18 @@ class ProcurementOverview(BaseModel):
     products: list[str] = Field(default_factory=list)
 
 
+class ProcurementStatusUpdate(BaseModel):
+    status: ProcurementStatus
+    comment: str | None = None
+
+
+class ProcurementTransition(BaseModel):
+    status: str
+    label: str
+    direction: str
+    requires_comment: bool
+
+
 class ProcurementDetail(ProcurementRead):
     client: ClientRead
     contract: ContractRead
@@ -401,3 +413,4 @@ class ProcurementDetail(ProcurementRead):
     documents: list[ProcurementDocumentRead] = Field(default_factory=list)
     notes_history: list[ProcurementNoteRead] = Field(default_factory=list)
     summary: ProcurementSummary | None = None
+    available_transitions: list[ProcurementTransition] = Field(default_factory=list)
