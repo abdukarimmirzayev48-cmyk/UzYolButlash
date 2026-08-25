@@ -28,7 +28,9 @@ class SupplierInvoiceStatus(str, Enum):
 
 class SupplierPaymentMethod(str, Enum):
     bank_transfer = "bank_transfer"
-    cash = "cash"
+    # Naqd pul olib tashlandi: kompaniya to'lovlarni faqat bank orqali
+    # qabul qiladi va amalga oshiradi. Bazada birorta naqd yozuv yo'q edi,
+    # shuning uchun ustunga tegilmadi.
     other = "other"
 
 

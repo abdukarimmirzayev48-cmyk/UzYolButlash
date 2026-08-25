@@ -1589,7 +1589,7 @@ async function openOrderPaymentModal(order, related = {}) {
             ${textField("payment_date", "To'lov sanasi", today, "date", { required: true })}
             ${textField("amount", "Summa", selected?.remaining_amount || "", "number", { required: true })}
             ${selectField("payment_method", "To'lov usuli", paymentMethods, "bank_transfer")}
-            ${textField("bank_account", "Hisob / kassa")}
+            ${textField("bank_account", "Bank hisob raqami")}
             <label class="form-field">Bog'liq hisob <span class="required-mark">*</span><select name="invoice_id" required><option value="">Hisobni tanlang</option>${invoices.map((invoice) => `<option value="${invoice.id}" data-remaining="${esc(invoice.remaining_amount)}" ${selected?.id === invoice.id ? "selected" : ""}>${esc(invoice.invoice_number)} - ${fmtMoney(invoice.remaining_amount)}</option>`).join("")}</select></label>
             ${textField("allocated_amount", "Taqsimlash summasi", selected?.remaining_amount || "", "number", { required: true })}
             ${textArea("notes", "Izoh")}

@@ -183,7 +183,7 @@ const batchDocumentTypes = [
 
 const invoiceTypes = [["advance", "Avans"], ["batch_payment", "Partiya to'lovi"], ["transport", "Transport"], ["adjustment", "Qayta hisoblash"], ["other", "Boshqa"]];
 const invoiceStatuses = [["draft", "Qoralama"], ["issued", "Yuborilgan"], ["partially_paid", "Qisman to'langan"], ["paid", "To'langan"], ["overdue", "Kechikkan"], ["cancelled", "Bekor qilingan"]];
-const paymentMethods = [["bank_transfer", "Bank orqali"], ["cash", "Naqd"], ["other", "Boshqa"]];
+const paymentMethods = [["bank_transfer", "Bank orqali"], ["other", "Boshqa"]];
 const paymentStatuses = [["received", "Kelib tushgan"], ["unallocated", "Taqsimlanmagan"], ["partially_allocated", "Qisman taqsimlangan"], ["allocated", "Taqsimlangan"], ["cancelled", "Bekor qilingan"]];
 const financeDocumentTypes = [["invoice_file", "Hisob fayli"], ["payment_order", "To'lov topshiriqnomasi"], ["bank_statement", "Bank ko'chirmasi"], ["reconciliation_act", "Solishtirma dalolatnoma"], ["other", "Boshqa"]];
 
