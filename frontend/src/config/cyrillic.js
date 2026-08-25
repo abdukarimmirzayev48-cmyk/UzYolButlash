@@ -878,6 +878,7 @@ const uzCyrillic = {
   "MH": "МҲ",
   "MT": "МТ",
   "Ma'lum ta'minotchi": "Маълум таъминотчи",
+  "Ma'lumot kiritilmagan": "Маълумот киритилмаган",
   "Ma'lumot topilmadi.": "Маълумот топилмади.",
   "Ma'lumot yo'q": "Маълумот йўқ",
   "Ma'lumot yo'q.": "Маълумот йўқ.",

@@ -1424,9 +1424,15 @@ function contractUnit(contract) {
 // Qiymatlar odatda mijoz ma'lumoti bo'lgani uchun tarjima qilinmaydi.
 // `translate` bayrog'i tizimning o'z matnlari uchun -- masalan qoldiq to'lov
 // qoidasi shartnomalarga standart matn sifatida yoziladi.
+const MSG_NO_DATA = "Ma'lumot kiritilmagan";
+
 function contractInfoGrid(items) {
   return `<div class="info-grid">${items
-    .map(([label, value, wide, translate]) => `<div class="${wide ? "wide" : ""}"><small>${label}</small><b ${translate ? "" : "data-noloc"}>${fmt(value)}</b></div>`)
+    .map(([label, value, wide, translate]) => {
+      const empty = value === null || value === undefined || String(value).trim() === "";
+      const body = empty ? "" : esc(String(value));
+      return `<div class="${wide ? "wide" : ""}"><small>${label}</small><b ${translate || empty ? "" : "data-noloc"} data-empty="${esc(localizeText(MSG_NO_DATA))}">${body}</b></div>`;
+    })
     .join("")}</div>`;
 }
 
@@ -1437,13 +1443,13 @@ function contractPartyCard(contract) {
     <div class="panel-head"><div><span class="eyebrow">Buyurtmachi</span><h2>Mijoz ma'lumotlari</h2></div></div>
     <div class="company-row">
       <span class="company-icon" data-noloc>${esc(initial)}</span>
-      <div><b data-noloc>${fmt(name)}</b><small><span>STIR</span><span data-noloc> ${esc(fmt(contract.customer_inn))}</span></small></div>
+      <div><b data-noloc>${fmt(name)}</b><small><span>STIR</span><span data-noloc> ${esc(contract.customer_inn || "—")}</span></small></div>
     </div>
     <div class="contact-lines">
-      <div><small>Direktor</small><b data-noloc>${fmt(contract.customer_director_full_name)}</b></div>
-      <div><small>Telefon</small><b data-noloc>${fmt(contract.customer_phone)}</b></div>
+      <div><small>Direktor</small><b data-noloc data-empty="${esc(localizeText(MSG_NO_DATA))}">${esc(contract.customer_director_full_name || "")}</b></div>
+      <div><small>Telefon</small><b data-noloc data-empty="${esc(localizeText(MSG_NO_DATA))}">${esc(contract.customer_phone || "")}</b></div>
     </div>
-    ${contract.client_id ? `<button type="button" class="outline-wide" data-nav="/clients/${contract.client_id}">Mijoz kartasini ochish</button>` : ""}
+    ${contract.client_id ? `<button type="button" class="outline-wide" data-nav="/clients/${contract.client_id}">Mijoz kartasini ochish<span data-noloc>→</span></button>` : ""}
   </article>`;
 }
 
@@ -1479,12 +1485,12 @@ function contractGeneralTab(contract) {
     <aside class="side-stack">
       ${contractPartyCard(contract)}
       ${contractOwnerCard(contract)}
-      ${canEdit("sotuv") ? `<div id="contract-status"><article class="card status-card"><div class="panel-head"><div><span class="eyebrow">Holat</span><h2>Holatni o'zgartirish</h2></div></div>${contractTransitionsHtml(contract)}</article></div>` : ""}
     </aside>
     <article class="card payment-table-card">
-      <div class="panel-head"><div><span class="eyebrow">To'lovlar</span><h2>To'lov muddatlari</h2></div><button type="button" class="text-button" data-nav="/contracts/${contract.id}?tab=payment">Barchasini ko'rish</button></div>
+      <div class="panel-head"><div><span class="eyebrow">To'lovlar</span><h2>To'lov muddatlari</h2></div><button type="button" class="text-button" data-nav="/contracts/${contract.id}?tab=payment">Barchasini ko'rish<span data-noloc> →</span></button></div>
       ${paymentScheduleHtml(contract)}
     </article>
+    ${canEdit("sotuv") ? `<div id="contract-status" class="status-holder"><article class="card status-card"><div class="panel-head"><div><span class="eyebrow">Holat</span><h2>Holatni o'zgartirish</h2></div></div>${contractTransitionsHtml(contract)}</article></div>` : ""}
     ${contract.executor_name || contract.customer_inn ? `<article class="card requisites-card">
       <div class="panel-head"><div><span class="eyebrow">Rekvizitlar</span><h2>Tomonlar</h2></div></div>
       <div class="requisites-grid">

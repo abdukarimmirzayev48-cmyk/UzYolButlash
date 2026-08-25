@@ -1247,21 +1247,49 @@ body.sidebar-collapsed .app-shell {
    turardi va sahifa oxiri ko'rinmasdi. */
 .overview-content {
   display: grid;
-  grid-template-columns: minmax(0, 1.65fr) minmax(290px, 1fr);
-  gap: 10px;
+  grid-template-columns: minmax(0, 1.7fr) minmax(320px, 1fr);
+  gap: 18px;
   align-items: start;
+}
+
+/* Grid elementining sukut bo'yicha eng kichik kengligi -- ichidagi eng keng
+   narsa. To'lov jadvali shu tariqa butun ustunni kengaytirib, sahifani
+   gorizontal suradi. */
+.overview-content > * {
+  min-width: 0;
+}
+
+.overview-content .table-scroll,
+.overview-content table {
+  max-width: 100%;
+}
+
+/* Maketdagi nafas: kartochka ichida joy ko'p, chegaralar yumshoq.
+   Umumiy .card dan kengroq -- bu sahifada ma'lumot kam va u yaxshi ko'rinishi
+   kerak. */
+.overview-content > .card,
+.overview-content .side-stack > .card,
+.overview-content .side-stack > div > .card {
+  margin-bottom: 0;
+  border-radius: 14px;
+  padding: 22px 24px;
+  overflow: visible;
+}
+
+.overview-content .panel-head + .info-grid {
+  margin-top: 6px;
 }
 
 .info-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0 26px;
-  margin-top: 14px;
+  gap: 0 36px;
+  margin-top: 12px;
 }
 
 .info-grid > div {
   border-bottom: 1px solid var(--line);
-  padding: 11px 0;
+  padding: 16px 0;
   min-width: 0;
 }
 
@@ -1276,18 +1304,29 @@ body.sidebar-collapsed .app-shell {
 
 .info-grid small {
   color: var(--muted);
-  font-size: 11px;
+  font-size: 12.5px;
+  font-weight: 500;
 }
 
 .info-grid b {
-  margin-top: 5px;
-  font-size: 13px;
+  margin-top: 7px;
+  font-size: 15px;
+  font-weight: 700;
   overflow-wrap: break-word;
+}
+
+/* Bo'sh qiymat «—» emas, o'qiladigan jumla: chiziqcha ma'lumot yo'qligini
+   emas, xato borligini his qildiradi. */
+.info-grid b:empty::after,
+.contact-lines b:empty::after {
+  content: attr(data-empty);
+  color: var(--muted);
+  font-weight: 500;
 }
 
 .side-stack {
   display: grid;
-  gap: 10px;
+  gap: 18px;
   min-width: 0;
 }
 
@@ -1320,21 +1359,21 @@ body.sidebar-collapsed .app-shell {
   overflow-wrap: break-word;
 }
 
-.company-row b { font-size: 13px; }
+.company-row b { font-size: 15px; font-weight: 700; line-height: 1.35; }
 .company-row small,
-.owner-row small { margin-top: 4px; color: var(--muted); font-size: 11px; }
+.owner-row small { margin-top: 5px; color: var(--muted); font-size: 12.5px; }
 
 .contact-lines {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 8px;
-  margin-bottom: 12px;
+  gap: 10px;
+  margin-bottom: 16px;
 }
 
 .contact-lines > div {
-  border-radius: 7px;
+  border-radius: 9px;
   background: var(--surface-soft);
-  padding: 9px;
+  padding: 12px 13px;
   min-width: 0;
 }
 
@@ -1344,23 +1383,28 @@ body.sidebar-collapsed .app-shell {
   overflow-wrap: break-word;
 }
 
-.contact-lines small { color: var(--muted); font-size: 10.5px; }
-.contact-lines b { margin-top: 4px; font-size: 12px; }
+.contact-lines small { color: var(--muted); font-size: 12px; }
+.contact-lines b { margin-top: 6px; font-size: 13.5px; font-weight: 700; }
 
 .outline-wide {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
+  gap: 8px;
   width: 100%;
-  height: 34px;
+  min-height: 42px;
   border: 1px solid var(--line);
-  border-radius: 7px;
+  border-radius: 9px;
   background: var(--surface);
   color: var(--text);
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 700;
   cursor: pointer;
+}
+
+.outline-wide:hover {
+  border-color: var(--accent);
+  color: var(--accent);
 }
 
 .owner-row {
@@ -1374,35 +1418,111 @@ body.sidebar-collapsed .app-shell {
   display: grid;
   place-items: center;
   flex: none;
-  width: 32px;
-  height: 32px;
-  border-radius: 9px;
+  width: 40px;
+  height: 40px;
+  border-radius: 11px;
   background: var(--accent-dark);
   color: #ffffff;
-  font-size: 13px;
+  font-size: 15px;
   font-weight: 800;
 }
 
-.owner-row b { font-size: 13px; }
+.owner-row b { font-size: 15px; font-weight: 700; }
+
+.company-icon {
+  width: 44px;
+  height: 44px;
+  border-radius: 11px;
+  font-size: 16px;
+}
+
+/* Holat tugmalari yonma-yon sig'masdi va o'ralib ketardi -- ustunga qo'yildi. */
+.status-card .actions {
+  display: grid;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.status-card .actions .btn {
+  width: 100%;
+}
+
+.status-card .form-hint {
+  margin-top: 10px;
+}
 
 .payment-table-card,
-.requisites-card {
+.requisites-card,
+.status-holder {
   grid-column: 1 / -1;
+}
+
+.status-holder > .card {
+  margin-bottom: 0;
+  border-radius: 14px;
+  padding: 22px 24px;
+  overflow: visible;
+}
+
+/* Holat tugmalari endi qatorda -- kartochka keng, o'ralishning hojati yo'q. */
+.status-card .actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.status-card .actions .btn {
+  width: auto;
 }
 
 .requisites-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-  gap: 0 26px;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 0 36px;
 }
 
 .text-button {
   border: 0;
   background: transparent;
   color: var(--accent);
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 700;
   cursor: pointer;
+  white-space: nowrap;
+}
+
+.text-button:hover { text-decoration: underline; }
+
+/* Panel sarlavhasi: yorliq ustida kichik, nomi ostida kattaroq. */
+.overview-content .panel-head h2,
+.process-panel .panel-head h2,
+.finance-panel .panel-head h2 {
+  font-size: 19px;
+  font-weight: 700;
+  letter-spacing: -0.2px;
+}
+
+.overview-content .eyebrow,
+.process-panel .eyebrow,
+.finance-panel .eyebrow {
+  margin-bottom: 6px;
+}
+
+/* Jadval sarlavhasi maketdagidek: kichik, katta harfli, yumshoq fon. */
+.payment-table-card table th {
+  background: var(--surface-soft);
+  color: var(--muted);
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+  text-transform: uppercase;
+  padding: 12px 14px;
+}
+
+.payment-table-card table td {
+  padding: 16px 14px;
+  font-size: 13.5px;
 }
 
 .status-card .actions {
