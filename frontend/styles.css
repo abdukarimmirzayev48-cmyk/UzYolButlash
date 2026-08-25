@@ -1058,27 +1058,47 @@ body.sidebar-collapsed .app-shell {
 
 .overview-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1.65fr) minmax(300px, 1fr);
-  gap: 10px;
-  margin-bottom: 16px;
+  grid-template-columns: minmax(0, 1.65fr) minmax(320px, 1fr);
+  gap: 18px;
+  margin-bottom: 18px;
+  align-items: stretch;
+}
+
+.overview-grid > * {
+  min-width: 0;
+}
+
+/* Ikkala panel bir xil balandlikda va ichida joy ko'p. */
+.process-panel,
+.finance-panel {
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 0;
+  border-radius: 14px;
+  padding: 22px 24px;
+  overflow: visible;
 }
 
 /* Doiralar ketma-ket: har biri o'zidan oldingilari bajarilgandagina yashil
    bo'ladi. Doira ostidagi kichik matn esa o'sha yo'nalishning haqiqiy
    holatini aytadi va mustaqil hisoblanadi. */
+/* Doira yorliqning TEPASIDA turadi. Yonma-yon qo'yilganda bog'lovchi chiziq
+   yorliq matnini kesib o'tardi -- chiziq doira markazida, matn esa aynan shu
+   balandlikda boshlanadi. */
 .steps {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   position: relative;
-  margin-top: 24px;
+  margin-top: 22px;
+  margin-bottom: 4px;
 }
 
 .steps::before {
   content: "";
   position: absolute;
-  left: 8%;
-  right: 8%;
-  top: 14px;
+  left: 12.5%;
+  right: 12.5%;
+  top: 17px;
   height: 2px;
   background: var(--line);
 }
@@ -1086,24 +1106,25 @@ body.sidebar-collapsed .app-shell {
 .step {
   position: relative;
   z-index: 1;
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+  text-align: center;
   min-width: 0;
+  padding: 0 6px;
 }
 
 .step > span {
   display: grid;
   place-items: center;
-  flex: none;
-  width: 29px;
-  height: 29px;
-  border: 3px solid var(--surface);
+  width: 34px;
+  height: 34px;
+  border: 4px solid var(--surface);
   border-radius: 50%;
   background: var(--surface-soft);
   box-shadow: 0 0 0 1px var(--line);
   color: var(--muted);
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 800;
 }
 
@@ -1119,6 +1140,10 @@ body.sidebar-collapsed .app-shell {
   color: #ffffff;
 }
 
+.step > div {
+  min-width: 0;
+}
+
 .step b,
 .step small {
   display: block;
@@ -1126,14 +1151,15 @@ body.sidebar-collapsed .app-shell {
 }
 
 .step b {
-  margin-top: 2px;
-  font-size: 12px;
+  font-size: 13.5px;
+  font-weight: 700;
 }
 
 .step small {
-  margin-top: 4px;
+  margin-top: 5px;
   color: var(--muted);
-  font-size: 11px;
+  font-size: 12px;
+  line-height: 1.4;
 }
 
 .step.current small {
@@ -1144,21 +1170,28 @@ body.sidebar-collapsed .app-shell {
   display: flex;
   align-items: center;
   gap: 9px;
-  margin-top: 22px;
+  margin-top: auto;
   border: 1px solid #f0dcb8;
-  border-radius: 8px;
+  border-radius: 10px;
   background: #fdf6e8;
   color: var(--warning);
-  padding: 11px 12px;
-  font-size: 12px;
+  padding: 13px 15px;
+  font-size: 13px;
   font-weight: 600;
+  line-height: 1.45;
+}
+
+/* Ogohlantirish pastda turadi, shuning uchun tepasida bo'sh joy qoladi. */
+.process-panel .steps {
+  margin-bottom: 22px;
 }
 
 .finance-content {
   display: flex;
   align-items: center;
-  gap: 20px;
-  padding: 19px 6px 5px;
+  gap: 24px;
+  flex: 1;
+  padding: 20px 0 4px;
 }
 
 .donut {
@@ -1166,8 +1199,8 @@ body.sidebar-collapsed .app-shell {
   display: grid;
   place-items: center;
   flex: none;
-  width: 106px;
-  height: 106px;
+  width: 124px;
+  height: 124px;
   border-radius: 50%;
   background: conic-gradient(var(--accent) 0 var(--donut, 0%), var(--surface-soft) var(--donut, 0%) 100%);
 }
@@ -1175,8 +1208,8 @@ body.sidebar-collapsed .app-shell {
 .donut::after {
   content: "";
   position: absolute;
-  width: 76px;
-  height: 76px;
+  width: 90px;
+  height: 90px;
   border-radius: 50%;
   background: var(--surface);
 }
@@ -1192,22 +1225,24 @@ body.sidebar-collapsed .app-shell {
   display: block;
 }
 
-.donut strong { font-size: 19px; }
-.donut span { color: var(--muted); font-size: 11px; }
+.donut strong { font-size: 22px; font-weight: 750; }
+.donut span { margin-top: 2px; color: var(--muted); font-size: 12px; }
 
 .finance-legend {
   flex: 1;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 16px;
   min-width: 0;
 }
 
 .finance-legend > div {
   display: flex;
-  align-items: center;
-  gap: 8px;
+  align-items: flex-start;
+  gap: 10px;
 }
+
+.legend-dot { margin-top: 6px; }
 
 .legend-dot {
   width: 7px;
@@ -1227,16 +1262,17 @@ body.sidebar-collapsed .app-shell {
   min-width: 0;
 }
 
-.finance-legend small { color: var(--muted); font-size: 11px; }
-.finance-legend b { margin-top: 2px; font-size: 12.5px; }
+.finance-legend small { color: var(--muted); font-size: 12.5px; }
+.finance-legend b { margin-top: 4px; font-size: 15px; font-weight: 700; overflow-wrap: break-word; }
 
 @media (max-width: 1080px) {
   .overview-grid { grid-template-columns: 1fr; }
 }
 
 @media (max-width: 760px) {
-  .steps { grid-template-columns: 1fr; gap: 12px; margin-top: 18px; }
-  .steps::before { top: 12px; bottom: 12px; left: 14px; width: 2px; height: auto; right: auto; }
+  .steps { grid-template-columns: 1fr; gap: 18px; margin-top: 18px; }
+  .steps::before { display: none; }
+  .step { grid-template-columns: auto minmax(0, 1fr); justify-items: start; text-align: left; align-items: center; }
   .next-action { flex-wrap: wrap; align-items: flex-start; }
   .next-action .btn.white { width: 100%; margin-top: 4px; }
   .finance-content { justify-content: center; flex-wrap: wrap; }
