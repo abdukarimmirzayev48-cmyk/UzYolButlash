@@ -1889,72 +1889,158 @@ function batchStepState(batch = {}) {
   };
 }
 
-// Shartnomaning quvuri. Ilgari «Keyingi amal» faqat pul kelgan-kelmaganiga
-// qarardi, shuning uchun avans hisob-fakturasi yaratilgandan keyin ham
-// «Hisob yarating» deb turaverardi -- oyna esa o'sha payt «bu shartnoma uchun
-// avans hisob-fakturasi allaqachon mavjud» deb ogohlantirardi. Ikkalasi bir
-// vaqtda ekranda turishi mumkin emas.
+// Shartnomaning holati bitta chiziqqa sig'maydi.
 //
-// Bosqichlar bittadan ketma-ket bajariladi va har biri o'z belgisiga ega:
-// bajarilgani, hozirgisi, keyingilari.
-function contractStepState(contract = {}) {
-  const summary = contract.summary || {};
-  const billing = summary.billing || {};
+// Ilgari bu yerda to'qqizta qadamli bitta chiziq bor edi va har bir qadam
+// mustaqil hisoblanardi. Natijada yashil qadam kulrangdan keyin kelib qolardi:
+// BIT-2026-0002 da 8-qadam («To'langan») yashil turardi -- 313,6 mln so'mdan
+// atigi 94,08 mln to'langan bo'lsa ham -- chunki shart «ochiq hisoblar
+// qoldig'i = 0» deb yozilgan edi, «shartnoma bo'yicha to'langan = jami summa»
+// deb emas. BIT-2026-0003 da esa avans to'lanmagan bo'lsa ham 6-qadam
+// («Buyurtma») yashil edi.
+//
+// Sabab shartda emas, modelda: pul, buyurtmalar va yetkazib berish bir-birini
+// kutmaydi. Ular yonma-yon boradi -- avans to'lanmasidan ham buyurtma berilishi
+// mumkin, yetkazib berish esa to'lovdan oldin ham, keyin ham ketaveradi.
+//
+// Shuning uchun bitta chiziq to'rtta mustaqil kuzatuvga ajratildi. Har biri
+// ichida qat'iy tartibli, ya'ni «bajarilgan» hech qachon «bajarilmagan» dan
+// keyin turmaydi.
+
+const CONTRACT_STATUS_TRACK = ["draft", "signed", "active", "completed"];
+
+function trackPercent(part, whole) {
+  const total = numberValue(whole);
+  if (total <= 0) return 0;
+  return Math.max(0, Math.min(100, Math.round((numberValue(part) / total) * 100)));
+}
+
+function contractStatusTrack(contract) {
   const status = contract.status;
-  const advanceExpected = numberValue(summary.advance_amount) > 0;
-  const closed = ["completed", "cancelled"].includes(status);
+  if (status === "cancelled") {
+    return { key: "status", label: "Shartnoma", state: "Bekor qilingan", percent: 100, tone: "danger", figure: "" };
+  }
+  if (status === "expired") {
+    return { key: "status", label: "Shartnoma", state: "Muddati tugagan", percent: 75, tone: "warning", figure: "" };
+  }
+  const index = Math.max(0, CONTRACT_STATUS_TRACK.indexOf(status));
   return {
-    client: Boolean(contract.client_id),
-    signed: ["signed", "active", "completed", "expired"].includes(status),
-    active: ["active", "completed", "expired"].includes(status),
-    // Avans kutilmasa, bu ikki bosqich o'z-o'zidan bajarilgan hisoblanadi.
-    advance_invoiced: !advanceExpected || numberValue(billing.advance_invoiced) > 0,
-    advance_paid: !advanceExpected || numberValue(billing.advance_paid) > 0,
-    ordered: numberValue(summary.unordered_quantity) <= 0 && numberValue(summary.ordered_quantity) > 0,
-    delivered: numberValue(summary.remaining_quantity) <= 0 && numberValue(summary.delivered_quantity) > 0,
-    settled: numberValue(summary.unpaid_amount) <= 0 && numberValue(summary.paid_amount) > 0,
-    completed: closed,
+    key: "status",
+    label: "Shartnoma",
+    state: statusLabel(status),
+    percent: Math.round((index / (CONTRACT_STATUS_TRACK.length - 1)) * 100),
+    tone: status === "completed" ? "success" : "muted",
+    figure: `${index + 1} / ${CONTRACT_STATUS_TRACK.length}`,
   };
 }
 
-const CONTRACT_STEPS = [
-  ["client", "Mijoz"],
-  ["signed", "Imzolangan"],
-  ["active", "Faol"],
-  ["advance_invoiced", "Avans hisobi"],
-  ["advance_paid", "Avans to'langan"],
-  ["ordered", "Buyurtmalar"],
-  ["delivered", "Yetkazildi"],
-  ["settled", "To'langan"],
-  ["completed", "Yakunlandi"],
-];
-
-function contractWorkflowStepper(contract) {
-  const state = contractStepState(contract);
-  const firstOpen = CONTRACT_STEPS.findIndex(([key]) => !state[key]);
-  const currentIndex = firstOpen === -1 ? CONTRACT_STEPS.length - 1 : firstOpen;
-  return `<div class="workflow-stepper contract-stepper">${CONTRACT_STEPS.map(([key, label], index) => {
-    const cls = state[key] && index < currentIndex ? "completed" : index === currentIndex ? "current" : state[key] ? "completed" : "upcoming";
-    return `<div class="workflow-step ${cls}"><span class="workflow-dot">${index + 1}</span><span>${label}</span></div>`;
-  }).join("")}</div>`;
+function contractFinanceTrack(contract) {
+  const summary = contract.summary || {};
+  const billing = summary.billing || {};
+  const total = numberValue(summary.total_amount);
+  const paid = numberValue(summary.paid_amount);
+  const advanceExpected = numberValue(summary.advance_amount) > 0;
+  const advanceInvoiced = numberValue(billing.advance_invoiced) > 0;
+  const advancePaid = numberValue(billing.advance_paid) > 0;
+  // Holat ketma-ketligi: avans hisobi -> avans to'lovi -> to'liq to'lov.
+  const state = total > 0 && paid >= total
+    ? "To'liq to'langan"
+    : advanceExpected && !advanceInvoiced
+      ? "Avans hisobi kutilmoqda"
+      : advanceExpected && !advancePaid
+        ? "Avans to'lovi kutilmoqda"
+        : paid > 0
+          ? "Qisman to'langan"
+          : "To'lov kutilmoqda";
+  return {
+    key: "finance",
+    label: "Moliya",
+    state,
+    percent: trackPercent(paid, total),
+    tone: total > 0 && paid >= total ? "success" : paid > 0 ? "muted" : "warning",
+    figure: `${fmtMoney(paid)} / ${fmtMoney(total)}`,
+  };
 }
 
-// Keyingi amal -- quvurdagi birinchi bajarilmagan bosqich. Har bir bosqich
-// o'z tugmasini olib keladi, shunda ekrandagi tavsiya va tugma bir narsani
-// aytadi.
+function contractOrdersTrack(contract) {
+  const summary = contract.summary || {};
+  const total = numberValue(summary.total_quantity);
+  const ordered = numberValue(summary.ordered_quantity);
+  const unit = contract.items?.[0]?.unit || "";
+  return {
+    key: "orders",
+    label: "Buyurtmalar",
+    state: ordered <= 0 ? "Buyurtma berilmagan" : ordered >= total ? "To'liq buyurtma qilingan" : "Qisman buyurtma qilingan",
+    percent: trackPercent(ordered, total),
+    tone: ordered >= total && total > 0 ? "success" : ordered > 0 ? "muted" : "warning",
+    figure: `${fmtQty(ordered, unit)} / ${fmtQty(total, unit)}`,
+  };
+}
+
+function contractDeliveryTrack(contract) {
+  const summary = contract.summary || {};
+  const total = numberValue(summary.total_quantity);
+  const delivered = numberValue(summary.delivered_quantity);
+  const unit = contract.items?.[0]?.unit || "";
+  return {
+    key: "delivery",
+    label: "Yetkazib berish",
+    state: delivered <= 0 ? "Yetkazilmagan" : delivered >= total ? "To'liq yetkazilgan" : "Qisman yetkazilgan",
+    percent: trackPercent(delivered, total),
+    tone: delivered >= total && total > 0 ? "success" : delivered > 0 ? "muted" : "warning",
+    figure: `${fmtQty(delivered, unit)} / ${fmtQty(total, unit)}`,
+  };
+}
+
+function contractTracks(contract = {}) {
+  return [
+    contractStatusTrack(contract),
+    contractFinanceTrack(contract),
+    contractOrdersTrack(contract),
+    contractDeliveryTrack(contract),
+  ];
+}
+
+function contractTracksPanel(contract) {
+  return `<div class="track-grid">${contractTracks(contract).map((track) => `
+    <div class="track-card track-${track.tone}">
+      <span class="track-label">${track.label}</span>
+      <strong class="track-state">${track.state}</strong>
+      <span class="track-bar"><span style="width:${track.percent}%"></span></span>
+      <span class="track-figure" data-noloc>${track.figure}</span>
+    </div>`).join("")}</div>`;
+}
+
+// Keyingi amal to'rtta kuzatuv bo'ylab belgilangan tartibda tanlanadi:
+// avval shartnomaning o'zi, keyin pul, so'ng buyurtma va yetkazib berish.
 function contractNextAction(contract = {}) {
-  const state = contractStepState(contract);
+  const summary = contract.summary || {};
+  const billing = summary.billing || {};
   const id = contract.id;
-  if (!state.client) return { title: "Shartnomani mijozga bog'lang", button: "Mijozni bog'lash", modal: "contract-link-client" };
+  const advanceExpected = numberValue(summary.advance_amount) > 0;
+  if (!contract.client_id) return { title: "Shartnomani mijozga bog'lang", button: "Mijozni bog'lash", modal: "contract-link-client" };
   if (contract.status === "cancelled") return { title: "Shartnoma bekor qilingan", button: "Tarixni ko'rish", path: `/contracts/${id}?tab=notes`, done: true };
-  if (!state.signed) return { title: "Shartnomani imzolangan deb belgilang", button: "Status o'zgartirish", anchor: "#contract-status" };
-  if (!state.active) return { title: "Shartnomani faollashtiring", button: "Status o'zgartirish", anchor: "#contract-status" };
-  if (!state.advance_invoiced) return { title: "Avans hisob-fakturasini yarating", button: "Hisob yaratish", modal: "contract-invoice-modal" };
-  if (!state.advance_paid) return { title: "Avans to'lovini kiriting", button: "To'lov qo'shish", path: `/customer-payments/new?client_id=${contract.client_id}&contract_id=${id}` };
-  if (!state.ordered) return { title: "Shartnoma bo'yicha buyurtma yarating", button: "Buyurtma yaratish", path: `/orders/new?contract_id=${id}` };
-  if (!state.delivered) return { title: "Yetkazib berish davom etmoqda", button: "Buyurtmalarni ko'rish", path: `/contracts/${id}?tab=orders` };
-  if (!state.settled) return { title: "Qolgan to'lovni undiring", button: "Moliyani ko'rish", path: `/contracts/${id}?tab=payment` };
-  if (!state.completed) return { title: "Shartnomani yakunlang", button: "Status o'zgartirish", anchor: "#contract-status" };
+  if (contract.status === "draft") return { title: "Shartnomani imzolangan deb belgilang", button: "Status o'zgartirish", anchor: "#contract-status" };
+  if (contract.status === "signed") return { title: "Shartnomani faollashtiring", button: "Status o'zgartirish", anchor: "#contract-status" };
+  if (advanceExpected && numberValue(billing.advance_invoiced) <= 0) {
+    return { title: "Avans hisob-fakturasini yarating", button: "Hisob yaratish", modal: "contract-invoice-modal" };
+  }
+  if (advanceExpected && numberValue(billing.advance_paid) <= 0) {
+    return { title: "Avans to'lovini kiriting", button: "To'lov qo'shish", path: `/customer-payments/new?client_id=${contract.client_id}&contract_id=${id}` };
+  }
+  if (numberValue(summary.unordered_quantity) > 0) {
+    return { title: "Shartnoma bo'yicha buyurtma yarating", button: "Buyurtma yaratish", path: `/orders/new?contract_id=${id}` };
+  }
+  if (numberValue(summary.remaining_quantity) > 0) {
+    return { title: "Yetkazib berish davom etmoqda", button: "Buyurtmalarni ko'rish", path: `/contracts/${id}?tab=orders` };
+  }
+  // «To'langan» -- shartnoma summasiga nisbatan, ochiq hisoblar qoldig'iga
+  // nisbatan emas: ochiq hisob bo'lmasligi mumkin, lekin summa hali to'liq
+  // undirilmagan bo'lishi mumkin.
+  if (numberValue(summary.paid_amount) < numberValue(summary.total_amount)) {
+    return { title: "Qolgan to'lovni undiring", button: "Moliyani ko'rish", path: `/contracts/${id}?tab=payment` };
+  }
+  if (contract.status !== "completed") return { title: "Shartnomani yakunlang", button: "Status o'zgartirish", anchor: "#contract-status" };
   return { title: "Shartnoma bo'yicha barcha bosqichlar yakunlangan", button: "Tarixni ko'rish", path: `/contracts/${id}?tab=notes`, done: true };
 }
 
