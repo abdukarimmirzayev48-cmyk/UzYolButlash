@@ -1415,33 +1415,111 @@ function contractUnit(contract) {
   return contract.items?.[0]?.unit || "";
 }
 
+// Umumiy sahifada faqat shartnomani tushunish uchun kerak bo'lgan narsalar
+// qoldi: asosiy maydonlar, ikkala tomon va to'lov muddatlari. Qolgan bloklar
+// o'z bo'limlariga ko'chirildi -- hisob-kitob «Moliya» ga, yetkazib berish
+// rejasi «Partiyalar» ga, muddati o'tgan buyurtmalar «Buyurtmalar» ga, holat
+// tarixi «Tarix» ga, hujjat manbalari «Hujjatlar» ga. Ilgari bularning
+// hammasi bitta uzun ustunda ketma-ket turardi.
+// Qiymatlar odatda mijoz ma'lumoti bo'lgani uchun tarjima qilinmaydi.
+// `translate` bayrog'i tizimning o'z matnlari uchun -- masalan qoldiq to'lov
+// qoidasi shartnomalarga standart matn sifatida yoziladi.
+function contractInfoGrid(items) {
+  return `<div class="info-grid">${items
+    .map(([label, value, wide, translate]) => `<div class="${wide ? "wide" : ""}"><small>${label}</small><b ${translate ? "" : "data-noloc"}>${fmt(value)}</b></div>`)
+    .join("")}</div>`;
+}
+
+function contractPartyCard(contract) {
+  const name = contract.customer_name || contract.client?.name || "";
+  const initial = name.replace(/[^\p{L}\p{N}]/gu, "").charAt(0).toUpperCase() || "?";
+  return `<article class="card contact-card">
+    <div class="panel-head"><div><span class="eyebrow">Buyurtmachi</span><h2>Mijoz ma'lumotlari</h2></div></div>
+    <div class="company-row">
+      <span class="company-icon" data-noloc>${esc(initial)}</span>
+      <div><b data-noloc>${fmt(name)}</b><small><span>STIR</span><span data-noloc> ${esc(fmt(contract.customer_inn))}</span></small></div>
+    </div>
+    <div class="contact-lines">
+      <div><small>Direktor</small><b data-noloc>${fmt(contract.customer_director_full_name)}</b></div>
+      <div><small>Telefon</small><b data-noloc>${fmt(contract.customer_phone)}</b></div>
+    </div>
+    ${contract.client_id ? `<button type="button" class="outline-wide" data-nav="/clients/${contract.client_id}">Mijoz kartasini ochish</button>` : ""}
+  </article>`;
+}
+
+function contractOwnerCard(contract) {
+  const owner = contract.created_by || "";
+  return `<article class="card owner-card">
+    <span class="eyebrow">Mas'ul xodim</span>
+    <div class="owner-row">
+      <span class="avatar dark" data-noloc>${esc(owner.charAt(0).toUpperCase() || "?")}</span>
+      <div><b data-noloc>${fmt(owner)}</b><small><span>Yangilangan</span><span data-noloc>: ${esc(fmtDate(contract.updated_at))}</span></small></div>
+    </div>
+  </article>`;
+}
+
 function contractGeneralTab(contract) {
-  return section("Asosiy ma'lumotlar", `
-    <div class="detail-list">
-      ${[
+  const unit = contract.items?.[0]?.unit || "";
+  const terms = contract.payment_terms || {};
+  return `<div class="overview-content">
+    <article class="card detail-card">
+      <div class="panel-head"><div><span class="eyebrow">Shartnoma</span><h2>Asosiy ma'lumotlar</h2></div>${canEdit("sotuv") ? `<button type="button" class="text-button" data-nav="/contracts/${contract.id}/edit">Tahrirlash</button>` : ""}</div>
+      ${contractInfoGrid([
         ["Shartnoma raqami", contract.contract_number],
         ["Shartnoma sanasi", fmtDayOnly(contract.contract_date)],
         ["Amal qilish muddati", fmtDayOnly(contract.valid_until)],
         ["Tuzilgan joy", contract.place],
-        ["Mijoz", contract.customer_name || contract.client?.name],
-        ["Sarlavha", contract.title],
-        ["Status", statusLabel(contract.status)],
-        ["Didox ID", contract.didox_id],
-        ["Rouming ID", contract.rouming_id],
-        ["Izoh", contract.notes],
-        ["Yaratilgan", fmtDate(contract.created_at)],
-        ["Yangilangan", fmtDate(contract.updated_at)],
-      ].map(([label, value]) => `<div class="detail-item"><span>${label}</span><strong>${fmt(value)}</strong></div>`).join("")}
-    </div>
-  `) + section("Hisob-kitob holati", billingPositionHtml(contract))
-  + section("Yetkazib berish rejasi", deliveryPlanHtml(contract))
-  + (lateOrdersHtml(contract) ? section("Muddati o'tgan buyurtmalar", lateOrdersHtml(contract)) : "")
-  + section("To'lov muddatlari", paymentScheduleHtml(contract))
-  + (canEdit("sotuv") ? `<div id="contract-status">${section("Holatni o'zgartirish", contractTransitionsHtml(contract))}</div>` : "")
-  + section("Holat tarixi", tableOrEmpty(contract.status_history, ["Sana", "Oldingi holat", "Yangi holat", "Izoh", "Kim"], (item) => `
-      <tr><td>${fmtDate(item.created_at)}</td><td>${fmt(item.old_status_label)}</td><td>${fmt(item.new_status_label)}</td><td>${fmt(item.comment)}</td><td>${fmt(item.changed_by)}</td></tr>
-    `, "Holat tarixi mavjud emas."))
-  + section("Bajaruvchi", detailList([["Bajaruvchi nomi", contract.executor_name], ["Direktor F.I.Sh.", contract.executor_director_full_name], ["STIR", contract.executor_inn], ["OKED", contract.executor_oked], ["Yuridik manzil", contract.executor_legal_address], ["Hisob raqami", contract.executor_bank_account], ["Bank nomi", contract.executor_bank_name], ["MFO", contract.executor_mfo], ["Telefon", contract.executor_phone]])) + section("Buyurtmachi", detailList([["Buyurtmachi nomi", contract.customer_name || contract.client?.name], ["Direktor F.I.Sh.", contract.customer_director_full_name], ["STIR", contract.customer_inn || contract.client?.inn], ["OKED", contract.customer_oked], ["Yuridik manzil", contract.customer_legal_address], ["Hisob raqami", contract.customer_bank_account], ["Bank nomi", contract.customer_bank_name], ["MFO", contract.customer_mfo], ["Telefon", contract.customer_phone]])) + section("Bog'langan obyektlar", `<div class="detail-list">${[["ERP mijoz", contract.client?.name], ["Talabnoma ID", contract.customer_request_id], ["Parser versiyasi", contract.parser_version], ["Aniqlik darajasi", parseConfidenceLabel(contract)]].map(([label, value]) => `<div class="detail-item"><span>${label}</span><strong>${fmt(value)}</strong></div>`).join("")}<div class="detail-item"><span>PDF fayl</span><strong>${contract.source_file_path ? `<a class="link-btn" target="_blank" href="/api/contracts/${contract.id}/file">PDF faylni ko'rish</a>` : dash}</strong></div></div>`);
+        ["Mijoz", contract.customer_name || contract.client?.name, true],
+        ["Mahsulot", product_summary_text(contract)],
+        ["Miqdor", fmtQty(contract.summary?.total_quantity, unit)],
+        ["Avans", `${numberValue(terms.advance_percent)}% · ${fmtMoney(contract.summary?.advance_amount)}`],
+        ["Qoldiq to'lov qoidasi", terms.remaining_payment_rule, true, true],
+      ])}
+    </article>
+    <aside class="side-stack">
+      ${contractPartyCard(contract)}
+      ${contractOwnerCard(contract)}
+      ${canEdit("sotuv") ? `<div id="contract-status"><article class="card status-card"><div class="panel-head"><div><span class="eyebrow">Holat</span><h2>Holatni o'zgartirish</h2></div></div>${contractTransitionsHtml(contract)}</article></div>` : ""}
+    </aside>
+    <article class="card payment-table-card">
+      <div class="panel-head"><div><span class="eyebrow">To'lovlar</span><h2>To'lov muddatlari</h2></div><button type="button" class="text-button" data-nav="/contracts/${contract.id}?tab=payment">Barchasini ko'rish</button></div>
+      ${paymentScheduleHtml(contract)}
+    </article>
+    ${contract.executor_name || contract.customer_inn ? `<article class="card requisites-card">
+      <div class="panel-head"><div><span class="eyebrow">Rekvizitlar</span><h2>Tomonlar</h2></div></div>
+      <div class="requisites-grid">
+        <div>
+          <span class="eyebrow">Bajaruvchi</span>
+          ${contractInfoGrid([
+            ["Nomi", contract.executor_name, true],
+            ["Direktor", contract.executor_director_full_name],
+            ["STIR", contract.executor_inn],
+            ["Hisob raqami", contract.executor_bank_account],
+            ["Bank", contract.executor_bank_name],
+            ["Yuridik manzil", contract.executor_legal_address, true],
+          ])}
+        </div>
+        <div>
+          <span class="eyebrow">Buyurtmachi</span>
+          ${contractInfoGrid([
+            ["Nomi", contract.customer_name, true],
+            ["Direktor", contract.customer_director_full_name],
+            ["STIR", contract.customer_inn],
+            ["Hisob raqami", contract.customer_bank_account],
+            ["Bank", contract.customer_bank_name],
+            ["Yuridik manzil", contract.customer_legal_address, true],
+          ])}
+        </div>
+      </div>
+    </article>` : ""}
+  </div>`;
+}
+
+// Shartnomadagi mahsulot nomlari -- ro'yxatdagi kabi, ikkitadan ortig'i «+N».
+function product_summary_text(contract) {
+  const names = [...new Set((contract.items || []).map((item) => item.product_name).filter(Boolean))];
+  if (!names.length) return "";
+  return names.length <= 2 ? names.join(", ") : `${names.slice(0, 2).join(", ")} +${names.length - 2}`;
 }
 
 function contractSpecificationTab(contract) {
@@ -1467,10 +1545,12 @@ function contractSpecificationTab(contract) {
 }
 
 function contractPaymentTab(contract, invoices = []) {
+  // Hisob-kitob holati endi shu yerda: u pul haqidagi bo'lim, «Umumiy» da
+  // esa faqat shartnomani tushunish uchun kerak bo'lgan narsalar qoldi.
   const item = contract.payment_terms || {};
   const clientId = contract.client_id || contract.client?.id || "";
   const editable = canEdit("sotuv");
-  return section("Moliya", `
+  return section("Hisob-kitob holati", billingPositionHtml(contract)) + section("Moliya", `
     <div class="actions">${editable ? `<button class="btn primary" data-contract-child="payment">To'lov shartlarini tahrirlash</button>` : ""}${canEdit("moliya") ? `<button class="btn" type="button" data-contract-invoice-modal>Hisob yaratish</button><button class="btn" data-nav="/customer-payments/new?client_id=${clientId}&contract_id=${contract.id}">To'lov qo'shish</button>` : ""}</div>
     <h3 class="section-subtitle">To'lov shartlari</h3>
     <div class="detail-list">
@@ -1531,7 +1611,15 @@ function contractTransportTab(contract, logisticsRows = []) {
 
 function contractDocumentsTab(contract) {
   const editable = canEdit("sotuv");
-  return section("Hujjatlar", `
+  // Manba fayl va parser ma'lumotlari hujjatlar bilan bir joyda: ular ham
+  // shartnoma qayerdan kelgani haqida.
+  return section("Manba", detailList([
+    ["ERP mijoz", contract.client?.name],
+    ["Talabnoma ID", contract.customer_request_id],
+    ["Parser versiyasi", contract.parser_version],
+    ["Aniqlik darajasi", parseConfidenceLabel(contract)],
+    ["PDF fayl", contract.original_filename],
+  ])) + section("Hujjatlar", `
     ${editable ? `<div class="actions"><button class="btn primary" data-contract-child="documents">Hujjat qo'shish</button></div>` : ""}
     ${tableOrEmpty(contract.documents, ["Hujjat nomi", "Turi", "Yuklangan sana", "Yuklagan", "Amallar"], (item) => `
       <tr>
@@ -1548,7 +1636,10 @@ function contractDocumentsTab(contract) {
 
 function contractNotesTab(contract) {
   const editable = canEdit("sotuv");
-  return section("Izohlar / Tarix", `
+  // Holat tarixi shu yerda: «Tarix» bo'limi aynan shu narsa uchun.
+  return section("Holat tarixi", tableOrEmpty(contract.status_history, ["Sana", "Oldingi holat", "Yangi holat", "Izoh", "Kim"], (item) => `
+      <tr><td>${fmtDate(item.created_at)}</td><td>${fmt(item.old_status_label)}</td><td>${fmt(item.new_status_label)}</td><td>${fmt(item.comment)}</td><td>${fmt(item.changed_by)}</td></tr>
+    `, "Holat tarixi mavjud emas.")) + section("Izohlar / Tarix", `
     ${editable ? `<div class="actions"><button class="btn primary" data-contract-child="notes">Izoh qo'shish</button></div>` : ""}
     ${tableOrEmpty(contract.notes_history, ["Sana", "Foydalanuvchi", "Izoh", "Amallar"], (item) => `
       <tr><td>${fmtDate(item.created_at)}</td><td>${fmt(item.created_by)}</td><td>${fmt(item.note)}</td><td>${editable ? `<button class="link-btn" data-contract-delete="notes" data-id="${item.id}">O'chirish</button>` : ""}</td></tr>
@@ -1558,7 +1649,7 @@ function contractNotesTab(contract) {
 
 function contractOrdersTab(contract, orders = []) {
   const editable = canEdit("sotuv");
-  return section("Buyurtmalar", `
+  return (lateOrdersHtml(contract) ? section("Muddati o'tgan buyurtmalar", lateOrdersHtml(contract)) : "") + section("Buyurtmalar", `
     ${editable ? `<div class="actions"><button class="btn primary" data-nav="/orders/new?contract_id=${contract.id}">Buyurtma yaratish</button></div>` : ""}
     ${tableOrEmpty(orders, ["Buyurtma raqami", "Sana", "Mahsulot", "Miqdor", "Yetkazilgan", "Qoldiq", "Ta'minotchi", "Status", "Amallar"], (order) => `
       <tr>
@@ -1577,7 +1668,9 @@ function contractOrdersTab(contract, orders = []) {
 }
 
 function contractBatchesTab(contract, batches = []) {
-  return section("Partiyalar", `
+  // Yetkazib berish rejasi partiyalar bilan bir joyda turgani mantiqli:
+  // reja ham, fakt ham shu bo'limda.
+  return section("Yetkazib berish rejasi", deliveryPlanHtml(contract)) + section("Partiyalar", `
     ${tableOrEmpty(batches, ["Partiya raqami", "Buyurtma", "Mahsulot", "Reja", "Yuklangan", "Qabul qilingan", "Ta'minotchi", "Status", "Amallar"], (batch) => `
       <tr>
         <td><strong>${fmt(batch.batch_number)}</strong></td>

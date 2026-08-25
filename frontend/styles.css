@@ -1242,6 +1242,185 @@ body.sidebar-collapsed .app-shell {
   .finance-content { justify-content: center; flex-wrap: wrap; }
 }
 
+/* «Umumiy» bo'limi: asosiy maydonlar, yonida tomonlar va holat, pastda
+   to'lov muddatlari. Ilgari bularning hammasi bitta uzun ustunda ketma-ket
+   turardi va sahifa oxiri ko'rinmasdi. */
+.overview-content {
+  display: grid;
+  grid-template-columns: minmax(0, 1.65fr) minmax(290px, 1fr);
+  gap: 10px;
+  align-items: start;
+}
+
+.info-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 26px;
+  margin-top: 14px;
+}
+
+.info-grid > div {
+  border-bottom: 1px solid var(--line);
+  padding: 11px 0;
+  min-width: 0;
+}
+
+.info-grid .wide {
+  grid-column: 1 / -1;
+}
+
+.info-grid small,
+.info-grid b {
+  display: block;
+}
+
+.info-grid small {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.info-grid b {
+  margin-top: 5px;
+  font-size: 13px;
+  overflow-wrap: break-word;
+}
+
+.side-stack {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+
+.company-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 15px 0 12px;
+  min-width: 0;
+}
+
+.company-icon {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
+  background: #e3f0ec;
+  color: var(--accent);
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.company-row b,
+.company-row small,
+.owner-row b,
+.owner-row small {
+  display: block;
+  overflow-wrap: break-word;
+}
+
+.company-row b { font-size: 13px; }
+.company-row small,
+.owner-row small { margin-top: 4px; color: var(--muted); font-size: 11px; }
+
+.contact-lines {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.contact-lines > div {
+  border-radius: 7px;
+  background: var(--surface-soft);
+  padding: 9px;
+  min-width: 0;
+}
+
+.contact-lines small,
+.contact-lines b {
+  display: block;
+  overflow-wrap: break-word;
+}
+
+.contact-lines small { color: var(--muted); font-size: 10.5px; }
+.contact-lines b { margin-top: 4px; font-size: 12px; }
+
+.outline-wide {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  height: 34px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.owner-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.avatar.dark {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 32px;
+  height: 32px;
+  border-radius: 9px;
+  background: var(--accent-dark);
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.owner-row b { font-size: 13px; }
+
+.payment-table-card,
+.requisites-card {
+  grid-column: 1 / -1;
+}
+
+.requisites-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 0 26px;
+}
+
+.text-button {
+  border: 0;
+  background: transparent;
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.status-card .actions {
+  margin-top: 12px;
+  flex-wrap: wrap;
+}
+
+@media (max-width: 1080px) {
+  .overview-content { grid-template-columns: 1fr; }
+  .payment-table-card, .requisites-card { grid-column: auto; }
+}
+
+@media (max-width: 760px) {
+  .info-grid { grid-template-columns: 1fr; }
+  .info-grid .wide { grid-column: auto; }
+  .contact-lines { grid-template-columns: 1fr; }
+}
+
 /* Shartnomaning to'rtta mustaqil kuzatuvi: har biri o'z ichida tartibli,
    shuning uchun «bajarilgan» hech qachon «bajarilmagan» dan keyin turmaydi. */
 .track-grid {
