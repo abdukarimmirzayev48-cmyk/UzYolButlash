@@ -818,18 +818,21 @@ function orderHeader(order, related = {}) {
   const isStockOrder = order.source_type === "supplier_held_stock";
   const hasStockAllocation = Boolean(related.allocations?.length);
   const supplierReady = isStockOrder ? hasStockAllocation : (Boolean(order.supplier_name) || ["selected", "confirmed"].includes(order.supplier_status));
-  const delivered = numberValue(order.summary?.delivered_quantity);
-  const remaining = numberValue(order.summary?.remaining_quantity);
-  const finance = orderFinanceSummary(related.invoices || []);
   const nextAction = orderNextAction(order, related);
-  const supplyLabel = isStockOrder
-    ? (hasStockAllocation ? { label: "Zaxiradan ajratilgan", tone: "success" } : { label: "Zaxira kutilmoqda", tone: "warning" })
-    : order.supplier_name ? { label: "Ta'minotchi tanlangan", tone: "success" } : { label: "Ta'minotchi tanlanmagan", tone: "warning" };
   const editable = canEdit("sotuv");
+  const warnings = orderWarningMessages(order, related);
+  const canRunAction = nextAction.done || !nextAction.modal || canEdit(orderActionModule(nextAction.modal));
   return `
+    <nav class="breadcrumb" aria-label="Sotuv"><span>Sotuv</span><span data-noloc> / </span><span>Buyurtmalar</span><span data-noloc> / </span><strong data-noloc>${esc(fmt(order.order_number))}</strong></nav>
     ${workflowHeader({
       title: order.order_number,
-      subtitle: subtitleLine([{value:order.client?.name,raw:true},{value:order.contract?.contract_number,raw:true},{value:optionLabel(sourceTypes, order.source_type)},{value:optionLabel(fulfillmentTypes, order.fulfillment_type)}]),
+      badge: statusBadge(order.status),
+      subtitle: subtitleLine([
+        { value: order.client?.name, raw: true },
+        { value: order.contract?.contract_number, raw: true },
+        { value: optionLabel(sourceTypes, order.source_type) },
+        { value: optionLabel(fulfillmentTypes, order.fulfillment_type) },
+      ]),
       backPath: "/orders",
       fullEditPath: editable ? `/orders/${order.id}/edit` : "",
       actions: [
@@ -840,28 +843,11 @@ function orderHeader(order, related = {}) {
         editable ? { label: "Hujjat yuklash", modal: "order-document" } : null,
       ].filter(Boolean),
     })}
-    ${workflowStatusGrid([
-      ["Buyurtma holati", statusBadge(order.status)],
-      ["Xarid / Zaxira holati", statusChip(supplyLabel)],
-      ["Partiyalar holati", statusChip(orderBatchState(order))],
-      ["Moliya holati", statusChip(orderFinanceStatusChip(finance))],
-    ])}
-    ${summaryCards([
-      ["Jami miqdor", fmtQty(order.summary?.total_quantity, orderUnit(order))],
-      ["Jami summa", fmtMoney(order.summary?.total_amount)],
-      ["Yetkazilgan", fmtQty(order.summary?.delivered_quantity, orderUnit(order))],
-      // Loaded and not yet signed for. Between "delivered" and "still to
-      // order" it belonged to neither, so it was simply absent from the card.
-      ["Yo'lda (qabul qilinmagan)", fmtQty(order.summary?.in_transit_quantity, orderUnit(order))],
-      ["Qoldiq", fmtQty(order.summary?.remaining_quantity, orderUnit(order))],
-      ["Ta'minotchi", fmt(order.supplier_name)],
-      ["Model", fmt(optionLabel(fulfillmentTypes, order.fulfillment_type))],
-      ["Logistika narxi", order.fulfillment_type === "direct_supplier_to_customer" ? dash : fmtMoney(order.logistics_price)],
-      ["Oxirgi faollik", fmtDate(order.updated_at)],
-    ])}
-    ${workflowWarningsPanel(orderWarningMessages(order, related))}
+    ${nextActionHero(canRunAction ? nextAction : { title: nextAction.title, hint: nextAction.hint })}
+    ${orderMetrics(order, related)}
+    ${orderOverviewPanels(order, related, warnings)}
+    ${warnings.length > 1 ? workflowWarningsPanel(warnings.slice(1)) : ""}
     ${contractPriceCheckHtml(order)}
-    ${nextAction.done || !nextAction.modal || canEdit(orderActionModule(nextAction.modal)) ? workflowNextActionPanel(nextAction) : workflowNextActionPanel({ title: nextAction.title })}
   `;
 }
 
@@ -1042,8 +1028,8 @@ function orderNextAction(order = {}, related = {}) {
   const invoices = (related.invoices || []).filter((invoice) => invoice.status !== "cancelled");
   const finance = orderFinanceSummary(related.invoices || []);
 
-  const invoiceAction = { title: "Mijoz hisob-fakturasini yarating", button: "Hisob yaratish", modal: "order-invoice" };
-  const paymentAction = { title: "To'lovni kiriting", button: "To'lov qo'shish", modal: "order-payment" };
+  const invoiceAction = { title: "Mijoz hisob-fakturasini yarating", hint: "Mahsulot yetkazilgan, lekin mijozga hisob qo'yilmagan.", button: "Hisob yaratish", modal: "order-invoice" };
+  const paymentAction = { title: "To'lovni kiriting", hint: "Hisob qo'yilgan, to'lov hali to'liq kelmagan.", button: "To'lov qo'shish", modal: "order-payment" };
 
   // Delivered and not invoiced: nothing else on this card matters as much.
   if (delivered > 0 && !invoices.length) return invoiceAction;
@@ -1055,19 +1041,19 @@ function orderNextAction(order = {}, related = {}) {
   const unplanned = numberValue(order.summary?.unplanned_quantity);
   if (unplanned > 0) {
     if (isStockSource) {
-      if (!related.allocations?.length) return { title: "Mavjud zaxiradan ajrating", button: "Zaxiradan ajratish", modal: "order-stock" };
-      return { title: "Qoldiq miqdor uchun partiya yarating", button: "Partiya yaratish", modal: "order-batch" };
+      if (!related.allocations?.length) return { title: "Mavjud zaxiradan ajrating", hint: "Buyurtma zaxiradan bajariladi, lekin hali ajratma kiritilmagan.", button: "Zaxiradan ajratish", modal: "order-stock" };
+      return { title: "Qoldiq miqdor uchun partiya yarating", hint: "Buyurtma miqdorining bir qismi hali partiyaga biriktirilmagan.", button: "Partiya yaratish", modal: "order-batch" };
     }
-    if (!order.supplier_options?.length) return { title: "Ta'minotchi taklifini qo'shing", button: "Taklif qo'shish", modal: "order-supplier-offer" };
-    if (!order.supplier_name) return { title: "Ta'minotchini tanlang", button: "Ta'minotchini tanlash", modal: "order-supplier-select" };
-    return { title: "Qoldiq miqdor uchun partiya yarating", button: "Partiya yaratish", modal: "order-batch" };
+    if (!order.supplier_options?.length) return { title: "Ta'minotchi taklifini qo'shing", hint: "Xarid uchun kamida bitta ta'minotchi taklifi kerak.", button: "Taklif qo'shish", modal: "order-supplier-offer" };
+    if (!order.supplier_name) return { title: "Ta'minotchini tanlang", hint: "Takliflar kiritilgan, ta'minotchi hali tasdiqlanmagan.", button: "Ta'minotchini tanlash", modal: "order-supplier-select" };
+    return { title: "Qoldiq miqdor uchun partiya yarating", hint: "Ta'minotchi tasdiqlangan, qolgan miqdor uchun partiya kerak.", button: "Partiya yaratish", modal: "order-batch" };
   }
 
   // Everything delivered.
   if (!invoices.length) return invoiceAction;
   if (finance.remaining > 0) return paymentAction;
-  if (!hasDocs(order)) return { title: "Buyurtma hujjatini yuklang", button: "Hujjat yuklash", modal: "order-document" };
-  return { title: "Buyurtma yopishga tayyor", button: "Tarixni ko'rish", path: `/orders/${order.id}?tab=notes`, done: true };
+  if (!hasDocs(order)) return { title: "Buyurtma hujjatini yuklang", hint: "Pul hisob-kitobi yopilgan, hujjatlar esa hali yuklanmagan.", button: "Hujjat yuklash", modal: "order-document" };
+  return { title: "Buyurtma bo'yicha barcha bosqichlar yakunlangan", hint: "Yetkazib berish, hisob-kitob va hujjatlar joyida.", button: "Tarixni ko'rish", path: `/orders/${order.id}?tab=notes`, done: true };
 }
 
 function openOrderStatusForm(order) {
@@ -1088,15 +1074,75 @@ function openOrderStatusForm(order) {
   });
 }
 
-function orderTabs(active) {
-  const items = [["general", "Umumiy"], ["products", "Mahsulotlar"], ["supplier", "Zaxira / Xarid"], ["batches", "Partiyalar"], ["price", "Moliya"], ["documents", "Hujjatlar"], ["notes", "Tarix"]];
+function orderTabs(active, order = {}, related = {}) {
+  const items = [
+    ["general", "Umumiy"],
+    ["products", "Mahsulotlar", order.items?.length ?? 0],
+    ["supplier", "Zaxira / Xarid", order.source_type === "supplier_held_stock" ? (related.allocations?.length ?? 0) : (order.supplier_options?.length ?? 0)],
+    ["batches", "Partiyalar", order.summary?.delivery_batches_count ?? 0],
+    ["price", "Moliya", related.invoices?.length ?? 0],
+    ["documents", "Hujjatlar", order.documents?.length ?? 0],
+    ["notes", "Tarix", order.notes_history?.length ?? 0],
+  ];
   return workflowTabs(active, items, "order-tab");
 }
 
+// Shartnoma kartochkasidagi kabi: chapda asosiy maydonlar, o'ngda mijoz va
+// mas'ul xodim, pastda jarayon tarixi. Ilgari bularning hammasi bitta uzun
+// ro'yxat edi.
 function orderGeneralTab(order) {
-  return section("Umumiy ma'lumotlar", `${detailList([
-    ["Buyurtma raqami", order.order_number], ["Shartnoma", order.contract?.contract_number], ["Mijoz", order.client?.name], ["Buyurtma sanasi", order.order_date], ["Talab qilingan sana", order.required_date], ["Holat", optionLabel(orderStatuses, order.status)], ["Manba", optionLabel(sourceTypes, order.source_type)], ["Yetkazib berish modeli", optionLabel(fulfillmentTypes, order.fulfillment_type)], ["Izoh", order.notes], ["Yaratilgan", fmtDate(order.created_at)], ["Yangilangan", fmtDate(order.updated_at)]
-  ])}${section("Jarayon tarixi", workflowTimeline([["Yaratildi", fmtDate(order.created_at)], ["Ta'minotchi holati", optionLabel(supplierStatuses, order.supplier_status)], ["Yetkazilgan", fmtQty(order.summary?.delivered_quantity)], ["Qoldiq", fmtQty(order.summary?.remaining_quantity)], ["Yangilangan", fmtDate(order.updated_at)]]))}`);
+  const unit = order.items?.[0]?.unit || "";
+  const client = order.client || {};
+  const initial = (client.name || "").replace(/[^\p{L}\p{N}]/gu, "").charAt(0).toUpperCase() || "?";
+  const owner = order.created_by || "";
+  return `<div class="overview-content">
+    <article class="card detail-card">
+      <div class="panel-head"><div><span class="eyebrow">Buyurtma</span><h2>Asosiy ma'lumotlar</h2></div>${canEdit("sotuv") ? `<button type="button" class="text-button" data-nav="/orders/${order.id}/edit">Tahrirlash</button>` : ""}</div>
+      ${contractInfoGrid([
+        ["Buyurtma raqami", order.order_number],
+        ["Buyurtma sanasi", fmtDayOnly(order.order_date)],
+        ["Shartnoma", order.contract?.contract_number],
+        ["Talab qilingan sana", fmtDayOnly(order.required_date)],
+        ["Mijoz", client.name, true],
+        ["Manba", localizeText(optionLabel(sourceTypes, order.source_type)), false, true],
+        ["Model", localizeText(optionLabel(fulfillmentTypes, order.fulfillment_type)), false, true],
+        ["Miqdor", fmtQty(order.summary?.total_quantity, unit)],
+        ["Jami summa", fmtMoney(order.summary?.total_amount)],
+        ["Izoh", order.notes, true],
+      ])}
+    </article>
+    <aside class="side-stack">
+      <article class="card contact-card">
+        <div class="panel-head"><div><span class="eyebrow">Buyurtmachi</span><h2>Mijoz ma'lumotlari</h2></div></div>
+        <div class="company-row">
+          <span class="company-icon" data-noloc>${esc(initial)}</span>
+          <div><b data-noloc>${fmt(client.name)}</b><small><span>STIR</span><span data-noloc> ${esc(client.inn || "—")}</span></small></div>
+        </div>
+        <div class="contact-lines">
+          <div><small>Telefon</small><b data-noloc data-empty="${esc(localizeText(MSG_NO_DATA))}">${esc(client.phone || "")}</b></div>
+          <div><small>Ta'minotchi</small><b data-noloc data-empty="${esc(localizeText(MSG_NO_DATA))}">${esc(order.supplier_name || "")}</b></div>
+        </div>
+        ${order.client_id ? `<button type="button" class="outline-wide" data-nav="/clients/${order.client_id}">Mijoz kartasini ochish<span data-noloc>→</span></button>` : ""}
+      </article>
+      <article class="card owner-card">
+        <span class="eyebrow">Mas'ul xodim</span>
+        <div class="owner-row">
+          <span class="avatar dark" data-noloc>${esc(owner.charAt(0).toUpperCase() || "?")}</span>
+          <div><b data-noloc>${fmt(owner)}</b><small><span>Yangilangan</span><span data-noloc>: ${esc(fmtDate(order.updated_at))}</span></small></div>
+        </div>
+      </article>
+    </aside>
+    <article class="card payment-table-card">
+      <div class="panel-head"><div><span class="eyebrow">Jarayon</span><h2>Jarayon tarixi</h2></div></div>
+      ${workflowTimeline([
+        ["Yaratildi", fmtDate(order.created_at)],
+        ["Ta'minotchi holati", localizeText(optionLabel(supplierStatuses, order.supplier_status))],
+        ["Rejalashtirilgan", fmtQty(order.summary?.planned_quantity, unit)],
+        ["Yetkazilgan", fmtQty(order.summary?.delivered_quantity, unit)],
+        ["Oxirgi faollik", fmtDate(order.updated_at)],
+      ])}
+    </article>
+  </div>`;
 }
 
 function orderProductsTab(order) {
@@ -1704,7 +1750,7 @@ async function renderOrderDetail(id) {
       created_at: allocation.created_at,
     })));
   }
-  app.innerHTML = `<div class="page">${orderHeader(order, related)}${orderTabs(active)}${renderOrderActiveTab(order, active, related)}</div>`;
+  app.innerHTML = `<div class="page">${orderHeader(order, related)}${orderTabs(active, order, related)}${renderOrderActiveTab(order, active, related)}</div>`;
   document.querySelectorAll("[data-order-tab]").forEach((button) => button.addEventListener("click", () => navigate(`/orders/${id}?tab=${button.dataset.orderTab}`)));
   document.querySelectorAll("[data-order-status]").forEach((button) => button.addEventListener("click", () => openOrderStatusModal(order)));
   document.querySelectorAll("[data-order-supplier-offer]").forEach((button) => button.addEventListener("click", () => openOrderSupplierOfferModal(order).catch((error) => showToast(error.message, true))));

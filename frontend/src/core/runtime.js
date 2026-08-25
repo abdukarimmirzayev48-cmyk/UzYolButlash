@@ -2284,6 +2284,136 @@ function contractNextAction(contract = {}) {
   return { title: "Shartnoma bo'yicha barcha bosqichlar yakunlangan", button: "Tarixni ko'rish", path: `/contracts/${id}?tab=notes`, done: true };
 }
 
+// Buyurtmaning to'rtta kuzatuvi -- shartnomanikidek: har biri o'z ichida
+// tartibli, bir-birini kutmaydi.
+function orderTracks(order = {}, related = {}) {
+  const summary = order.summary || {};
+  const unit = order.items?.[0]?.unit || "";
+  const isStock = order.source_type === "supplier_held_stock";
+  const supplied = isStock ? Boolean(related.allocations?.length) : Boolean(order.supplier_name);
+  const total = numberValue(summary.total_quantity);
+  const planned = numberValue(summary.planned_quantity);
+  const delivered = numberValue(summary.delivered_quantity);
+  const finance = orderFinanceSummary(related.invoices || []);
+  const amount = numberValue(summary.total_amount);
+  return [
+    {
+      key: "status",
+      label: "Buyurtma",
+      state: statusLabel(order.status),
+      percent: delivered >= total && total > 0 ? 100 : supplied ? 50 : 20,
+      tone: order.status === "completed" ? "success" : "muted",
+      figure: fmtDayOnly(order.order_date),
+    },
+    {
+      key: "supply",
+      label: isStock ? "Zaxira" : "Ta'minot",
+      state: supplied ? (isStock ? "Zaxiradan ajratilgan" : "Ta'minotchi tanlangan") : (isStock ? "Zaxira kutilmoqda" : "Ta'minotchi tanlanmagan"),
+      percent: supplied ? 100 : 0,
+      tone: supplied ? "success" : "warning",
+      figure: fmt(order.supplier_name),
+    },
+    {
+      key: "delivery",
+      label: "Yetkazib berish",
+      state: delivered <= 0 ? "Yetkazilmagan" : delivered >= total ? "To'liq yetkazilgan" : "Qisman yetkazilgan",
+      percent: trackPercent(delivered, total),
+      tone: delivered >= total && total > 0 ? "success" : delivered > 0 ? "muted" : "warning",
+      figure: `${fmtQty(delivered)} / ${fmtQty(total, unit)}`,
+    },
+    {
+      key: "finance",
+      label: "Moliya",
+      state: !finance.invoices.length ? "Hisob yaratilmagan" : finance.remaining <= 0 ? "To'liq to'langan" : finance.paid > 0 ? "Qisman to'langan" : "To'lov kutilmoqda",
+      percent: trackPercent(finance.paid, amount),
+      tone: finance.invoices.length && finance.remaining <= 0 ? "success" : finance.paid > 0 ? "muted" : "warning",
+      figure: `${fmtMoney(finance.paid)} / ${fmtMoney(amount)}`,
+    },
+  ];
+}
+
+function orderMetrics(order, related = {}) {
+  const summary = order.summary || {};
+  const unit = order.items?.[0]?.unit || "";
+  const finance = orderFinanceSummary(related.invoices || []);
+  const amount = numberValue(summary.total_amount);
+  const delivered = numberValue(summary.delivered_quantity);
+  const total = numberValue(summary.total_quantity);
+  const inTransit = numberValue(summary.in_transit_quantity);
+  return `<div class="metrics-grid">
+    ${metricCard({ label: "Buyurtma summasi", value: fmtMoney(amount), note: fmtQty(total, unit), tone: "green" })}
+    ${metricCard({
+      label: "Yetkazilgan",
+      value: `${fmtQty(delivered)} / ${fmtQty(total, unit)}`,
+      note: inTransit > 0 ? `${localizeText("Yo'lda")}: ${fmtQty(inTransit, unit)}` : delivered >= total && total > 0 ? "To'liq yetkazilgan" : "Yetkazib berish davom etmoqda",
+      tone: delivered >= total && total > 0 ? "green" : "",
+      percent: trackPercent(delivered, total),
+    })}
+    ${metricCard({
+      label: "To'langan",
+      value: fmtMoney(finance.paid),
+      note: !finance.invoices.length ? "Hisob yaratilmagan" : finance.remaining > 0 ? `${localizeText("Qoldiq")}: ${fmtMoney(finance.remaining)}` : "To'liq to'langan",
+      tone: finance.invoices.length && finance.remaining <= 0 ? "green" : "amber",
+      percent: trackPercent(finance.paid, amount),
+    })}
+    ${metricCard({
+      label: "Ta'minotchi",
+      value: order.supplier_name || localizeText("Tanlanmagan"),
+      note: optionLabel(sourceTypes, order.source_type),
+      tone: order.supplier_name ? "green" : "amber",
+    })}
+  </div>`;
+}
+
+function orderProcessPanel(order, related = {}, warnings = []) {
+  const summary = order.summary || {};
+  const isStock = order.source_type === "supplier_held_stock";
+  const supplied = isStock ? Boolean(related.allocations?.length) : Boolean(order.supplier_name);
+  const total = numberValue(summary.total_quantity);
+  const planned = numberValue(summary.planned_quantity);
+  const delivered = numberValue(summary.delivered_quantity);
+  const finance = orderFinanceSummary(related.invoices || []);
+  const tracks = Object.fromEntries(orderTracks(order, related).map((track) => [track.key, track]));
+  const steps = [
+    [isStock ? "Zaxira" : "Ta'minot", tracks.supply.state, supplied],
+    ["Partiya", planned <= 0 ? "Partiya yo'q" : planned >= total ? "To'liq rejalashtirilgan" : "Qisman rejalashtirilgan", planned >= total && total > 0],
+    ["Yetkazish", tracks.delivery.figure, delivered >= total && total > 0],
+    ["Moliya", tracks.finance.state, Boolean(finance.invoices.length) && finance.remaining <= 0],
+  ];
+  const firstOpen = steps.findIndex(([, , done]) => !done);
+  const currentIndex = firstOpen === -1 ? steps.length : firstOpen;
+  const attention = warnings[0];
+  return `<article class="card process-panel">
+    <div class="panel-head"><div><span class="eyebrow">Jarayon</span><h2>Buyurtma bajarilishi</h2></div></div>
+    <div class="steps">${steps.map(([label, state], index) => {
+      const cls = index < currentIndex ? "done" : index === currentIndex ? "current" : "";
+      return `<div class="step ${cls}"><span data-noloc>${index < currentIndex ? "✓" : index + 1}</span><div><b>${label}</b><small>${state}</small></div></div>`;
+    }).join("")}</div>
+    ${attention ? `<div class="attention-row"><div>${warningParts(attention)}</div></div>` : ""}
+  </article>`;
+}
+
+function orderFinancePanel(order, related = {}) {
+  const finance = orderFinanceSummary(related.invoices || []);
+  const amount = numberValue(order.summary?.total_amount);
+  const percent = trackPercent(finance.paid, amount);
+  return `<article class="card finance-panel">
+    <div class="panel-head"><div><span class="eyebrow">Moliya</span><h2>To'lov holati</h2></div></div>
+    <div class="finance-content">
+      <div class="donut" style="--donut:${percent}%"><div><strong data-noloc>${percent}%</strong><span>to'langan</span></div></div>
+      <div class="finance-legend">
+        <div><span class="legend-dot green" data-noloc></span><p><small>Buyurtma summasi</small><b data-noloc>${fmtMoney(amount)}</b></p></div>
+        <div><span class="legend-dot amber" data-noloc></span><p><small>Hisob qo'yilgan</small><b data-noloc>${fmtMoney(finance.total)}</b></p></div>
+        <div><span class="legend-dot gray" data-noloc></span><p><small>To'langan</small><b data-noloc>${fmtMoney(finance.paid)}</b></p></div>
+      </div>
+    </div>
+  </article>`;
+}
+
+function orderOverviewPanels(order, related, warnings) {
+  return `<div class="overview-grid">${orderProcessPanel(order, related, warnings)}${orderFinancePanel(order, related)}</div>`;
+}
+
 function batchWorkflowStepper(batch) {
   const state = batchStepState(batch);
   const steps = [
