@@ -504,6 +504,7 @@ const uzCyrillic = {
   "Haydovchi, transport raqami va haqiqiy sanalar partiya yaratilgandan keyin logistika bosqichida kiritiladi.": "Ҳайдовчи, транспорт рақами ва ҳақиқий саналар партия яратилгандан кейин логистика босқичида киритилади.",
   "Haydovchidan hisobotlar hali yo'q.": "Ҳайдовчидан ҳисоботлар ҳали йўқ.",
   "Haydovchiga quyidagi havolani yuboring (15 daqiqa amal qiladi):": "Ҳайдовчига қуйидаги ҳаволани юборинг (15 дақиқа амал қилади):",
+  "Hech narsa topilmadi.": "Ҳеч нарса топилмади.",
   "Hikvision qurilmasi sozlanmagan (.env faylida HIKVISION_HOSTS ni kiriting).": "Hikvision қурилмаси созланмаган (.энв файлида HIKVISION_HOSTS ни киритинг).",
   "Hisob": "Ҳисоб",
   "Hisob ID": "Ҳисоб ID",
@@ -1500,6 +1501,7 @@ const uzCyrillic = {
   "Shartnoma yaratish uchun mavjud mijozni tanlang.": "Шартнома яратиш учун мавжуд мижозни танланг.",
   "Shartnoma yuklanmoqda...": "Шартнома юкланмоқда...",
   "Shartnoma, buyurtma raqami va buyurtma sanasi majburiy.": "Шартнома, буюртма рақами ва буюртма санаси мажбурий.",
+  "Shartnoma, mijoz yoki STIR bo'yicha qidirish": "Шартнома, мижоз ёки STIR бўйича қидириш",
   "Shartnomada buyurtmachi nomi yo'q.": "Шартномада буюртмачи номи йўқ.",
   "Shartnomada kamida bitta element bo'lishi kerak.": "Шартномада камида битта элемент бўлиши керак.",
   "Shartnomada kamida bitta mahsulot bo'lishi kerak.": "Шартномада камида битта маҳсулот бўлиши керак.",
@@ -2317,6 +2319,7 @@ const uzCyrillic = {
   "— ta'til": "— таътил",
   "— ulanish yo'q.": "— уланиш йўқ.",
   "— xizmat safarida": "— хизмат сафарида",
+  "⌘K": "⌘К",
   "✅ Ulangan": "✅ Уланган"
 };
 

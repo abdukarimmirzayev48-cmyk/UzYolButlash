@@ -785,6 +785,7 @@ function initSidebar() {
   localizeDom(document.body);
   observeDynamicForms();
   guardDoubleSubmit();
+  initTopSearch();
   document.title = localizeText(document.title);
   const observer = new MutationObserver((mutations) => {
     mutations.forEach((mutation) => {
@@ -1747,8 +1748,115 @@ function workflowNextActionPanel(action = {}) {
   return `<section class="next-action-panel ${action.done ? "done" : ""}"><div><span>Keyingi amal</span><strong>${fmt(action.title)}</strong></div>${button}</section>`;
 }
 
+// Uchinchi element -- sanoq. Nol ham ko'rsatiladi: «Buyurtmalar 0» bo'limni
+// ochib ko'rish kerakmi degan savolga javob beradi, sanoqsiz esa har safar
+// ochib tekshirish kerak.
 function workflowTabs(active, items, attr) {
-  return `<div class="tabs workflow-tabs">${items.map(([key, label]) => `<button class="tab ${active === key ? "active" : ""}" data-${attr}="${key}">${label}</button>`).join("")}</div>`;
+  return `<div class="tabs workflow-tabs">${items.map(([key, label, count]) => {
+    const badge = count === undefined || count === null ? "" : `<span class="tab-count" data-noloc>${count}</span>`;
+    return `<button class="tab ${active === key ? "active" : ""}" data-${attr}="${key}">${label}${badge}</button>`;
+  }).join("")}</div>`;
+}
+
+// Topbardagi tez qidiruv. Natijalar turi bo'yicha guruhlanadi va bosilganda
+// to'g'ridan-to'g'ri kartochka ochiladi.
+const SEARCH_DEBOUNCE_MS = 220;
+
+function initTopSearch() {
+  const holder = document.querySelector("#top-search");
+  const input = document.querySelector("#top-search-input");
+  const results = document.querySelector("#top-search-results");
+  if (!holder || !input || !results) return;
+
+  let timer = null;
+  let active = -1;
+
+  const close = () => {
+    results.hidden = true;
+    active = -1;
+  };
+
+  const draw = (groups) => {
+    if (!groups.length) {
+      results.innerHTML = `<div class="search-empty">Hech narsa topilmadi.</div>`;
+      results.hidden = false;
+      return;
+    }
+    results.innerHTML = groups.map((group) => `
+      <div class="search-group">
+        <span class="eyebrow">${group.label}</span>
+        ${group.items.map((item) => `<button type="button" class="search-item" data-search-path="${esc(item.path)}">
+          <b data-noloc>${esc(item.title || "")}</b>${item.subtitle ? `<small data-noloc>${esc(item.subtitle)}</small>` : ""}
+        </button>`).join("")}
+      </div>`).join("");
+    localizeDom(results);
+    results.hidden = false;
+    active = -1;
+  };
+
+  const run = async () => {
+    const query = input.value.trim();
+    if (query.length < 2) return close();
+    try {
+      const data = await api(`/api/search?q=${encodeURIComponent(query)}`);
+      draw(data.groups || []);
+    } catch (error) {
+      close();
+    }
+  };
+
+  input.addEventListener("input", () => {
+    window.clearTimeout(timer);
+    timer = window.setTimeout(run, SEARCH_DEBOUNCE_MS);
+  });
+  input.addEventListener("focus", () => { if (input.value.trim().length >= 2) run(); });
+
+  const move = (step) => {
+    const items = [...results.querySelectorAll(".search-item")];
+    if (!items.length) return;
+    active = (active + step + items.length) % items.length;
+    items.forEach((item, index) => item.classList.toggle("is-active", index === active));
+    items[active].scrollIntoView({ block: "nearest" });
+  };
+
+  input.addEventListener("keydown", (event) => {
+    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+      event.preventDefault();
+      move(event.key === "ArrowDown" ? 1 : -1);
+    } else if (event.key === "Enter") {
+      const items = [...results.querySelectorAll(".search-item")];
+      const chosen = items[active] || items[0];
+      if (chosen) {
+        event.preventDefault();
+        chosen.click();
+      }
+    } else if (event.key === "Escape") {
+      close();
+      input.blur();
+    }
+  });
+
+  results.addEventListener("click", (event) => {
+    const item = event.target.closest("[data-search-path]");
+    if (!item) return;
+    close();
+    input.value = "";
+    navigate(item.dataset.searchPath);
+  });
+
+  document.addEventListener("click", (event) => {
+    if (!holder.contains(event.target)) close();
+  });
+
+  // Cmd/Ctrl + K -- qidiruvga o'tish. Brauzerning o'z qidiruvi bilan
+  // to'qnashmaydi, chunki bu birikma sahifa ichida band emas.
+  document.addEventListener("keydown", (event) => {
+    if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+      event.preventDefault();
+      input.focus();
+      input.select();
+    }
+  });
 }
 
 function workflowTimeline(items) {

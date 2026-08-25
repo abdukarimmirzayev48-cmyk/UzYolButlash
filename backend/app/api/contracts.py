@@ -632,7 +632,15 @@ def summary_for(db: Session, contract: Contract) -> ContractSummary:
     # two different debts (6 022 400 000 here, 8 298 120 000 there) and nothing
     # said which was real. There is one source now: the invoices.
     remaining_amount = unpaid_amount
+    orders_count = db.scalar(select(func.count()).select_from(Order).where(Order.contract_id == contract.id)) or 0
+    batches_count = db.scalar(select(func.count()).select_from(DeliveryBatch).where(DeliveryBatch.contract_id == contract.id)) or 0
+    invoices_count = db.scalar(
+        select(func.count()).select_from(CustomerInvoice).where(CustomerInvoice.contract_id == contract.id)
+    ) or 0
     return ContractSummary(
+        orders_count=orders_count,
+        batches_count=batches_count,
+        invoices_count=invoices_count,
         subtotal_amount=money(contract.subtotal_amount),
         vat_amount=money(contract.vat_amount),
         total_amount=money(contract.total_amount),

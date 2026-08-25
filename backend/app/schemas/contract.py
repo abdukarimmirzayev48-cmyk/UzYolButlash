@@ -377,6 +377,11 @@ class ContractSummary(BaseModel):
     # The advance is raised against the contract, so the billing position can
     # only be taken here -- taken per order it misses the advance entirely.
     billing: BillingPositionRead | None = None
+    # Bo'lim yorliqlaridagi sanoqlar: bo'limni ochib ko'rish kerakmi degan
+    # savolga javob beradi.
+    orders_count: int = 0
+    batches_count: int = 0
+    invoices_count: int = 0
 
 
 class ContractRead(ContractBase):

@@ -10,6 +10,7 @@ from backend.app.api.attendance import attendance_router, departments_router, em
 from backend.app.api.audit import router as audit_router
 from backend.app.api.auth import auth_router, users_router
 from backend.app.api.clients import router as clients_router
+from backend.app.api.search import router as search_router
 from backend.app.api.contracts import router as contracts_router
 from backend.app.api.geo import router as geo_router
 from backend.app.api.customer_requests import public_router as customer_requests_public_router
@@ -70,6 +71,7 @@ authenticated = [Depends(get_current_user)]
 app.include_router(audit_router, dependencies=authenticated)
 app.include_router(geo_router, dependencies=authenticated)
 app.include_router(clients_router, dependencies=authenticated)
+app.include_router(search_router, dependencies=authenticated)
 app.include_router(contracts_router, dependencies=authenticated)
 app.include_router(customer_requests_router, dependencies=authenticated)
 app.include_router(dashboard_router, dependencies=authenticated)

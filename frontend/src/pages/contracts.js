@@ -1387,19 +1387,20 @@ function contractActionModule(modal) {
   return map[modal] || "sotuv";
 }
 
-function contractTabs(active) {
+function contractTabs(active, contract = {}) {
+  const summary = contract.summary || {};
   const items = [
     ["general", "Umumiy"],
-    ["specification", "Spetsifikatsiya"],
-    ["orders", "Buyurtmalar"],
-    ["batches", "Partiyalar"],
+    ["specification", "Spetsifikatsiya", contract.items?.length ?? 0],
+    ["orders", "Buyurtmalar", summary.orders_count ?? 0],
+    ["batches", "Partiyalar", summary.batches_count ?? 0],
     // Named "To'lov shartlari" it read as a page about terms, so nobody looked
     // for invoices behind it -- the order card calls the same thing "Moliya"
     // and that is where people went hunting.
-    ["payment", "Moliya"],
+    ["payment", "Moliya", summary.invoices_count ?? 0],
     ["transport", "Transport"],
-    ["documents", "Hujjatlar"],
-    ["notes", "Tarix"],
+    ["documents", "Hujjatlar", contract.documents?.length ?? 0],
+    ["notes", "Tarix", contract.notes_history?.length ?? 0],
   ];
   return workflowTabs(active, items, "contract-tab");
 }
@@ -2054,7 +2055,7 @@ async function renderContractDetail(id) {
   if (active === "payment") {
     related.invoices = (await api(`/api/customer-invoices?contract_id=${id}&page_size=100`)).items;
   }
-  app.innerHTML = `<div class="page">${contractHeader(contract)}${contractTabs(active)}${renderContractActiveTab(contract, active, related)}</div>`;
+  app.innerHTML = `<div class="page">${contractHeader(contract)}${contractTabs(active, contract)}${renderContractActiveTab(contract, active, related)}</div>`;
 
   bindContractStatusActions(contract);
   document.querySelectorAll("[data-contract-tab]").forEach((button) => {
