@@ -898,6 +898,350 @@ body.sidebar-collapsed .app-shell {
 }
 
 
+/* ---- Shartnoma kartochkasi: keyingi qadam, ko'rsatkichlar, jarayon ----
+   Tuzilish clean-ux-dashboard maketidan olindi, ranglar va o'lchamlar esa
+   bizning tokenlarimizga moslandi. */
+
+.title-line {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  flex-wrap: wrap;
+}
+
+.eyebrow {
+  display: block;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.9px;
+  text-transform: uppercase;
+}
+
+.panel-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.panel-head h2 {
+  margin: 3px 0 0;
+  font-size: 15px;
+}
+
+/* Keyingi qadam -- sahifadagi eng ko'zga tashlanadigan blok. */
+.next-action {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  border-radius: 12px;
+  background: linear-gradient(100deg, var(--accent), var(--accent-dark));
+  color: #ffffff;
+  padding: 16px 18px;
+  margin-bottom: 14px;
+  box-shadow: 0 8px 24px rgba(14, 118, 98, 0.16);
+}
+
+.next-action.done {
+  background: linear-gradient(100deg, #35566a, #24404f);
+  box-shadow: 0 8px 24px rgba(24, 46, 60, 0.16);
+}
+
+.next-icon {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 43px;
+  height: 43px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.14);
+  font-size: 19px;
+  font-weight: 800;
+}
+
+.next-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.next-action .eyebrow {
+  color: rgba(255, 255, 255, 0.72);
+}
+
+.next-action h2 {
+  margin: 3px 0;
+  font-size: 17px;
+}
+
+.next-action p {
+  margin: 0;
+  color: rgba(255, 255, 255, 0.86);
+  font-size: 12px;
+}
+
+.next-action .btn.white {
+  flex: none;
+  border: 0;
+  background: #ffffff;
+  color: var(--accent-dark);
+  font-weight: 700;
+}
+
+.metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.metric-card {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  min-height: 116px;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  padding: 15px 16px;
+}
+
+.metric-label {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.metric-value {
+  font-size: 19px;
+  font-weight: 760;
+  letter-spacing: -0.4px;
+  overflow-wrap: break-word;
+}
+
+.metric-note {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.metric-dot {
+  width: 6px;
+  height: 6px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--muted);
+}
+
+.metric-dot.green { background: var(--accent); }
+.metric-dot.amber { background: #d9a441; }
+
+.mini-progress {
+  display: block;
+  overflow: hidden;
+  height: 4px;
+  border-radius: 10px;
+  background: var(--surface-soft);
+}
+
+.mini-progress > span {
+  display: block;
+  height: 100%;
+  background: var(--muted);
+}
+
+.mini-progress.green > span { background: var(--accent); }
+.mini-progress.amber > span { background: #d9a441; }
+
+.overview-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.65fr) minmax(300px, 1fr);
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+/* Doiralar ketma-ket: har biri o'zidan oldingilari bajarilgandagina yashil
+   bo'ladi. Doira ostidagi kichik matn esa o'sha yo'nalishning haqiqiy
+   holatini aytadi va mustaqil hisoblanadi. */
+.steps {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  position: relative;
+  margin-top: 24px;
+}
+
+.steps::before {
+  content: "";
+  position: absolute;
+  left: 8%;
+  right: 8%;
+  top: 14px;
+  height: 2px;
+  background: var(--line);
+}
+
+.step {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  min-width: 0;
+}
+
+.step > span {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 29px;
+  height: 29px;
+  border: 3px solid var(--surface);
+  border-radius: 50%;
+  background: var(--surface-soft);
+  box-shadow: 0 0 0 1px var(--line);
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.step.done > span {
+  background: #e4f2ee;
+  box-shadow: 0 0 0 1px #b7d9d0;
+  color: var(--accent);
+}
+
+.step.current > span {
+  background: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+  color: #ffffff;
+}
+
+.step b,
+.step small {
+  display: block;
+  overflow-wrap: break-word;
+}
+
+.step b {
+  margin-top: 2px;
+  font-size: 12px;
+}
+
+.step small {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.step.current small {
+  color: var(--warning);
+}
+
+.attention-row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin-top: 22px;
+  border: 1px solid #f0dcb8;
+  border-radius: 8px;
+  background: #fdf6e8;
+  color: var(--warning);
+  padding: 11px 12px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.finance-content {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  padding: 19px 6px 5px;
+}
+
+.donut {
+  position: relative;
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 106px;
+  height: 106px;
+  border-radius: 50%;
+  background: conic-gradient(var(--accent) 0 var(--donut, 0%), var(--surface-soft) var(--donut, 0%) 100%);
+}
+
+.donut::after {
+  content: "";
+  position: absolute;
+  width: 76px;
+  height: 76px;
+  border-radius: 50%;
+  background: var(--surface);
+}
+
+.donut > div {
+  position: relative;
+  z-index: 1;
+  text-align: center;
+}
+
+.donut strong,
+.donut span {
+  display: block;
+}
+
+.donut strong { font-size: 19px; }
+.donut span { color: var(--muted); font-size: 11px; }
+
+.finance-legend {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+
+.finance-legend > div {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.legend-dot {
+  width: 7px;
+  height: 7px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--muted);
+}
+
+.legend-dot.green { background: var(--accent); }
+.legend-dot.amber { background: #d9a441; }
+
+.finance-legend p {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  min-width: 0;
+}
+
+.finance-legend small { color: var(--muted); font-size: 11px; }
+.finance-legend b { margin-top: 2px; font-size: 12.5px; }
+
+@media (max-width: 1080px) {
+  .overview-grid { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 760px) {
+  .steps { grid-template-columns: 1fr; gap: 12px; margin-top: 18px; }
+  .steps::before { top: 12px; bottom: 12px; left: 14px; width: 2px; height: auto; right: auto; }
+  .next-action { flex-wrap: wrap; align-items: flex-start; }
+  .next-action .btn.white { width: 100%; margin-top: 4px; }
+  .finance-content { justify-content: center; flex-wrap: wrap; }
+}
+
 /* Shartnomaning to'rtta mustaqil kuzatuvi: har biri o'z ichida tartibli,
    shuning uchun «bajarilgan» hech qachon «bajarilmagan» dan keyin turmaydi. */
 .track-grid {

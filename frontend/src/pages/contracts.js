@@ -1368,13 +1368,14 @@ function contractHeader(contract) {
   (contract.parse_warnings || []).forEach((warning) => warnings.push(warning));
   const editable = canEdit("sotuv");
   const nextAction = contractNextAction(contract);
+  const canRunAction = nextAction.done || !nextAction.modal || canEdit(contractActionModule(nextAction.modal));
   return `
-    ${workflowHeader({title:contract.contract_number,subtitle:`<span data-noloc>${fmt(contract.customer_name || contract.client?.name)}</span><span data-noloc> · ${fmtDayOnly(contract.contract_date)} — ${fmtDayOnly(contract.valid_until)} · </span><span>${fmt(statusLabel(contract.status))}</span>`,backPath:"/contracts",fullEditPath:editable ? `/contracts/${contract.id}/edit` : "",actions: editable ? [...(contract.client_id ? [{label:"Buyurtma yaratish",path:`/orders/new?contract_id=${contract.id}`,primary:true}] : [{label:"Mijozni bog'lash",modal:"contract-link-client",primary:true}]),{label:"Hujjat yuklash",path:`/contracts/${contract.id}?tab=documents`},{label:"O'chirish",modal:"contract-remove"}] : [{label:"Hujjat yuklash",path:`/contracts/${contract.id}?tab=documents`}]})}
-    ${workflowStatusGrid([["Shartnoma holati",statusBadge(contract.status)],["Buyurtmalar holati",statusChip(numberValue(contract.summary?.remaining_quantity)>0?{label:"Jarayonda",tone:"warning"}:{label:"Yopilgan",tone:"success"})],["To'lov holati",statusChip(numberValue(contract.summary?.paid_amount)>=numberValue(contract.summary?.total_amount)&&numberValue(contract.summary?.total_amount)>0?{label:"Yopilgan",tone:"success"}:{label:"Qoldiq bor",tone:"warning"})],["Yetkazib berish holati",statusChip(numberValue(contract.summary?.remaining_quantity)>0?{label:"Qoldiq bor",tone:"warning"}:{label:"To'liq",tone:"success"})]])}
-    ${summaryCards([["Jami summa",fmtMoney(contract.summary?.total_amount)],["Jami miqdor",fmtQty(contract.summary?.total_quantity, contractUnit(contract))],["Yetkazilgan",fmtQty(contract.summary?.delivered_quantity, contractUnit(contract))],["Qoldiq",fmtQty(contract.summary?.remaining_quantity, contractUnit(contract))],["Avans summasi",fmtMoney(contract.summary?.advance_amount)],["To'langan summa",fmtMoney(contract.summary?.paid_amount)],["Qolgan to'lov (hisoblar bo'yicha)",fmtMoney(contract.summary?.remaining_amount)],["Transport (mijozga)",fmtMoney(contract.summary?.transport_billed_total)],["Transport xarajati (bizga)",fmtMoney(contract.summary?.transport_expense_total)]])}
-    ${workflowWarningsPanel(warnings)}
-    ${nextAction.done || !nextAction.modal || canEdit(contractActionModule(nextAction.modal)) ? workflowNextActionPanel(nextAction) : workflowNextActionPanel({ title: nextAction.title })}
-    ${contractTracksPanel(contract)}
+    <nav class="breadcrumb" aria-label="Sotuv"><span>Sotuv</span><span data-noloc> / </span><span>Shartnomalar</span><span data-noloc> / </span><strong data-noloc>${esc(fmt(contract.contract_number))}</strong></nav>
+    ${workflowHeader({title:contract.contract_number,badge:statusBadge(contract.status),subtitle:`<span data-noloc>${fmt(contract.customer_name || contract.client?.name)}</span><span data-noloc> · ${fmtDayOnly(contract.contract_date)} — ${fmtDayOnly(contract.valid_until)}</span>`,backPath:"/contracts",fullEditPath:editable ? `/contracts/${contract.id}/edit` : "",actions: editable ? [...(contract.client_id ? [{label:"Buyurtma yaratish",path:`/orders/new?contract_id=${contract.id}`,primary:true}] : [{label:"Mijozni bog'lash",modal:"contract-link-client",primary:true}]),{label:"Hujjat yuklash",path:`/contracts/${contract.id}?tab=documents`},{label:"O'chirish",modal:"contract-remove"}] : [{label:"Hujjat yuklash",path:`/contracts/${contract.id}?tab=documents`}]})}
+    ${nextActionHero(canRunAction ? nextAction : { title: nextAction.title, hint: nextAction.hint })}
+    ${contractMetrics(contract)}
+    ${contractOverviewPanels(contract, warnings)}
+    ${warnings.length > 1 ? workflowWarningsPanel(warnings.slice(1)) : ""}
   `;
 }
 

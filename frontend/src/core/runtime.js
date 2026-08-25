@@ -1673,13 +1673,18 @@ function subtitleLine(parts) {
     .join('<span data-noloc> · </span>');
 }
 
-function workflowHeader({ title, subtitle = "", backPath = "", actions = [], fullEditPath = "" }) {
+function workflowHeader({ title, subtitle = "", backPath = "", actions = [], fullEditPath = "", badge = "" }) {
   const visibleActions = actions.map((action) => {
     const attrs = action.modal ? `data-${esc(action.modal)}` : `data-nav="${esc(action.path || "#")}"`;
     return `<button class="btn ${action.primary ? "primary" : ""}" type="button" ${attrs}>${fmt(action.label)}</button>`;
   }).join("");
   const editMenu = fullEditPath ? `<details class="action-menu"><summary>Amallar</summary><div><button type="button" data-nav="${esc(fullEditPath)}">To'liq tahrirlash</button></div></details>` : "";
-  return `<div class="workflow-header"><div class="page-title"><h1>${fmt(title)}</h1><p>${subtitle}</p></div><div class="actions workflow-actions">${backPath ? `<button class="btn" data-nav="${esc(backPath)}">Orqaga</button>` : ""}${visibleActions}${editMenu}</div></div>`;
+  // Holat sarlavha yonida turadi: sahifani ochgan odam birinchi navbatda
+  // shartnoma qaysi bosqichda ekanini ko'radi.
+  const heading = badge
+    ? `<div class="title-line"><h1>${fmt(title)}</h1>${badge}</div>`
+    : `<h1>${fmt(title)}</h1>`;
+  return `<div class="workflow-header"><div class="page-title">${heading}<p>${subtitle}</p></div><div class="actions workflow-actions">${backPath ? `<button class="btn" data-nav="${esc(backPath)}">Orqaga</button>` : ""}${visibleActions}${editMenu}</div></div>`;
 }
 
 function workflowStatusGrid(items) {
@@ -1705,6 +1710,28 @@ function workflowWarningsPanel(messages, title = "E'tibor kerak") {
   const clean = messages.filter(Boolean);
   if (!clean.length) return "";
   return `<div class="workflow-warning"><strong>${fmt(title)}</strong><ul>${clean.map((message) => `<li>${warningParts(message)}</li>`).join("")}</ul></div>`;
+}
+
+// Keyingi amal -- sahifaning eng ko'zga tashlanadigan bloki: nima qilish
+// kerakligi, nega kerakligi va tugmasi bir joyda.
+function nextActionHero(action = {}) {
+  if (!action.title) return "";
+  const button = action.anchor
+    ? `<a class="btn white" href="${esc(action.anchor)}">${fmt(action.button || "Ochish")}</a>`
+    : action.modal
+      ? `<button class="btn white" data-${esc(action.modal)}>${fmt(action.button || "Ochish")}</button>`
+      : action.path
+        ? `<button class="btn white" data-nav="${esc(action.path)}">${fmt(action.button || "Ochish")}</button>`
+        : "";
+  return `<section class="next-action ${action.done ? "done" : ""}">
+    <div class="next-icon" data-noloc>${action.done ? "✓" : "!"}</div>
+    <div class="next-body">
+      <span class="eyebrow">Keyingi muhim qadam</span>
+      <h2>${fmt(action.title)}</h2>
+      ${action.hint ? `<p>${fmt(action.hint)}</p>` : ""}
+    </div>
+    ${button}
+  </section>`;
 }
 
 function workflowNextActionPanel(action = {}) {
@@ -2001,6 +2028,111 @@ function contractTracks(contract = {}) {
   ];
 }
 
+// Ko'rsatkich kartochkasi: yorliq, katta raqam, izoh va ixtiyoriy progress.
+function metricCard({ label, value, note = "", tone = "", percent = null }) {
+  return `<div class="metric-card">
+    <span class="metric-label">${label}</span>
+    <strong class="metric-value" data-noloc>${value}</strong>
+    ${note ? `<span class="metric-note">${tone ? `<span class="metric-dot ${tone}" data-noloc></span>` : ""}${note}</span>` : ""}
+    ${percent === null ? "" : `<span class="mini-progress ${tone}"><span style="width:${percent}%"></span></span>`}
+  </div>`;
+}
+
+function contractMetrics(contract) {
+  const summary = contract.summary || {};
+  const billing = summary.billing || {};
+  const unit = contract.items?.[0]?.unit || "";
+  const total = numberValue(summary.total_amount);
+  const paid = numberValue(summary.paid_amount);
+  const advance = numberValue(summary.advance_amount);
+  const advanceDue = (summary.payment_schedule || []).find((item) => item.kind === "advance")?.due_date;
+  const advancePaid = numberValue(billing.advance_paid);
+  const delivered = numberValue(summary.delivered_quantity);
+  const quantity = numberValue(summary.total_quantity);
+  return `<div class="metrics-grid">
+    ${metricCard({
+      label: "Shartnoma summasi",
+      value: fmtMoney(total),
+      note: fmtQty(quantity, unit),
+      tone: "green",
+    })}
+    ${metricCard({
+      label: "Kutilayotgan avans",
+      value: fmtMoney(advance),
+      // Decimal(5,2) «30.00» bo'lib keladi -- foizda ikkita nol ortiqcha.
+      note: advanceDue ? `${numberValue(contract.payment_terms?.advance_percent)}% · ${fmtDayOnly(advanceDue)}` : `${fmtMoney(advancePaid)} ${localizeText("to'langan")}`,
+      tone: advance > 0 && advancePaid <= 0 ? "amber" : "green",
+    })}
+    ${metricCard({
+      label: "To'langan",
+      value: fmtMoney(paid),
+      note: paid >= total && total > 0 ? "To'liq to'langan" : paid > 0 ? "Qisman to'langan" : "To'lov kutilmoqda",
+      tone: paid >= total && total > 0 ? "green" : "amber",
+      percent: trackPercent(paid, total),
+    })}
+    ${metricCard({
+      label: "Yetkazib berilgan",
+      value: `${fmtQty(delivered)} / ${fmtQty(quantity, unit)}`,
+      note: delivered <= 0 ? "Hali boshlanmagan" : delivered >= quantity ? "To'liq yetkazilgan" : "Qisman yetkazilgan",
+      tone: delivered >= quantity && quantity > 0 ? "green" : "",
+      percent: trackPercent(delivered, quantity),
+    })}
+  </div>`;
+}
+
+// Jarayon paneli. Doiralar KETMA-KET: har biri o'zidan oldingilari
+// bajarilgandagina yashil bo'ladi, shuning uchun yashil belgi kulrangdan
+// keyin turishi mumkin emas. Doira ostidagi kichik matn esa o'sha yo'nalishning
+// haqiqiy holatini aytadi -- u mustaqil hisoblanadi.
+function contractProcessPanel(contract, warnings = []) {
+  const tracks = contractTracks(contract);
+  const byKey = Object.fromEntries(tracks.map((track) => [track.key, track]));
+  const summary = contract.summary || {};
+  const billing = summary.billing || {};
+  const advanceExpected = numberValue(summary.advance_amount) > 0;
+  const reached = [
+    ["Shartnoma", byKey.status.state, ["signed", "active", "completed", "expired"].includes(contract.status)],
+    ["Avans to'lovi", byKey.finance.state, !advanceExpected || numberValue(billing.advance_paid) > 0],
+    ["Buyurtma", byKey.orders.state, numberValue(summary.ordered_quantity) > 0 && numberValue(summary.unordered_quantity) <= 0],
+    ["Yetkazish", byKey.delivery.figure, numberValue(summary.remaining_quantity) <= 0 && numberValue(summary.delivered_quantity) > 0],
+  ];
+  const firstOpen = reached.findIndex(([, , done]) => !done);
+  const currentIndex = firstOpen === -1 ? reached.length : firstOpen;
+  const attention = warnings[0];
+  return `<article class="card process-panel">
+    <div class="panel-head"><div><span class="eyebrow">Jarayon</span><h2>Shartnoma bajarilishi</h2></div></div>
+    <div class="steps">${reached.map(([label, state], index) => {
+      const cls = index < currentIndex ? "done" : index === currentIndex ? "current" : "";
+      return `<div class="step ${cls}"><span data-noloc>${index < currentIndex ? "✓" : index + 1}</span><div><b>${label}</b><small>${state}</small></div></div>`;
+    }).join("")}</div>
+    ${attention ? `<div class="attention-row"><div>${warningParts(attention)}</div></div>` : ""}
+  </article>`;
+}
+
+// Moliya paneli: to'langan ulushi halqada, tafsiloti yonida.
+function contractFinancePanel(contract) {
+  const summary = contract.summary || {};
+  const billing = summary.billing || {};
+  const total = numberValue(summary.total_amount);
+  const paid = numberValue(summary.paid_amount);
+  const percent = trackPercent(paid, total);
+  return `<article class="card finance-panel">
+    <div class="panel-head"><div><span class="eyebrow">Moliya</span><h2>To'lov holati</h2></div></div>
+    <div class="finance-content">
+      <div class="donut" style="--donut:${percent}%"><div><strong data-noloc>${percent}%</strong><span>to'langan</span></div></div>
+      <div class="finance-legend">
+        <div><span class="legend-dot green" data-noloc></span><p><small>Shartnoma qiymati</small><b data-noloc>${fmtMoney(total)}</b></p></div>
+        <div><span class="legend-dot amber" data-noloc></span><p><small>Hisob qo'yilgan</small><b data-noloc>${fmtMoney(billing.invoiced)}</b></p></div>
+        <div><span class="legend-dot gray" data-noloc></span><p><small>To'langan</small><b data-noloc>${fmtMoney(paid)}</b></p></div>
+      </div>
+    </div>
+  </article>`;
+}
+
+function contractOverviewPanels(contract, warnings) {
+  return `<div class="overview-grid">${contractProcessPanel(contract, warnings)}${contractFinancePanel(contract)}</div>`;
+}
+
 function contractTracksPanel(contract) {
   return `<div class="track-grid">${contractTracks(contract).map((track) => `
     <div class="track-card track-${track.tone}">
@@ -2018,29 +2150,29 @@ function contractNextAction(contract = {}) {
   const billing = summary.billing || {};
   const id = contract.id;
   const advanceExpected = numberValue(summary.advance_amount) > 0;
-  if (!contract.client_id) return { title: "Shartnomani mijozga bog'lang", button: "Mijozni bog'lash", modal: "contract-link-client" };
+  if (!contract.client_id) return { title: "Shartnomani mijozga bog'lang", hint: "Buyurtma va hisob-faktura yaratish uchun shartnoma mijozga bog'langan bo'lishi kerak.", button: "Mijozni bog'lash", modal: "contract-link-client" };
   if (contract.status === "cancelled") return { title: "Shartnoma bekor qilingan", button: "Tarixni ko'rish", path: `/contracts/${id}?tab=notes`, done: true };
-  if (contract.status === "draft") return { title: "Shartnomani imzolangan deb belgilang", button: "Status o'zgartirish", anchor: "#contract-status" };
-  if (contract.status === "signed") return { title: "Shartnomani faollashtiring", button: "Status o'zgartirish", anchor: "#contract-status" };
+  if (contract.status === "draft") return { title: "Shartnomani imzolangan deb belgilang", hint: "Shartnoma hozir qoralama. Imzolangandan keyin avans hisobini qo'yish mumkin bo'ladi.", button: "Status o'zgartirish", anchor: "#contract-status" };
+  if (contract.status === "signed") return { title: "Shartnomani faollashtiring", hint: "Shartnoma imzolangan. Faol holatga o'tkazilgandan keyin ish boshlanadi.", button: "Status o'zgartirish", anchor: "#contract-status" };
   if (advanceExpected && numberValue(billing.advance_invoiced) <= 0) {
-    return { title: "Avans hisob-fakturasini yarating", button: "Hisob yaratish", modal: "contract-invoice-modal" };
+    return { title: "Avans hisob-fakturasini yarating", hint: "Shartnoma bo'yicha avans hali hisob qilinmagan.", button: "Hisob yaratish", modal: "contract-invoice-modal" };
   }
   if (advanceExpected && numberValue(billing.advance_paid) <= 0) {
-    return { title: "Avans to'lovini kiriting", button: "To'lov qo'shish", path: `/customer-payments/new?client_id=${contract.client_id}&contract_id=${id}` };
+    return { title: "Avans to'lovini kiriting", hint: "Avans hisobi qo'yilgan, lekin to'lov hali kelmagan.", button: "To'lov qo'shish", path: `/customer-payments/new?client_id=${contract.client_id}&contract_id=${id}` };
   }
   if (numberValue(summary.unordered_quantity) > 0) {
-    return { title: "Shartnoma bo'yicha buyurtma yarating", button: "Buyurtma yaratish", path: `/orders/new?contract_id=${id}` };
+    return { title: "Shartnoma bo'yicha buyurtma yarating", hint: "Shartnoma miqdorining bir qismi hali buyurtmaga aylanmagan.", button: "Buyurtma yaratish", path: `/orders/new?contract_id=${id}` };
   }
   if (numberValue(summary.remaining_quantity) > 0) {
-    return { title: "Yetkazib berish davom etmoqda", button: "Buyurtmalarni ko'rish", path: `/contracts/${id}?tab=orders` };
+    return { title: "Yetkazib berish davom etmoqda", hint: "Buyurtmalar berilgan, yetkazilmagan qoldiq bor.", button: "Buyurtmalarni ko'rish", path: `/contracts/${id}?tab=orders` };
   }
   // «To'langan» -- shartnoma summasiga nisbatan, ochiq hisoblar qoldig'iga
   // nisbatan emas: ochiq hisob bo'lmasligi mumkin, lekin summa hali to'liq
   // undirilmagan bo'lishi mumkin.
   if (numberValue(summary.paid_amount) < numberValue(summary.total_amount)) {
-    return { title: "Qolgan to'lovni undiring", button: "Moliyani ko'rish", path: `/contracts/${id}?tab=payment` };
+    return { title: "Qolgan to'lovni undiring", hint: "Mahsulot to'liq yetkazilgan, shartnoma summasi esa to'liq undirilmagan.", button: "Moliyani ko'rish", path: `/contracts/${id}?tab=payment` };
   }
-  if (contract.status !== "completed") return { title: "Shartnomani yakunlang", button: "Status o'zgartirish", anchor: "#contract-status" };
+  if (contract.status !== "completed") return { title: "Shartnomani yakunlang", hint: "Barcha majburiyatlar bajarilgan -- shartnomani yakunlangan deb belgilang.", button: "Status o'zgartirish", anchor: "#contract-status" };
   return { title: "Shartnoma bo'yicha barcha bosqichlar yakunlangan", button: "Tarixni ko'rish", path: `/contracts/${id}?tab=notes`, done: true };
 }
 
