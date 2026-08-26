@@ -41,6 +41,37 @@ const transportWorkStatusLabels = {
   waiting: "Kutishda",
 };
 
+// Mashina bo'yicha reyslar. Bu bo'lim ilgari mumkin emas edi: reys mashinaga
+// bog'lanmagan, davlat raqami esa matn bo'lgani uchun bitta raqamdagi uchta
+// yozuvdan qaysi biri ekanini aytib bo'lmasdi.
+function transportUsagePanel(usage, trips = []) {
+  if (!usage) return "";
+  const cards = [
+    ["Reyslar", `<span>${fmt(usage.trip_count)}</span> <span>ta</span>`],
+    ["Tashilgan", fmtQty(usage.delivered_tons, "t")],
+    ["Bosib o'tilgan", fmtQty(usage.distance_km, "km")],
+    ["Yoqilg'i", usage.fuel_liters > 0 ? fmtQty(usage.fuel_liters, "l") : dash],
+    ["Norma bo'yicha", usage.norm_liters !== null && usage.norm_liters !== undefined ? fmtQty(usage.norm_liters, "l") : dash],
+    ["Normadan farq", usage.fuel_difference_liters !== null && usage.fuel_difference_liters !== undefined
+      ? fmtQty(usage.fuel_difference_liters, "l")
+      : dash, usage.fuel_difference_liters > 0 ? "warning" : ""],
+  ];
+  const rows = trips.map((trip) => `<tr>
+    <td><button class="ops-primary-link" data-nav="/logistics/${trip.id}">${fmt(trip.logistics_number)}</button></td>
+    <td>${fmt(trip.trip_date)}</td>
+    <td>${fmt(trip.client_name)}</td>
+    <td>${fmt(trip.route_name)}</td>
+    <td class="ops-money">${trip.tons ? fmtQty(trip.tons, "t") : dash}</td>
+    <td class="ops-money">${trip.distance_km ? fmtQty(trip.distance_km, "km") : dash}</td>
+    <td class="ops-money">${trip.total_hours !== null && trip.total_hours !== undefined ? `${fmtQty(trip.total_hours)} <span>soat</span>` : dash}</td>
+    <td>${statusBadge(trip.status)}</td>
+  </tr>`).join("");
+  return `${section("Mashina bo'yicha xulosa", `${summaryCards(cards)}${usage.liters_per_100km ? `<div class="form-hint"><span>Haqiqiy sarf</span>: <span data-noloc>${fmtQty(usage.liters_per_100km)} l/100 km</span></div>` : ""}`)}
+    ${section("Reyslar", trips.length
+      ? `<table class="data-table"><thead><tr><th>Reys</th><th>Sana</th><th>Mijoz</th><th>Yo'nalish</th><th>Tonna</th><th>Masofa</th><th>Davomiylik</th><th>Holat</th></tr></thead><tbody>${rows}</tbody></table>`
+      : `<div class="empty">Bu mashinaga biriktirilgan reys yo'q.</div>`)}`;
+}
+
 // Kartochka tepasidagi holat chizig'i. Ilgari bu yerda alohida jadval bor
 // edi, lekin uning sarlavhalari quyidagi kiritish bo'limlari bilan bir xil
 // bo'lib chiqdi -- «Hujjat muddatlari» sahifada ikki marta turardi. Endi
@@ -77,6 +108,7 @@ function transportFormHtml(item = {}, employees = []) {
       </div>
     </div>
     ${item.id ? transportReadinessPanel(item.readiness) : ""}
+    ${item.id ? transportUsagePanel(item.usage, item.trips) : ""}
     <form id="transport-form">
       ${section("Transport ma'lumotlari", `<div class="grid">
         ${textField("vehicle_number", "Transport raqami", item.vehicle_number || "", "text", { required: true })}

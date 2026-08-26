@@ -91,6 +91,35 @@ class TransportReadiness(BaseModel):
     warnings: list[str] = Field(default_factory=list)
 
 
+class TransportUsage(BaseModel):
+    trip_count: int = 0
+    delivered_tons: Decimal = Decimal("0")
+    distance_km: Decimal = Decimal("0")
+    loaded_km: Decimal = Decimal("0")
+    empty_km: Decimal = Decimal("0")
+    fuel_liters: Decimal = Decimal("0")
+    norm_liters: Decimal | None = None
+    fuel_difference_liters: Decimal | None = None
+    liters_per_100km: Decimal | None = None
+    last_trip_date: date | None = None
+    warnings: list[str] = Field(default_factory=list)
+
+
+class TransportTrip(BaseModel):
+    id: int
+    logistics_number: str | None = None
+    batch_number: str | None = None
+    client_name: str | None = None
+    route_name: str | None = None
+    status: str
+    # `date` deb nomlansa, u shu sinf ichida `date` turini yopib qo'yadi.
+    trip_date: date | None = None
+    tons: Decimal | None = None
+    distance_km: Decimal | None = None
+    fuel_liters: Decimal | None = None
+    total_hours: Decimal | None = None
+
+
 class TransportRead(TransportBase):
     model_config = ConfigDict(from_attributes=True)
 
@@ -101,6 +130,9 @@ class TransportRead(TransportBase):
     # Saqlanmaydi, har o'qishda hisoblanadi -- shuning uchun oraliq yoki
     # odometr o'zgarganda eskirib qolmaydi.
     readiness: TransportReadiness | None = None
+    # Reys mashinaga bog'langandan keyin hisoblanadigan xulosa.
+    usage: TransportUsage | None = None
+    trips: list[TransportTrip] = Field(default_factory=list)
 
 
 class FuelLogBase(BaseModel):

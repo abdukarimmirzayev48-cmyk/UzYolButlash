@@ -116,8 +116,12 @@ def _translit_word(word: str) -> str:
     # Word-initial "e" is "э" (eslatma -> эслатма). Done up front on the Latin
     # text so the "e" inside a ye/yo digraph is never caught: in "Yetkazib" the
     # word boundary sits before the Y, not before the e.
-    out = re.sub(r"\be", "\x01", word)
-    out = re.sub(r"\bE", "\x02", out)
+    #
+    # Apostrof so'z chegarasi hisoblanadi, shuning uchun «Ob'ekt» dagi e ham
+    # so'z boshi deb olinar va «Объэкт» chiqardi. Tutuq belgisidan keyingi e
+    # hech qachon so'z boshi emas.
+    out = re.sub(r"(?<!['’])\be", "\x01", word)
+    out = re.sub(r"(?<!['’])\bE", "\x02", out)
     for latin, cyr in _PAIRS:
         out = out.replace(latin, cyr)
     out = out.replace("\x01", "э").replace("\x02", "Э")

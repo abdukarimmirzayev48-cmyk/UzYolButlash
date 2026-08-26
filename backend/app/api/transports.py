@@ -11,10 +11,12 @@ from backend.app.models.attendance import Employee
 from backend.app.models.delivery import DeliveryBatch, Logistics, LogisticsStatus
 from backend.app.models.transport import UNAVAILABLE_STATUSES, FuelEntryType, Transport, TransportCheckIn, TransportFuelLog, TransportStatus
 from backend.app.schemas.client import Page
-from backend.app.services import transport_readiness
+from backend.app.services import logistics_timeline, transport_readiness, transport_usage
 from backend.app.services.auth import require_edit
 from backend.app.services.telegram_bot import request_checkin
 from backend.app.schemas.transport import (
+    TransportTrip,
+    TransportUsage,
     FuelLogCreate,
     FuelLogRead,
     FuelLogSummary,
@@ -92,6 +94,60 @@ def odometers_for(db: Session, transport_ids: list[int]) -> dict[int, Decimal]:
     for transport_id, odometer, _ in rows:
         latest.setdefault(transport_id, odometer)
     return latest
+
+
+# Mashina bo'yicha reyslar. Faqat bog'langanlari olinadi -- davlat raqami
+# bo'yicha qidirish yana o'sha noaniqlikni qaytaradi, chunki bazada bitta
+# raqam bir necha yozuvda takrorlangan.
+def trips_of(db: Session, transport_id: int) -> list[Logistics]:
+    return list(
+        db.scalars(
+            select(Logistics)
+            .where(Logistics.transport_id == transport_id)
+            .options(
+                selectinload(Logistics.batch).selectinload(DeliveryBatch.items),
+                selectinload(Logistics.batch).selectinload(DeliveryBatch.client),
+            )
+            .order_by(Logistics.created_at.desc())
+        ).unique()
+    )
+
+
+def trip_row(logistics: Logistics) -> TransportTrip:
+    batch = logistics.batch
+    timeline = logistics_timeline.build_timeline(logistics)
+    return TransportTrip(
+        id=logistics.id,
+        logistics_number=logistics.logistics_number,
+        batch_number=batch.batch_number if batch else None,
+        client_name=batch.client.name if batch and batch.client else None,
+        route_name=logistics.route_name,
+        status=logistics.status.value,
+        trip_date=logistics.actual_pickup_date or logistics.planned_pickup_date,
+        tons=_batch_tonnage(batch),
+        distance_km=logistics.distance_km,
+        fuel_liters=logistics.fuel_consumption_liters,
+        total_hours=timeline.total_hours,
+    )
+
+
+def usage_of(transport: Transport, trips: list[Logistics]) -> TransportUsage:
+    usage = transport_usage.build_usage(
+        trips=[
+            {
+                "date": row.actual_pickup_date or row.planned_pickup_date,
+                "tons": _batch_tonnage(row.batch),
+                "distance_km": row.distance_km,
+                "loaded_km": row.loaded_mileage_km,
+                "empty_km": row.empty_mileage_km,
+                "fuel_liters": row.fuel_consumption_liters,
+            }
+            for row in trips
+        ],
+        norm_loaded=transport.fuel_norm_loaded,
+        norm_empty=transport.fuel_norm_empty,
+    )
+    return TransportUsage(**usage.__dict__)
 
 
 def with_readiness(transport: Transport, current_km: Decimal | None) -> TransportRead:
@@ -256,7 +312,10 @@ def create_transport(payload: TransportCreate, db: Session = Depends(get_db)):
 @router.get("/{transport_id}", response_model=TransportRead)
 def get_transport(transport_id: int, db: Session = Depends(get_db)):
     transport = get_transport_or_404(db, transport_id)
-    return with_readiness(transport, current_odometer(db, transport.id))
+    trips = trips_of(db, transport.id)
+    return with_readiness(transport, current_odometer(db, transport.id)).model_copy(
+        update={"usage": usage_of(transport, trips), "trips": [trip_row(row) for row in trips]}
+    )
 
 
 @router.patch("/{transport_id}", response_model=TransportRead, dependencies=[Depends(require_edit("yetkazib_berish"))])

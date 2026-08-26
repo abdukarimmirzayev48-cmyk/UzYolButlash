@@ -74,6 +74,14 @@ class LogisticsBase(BaseModel):
     status: LogisticsStatus = LogisticsStatus.not_assigned
     carrier_id: int | None = None
     carrier_name: str | None = None
+    transport_id: int | None = None
+    departed_at: datetime | None = None
+    loading_started_at: datetime | None = None
+    loading_finished_at: datetime | None = None
+    arrived_at: datetime | None = None
+    unloading_started_at: datetime | None = None
+    unloading_finished_at: datetime | None = None
+    returned_at: datetime | None = None
     driver_name: str | None = None
     driver_phone: str | None = None
     vehicle_number: str | None = None
@@ -109,6 +117,33 @@ class LogisticsUpdate(LogisticsBase):
     status: LogisticsStatus | None = None
 
 
+class LogisticsTimelinePoint(BaseModel):
+    key: str
+    label: str
+    at: datetime | None = None
+
+
+class LogisticsTimeline(BaseModel):
+    points: list[LogisticsTimelinePoint] = Field(default_factory=list)
+    total_hours: Decimal | None = None
+    loading_hours: Decimal | None = None
+    unloading_hours: Decimal | None = None
+    driving_hours: Decimal | None = None
+    departure_delay_hours: Decimal | None = None
+    arrival_delay_hours: Decimal | None = None
+    filled_points: int = 0
+    warnings: list[str] = Field(default_factory=list)
+
+
+class LogisticsTransportSummary(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    vehicle_number: str
+    trailer_number: str | None = None
+    driver_name: str | None = None
+
+
 class LogisticsRead(LogisticsBase):
     model_config = ConfigDict(from_attributes=True)
 
@@ -118,6 +153,9 @@ class LogisticsRead(LogisticsBase):
     delivery_method: AutoDeliveryMethod
     created_at: datetime
     updated_at: datetime
+    transport: LogisticsTransportSummary | None = None
+    # Saqlanmaydi, vaqt nuqtalaridan hisoblanadi.
+    timeline: LogisticsTimeline | None = None
 
 
 class DeliveryBatchDocumentBase(BaseModel):

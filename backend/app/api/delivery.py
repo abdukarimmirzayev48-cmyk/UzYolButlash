@@ -38,7 +38,7 @@ from backend.app.services.auth import get_current_user, require_edit
 from backend.app.services.order_status import sync_order_status
 from backend.app.services.telegram_bot import notify_driver_of_trip
 from backend.app.services.product_summary import product_summary
-from backend.app.services import batch_difference, batch_transport_check
+from backend.app.services import batch_difference, batch_transport_check, logistics_timeline
 from backend.app.schemas.client import Page
 from backend.app.schemas.delivery import (
     DeliveryBatchAcceptanceConfirm,
@@ -187,6 +187,50 @@ def preferred_supplier_address(db: Session, supplier_id: int | None) -> str | No
     return next((row.address for row in rows if row.address), None)
 
 
+MSG_TIMELINE_ORDER = "Reys vaqtlari ketma-ketligi buzilgan: keyingi nuqta oldingisidan erta bo'lishi mumkin emas."
+MSG_TRANSPORT_NOT_FOUND = "Tanlangan mashina topilmadi."
+MSG_TRANSPORT_UNAVAILABLE = "Mashina hozir yo'lga chiqa olmaydi"
+
+
+def apply_transport_to_logistics(db: Session, logistics: Logistics) -> None:
+    """Mashina tanlangach, raqam va haydovchi shundan to'ldiriladi.
+
+    Bu maydonlarni qo'lda ham yozish mumkin edi va aynan shu sababli bazada
+    bir xil mashina uch xil raqam ostida yurardi. Endi mashina tanlansa,
+    matn maydonlari uning kartochkasidan ko'chiriladi -- manba bitta.
+    """
+    if logistics.transport_id is None:
+        return
+    transport = db.get(Transport, logistics.transport_id)
+    if not transport:
+        raise HTTPException(status_code=422, detail=MSG_TRANSPORT_NOT_FOUND)
+    logistics.vehicle_number = transport.vehicle_number
+    logistics.trailer_number = transport.trailer_number
+    if transport.driver_name:
+        logistics.driver_name = transport.driver_name
+    if transport.driver_phone:
+        logistics.driver_phone = transport.driver_phone
+
+
+def sync_actual_dates_from_timeline(logistics: Logistics) -> None:
+    """Aniq vaqt kiritilsa, eski sana maydonlari shundan to'ldiriladi.
+
+    Sanalar o'chirilmadi -- ularga partiya holati va hisob-faktura
+    bog'langan. Lekin ikkita manba bir narsani aytmasligi uchun, aniq vaqt
+    bo'lsa u ustun turadi.
+    """
+    if logistics.departed_at:
+        logistics.actual_pickup_date = logistics.departed_at.date()
+    if logistics.arrived_at:
+        logistics.actual_delivery_date = logistics.arrived_at.date()
+
+
+def logistics_read(logistics: Logistics) -> LogisticsRead:
+    """Reys vaqt chizig'i saqlanmaydi, har o'qishda hisoblanadi."""
+    result = LogisticsRead.model_validate(logistics)
+    return result.model_copy(update={"timeline": logistics_timeline.build_timeline(logistics)})
+
+
 def validate_logistics_dates(data: dict[str, Any]) -> None:
     planned_pickup = data.get("planned_pickup_date")
     planned_delivery = data.get("planned_delivery_date")
@@ -196,6 +240,13 @@ def validate_logistics_dates(data: dict[str, Any]) -> None:
         raise HTTPException(status_code=422, detail="Reja yetkazish sanasi reja yuklash sanasidan oldin bo'lishi mumkin emas.")
     if actual_pickup and actual_delivery and actual_delivery < actual_pickup:
         raise HTTPException(status_code=422, detail="Haqiqiy yetkazish sanasi haqiqiy yuklash sanasidan oldin bo'lishi mumkin emas.")
+    # Reys nuqtalari o'sib borishi kerak. Buni faqat interfeysda tekshirish
+    # yetmaydi: teskari tartibdagi vaqtdan chiqadigan «manfiy davomiylik»
+    # keyin hisobotga tushib ketadi.
+    known = [(key, data[key]) for key, _ in logistics_timeline.POINTS if data.get(key)]
+    for (_, earlier), (_, later) in zip(known, known[1:]):
+        if later < earlier:
+            raise HTTPException(status_code=422, detail=MSG_TIMELINE_ORDER)
 
 
 def sync_logistics_status(logistics: Logistics, batch: DeliveryBatch, requested_status: LogisticsStatus | None = None) -> None:
@@ -286,6 +337,8 @@ def ensure_logistics(db: Session, batch: DeliveryBatch, payload: LogisticsCreate
         logistics.customer_price = Decimal("0")
     if logistics.paid_by is None:
         logistics.paid_by = PaidBy.company
+    apply_transport_to_logistics(db, logistics)
+    sync_actual_dates_from_timeline(logistics)
     sync_logistics_status(logistics, batch, requested_status)
     sync_batch_status_from_logistics(batch, logistics)
     return logistics
@@ -1024,9 +1077,16 @@ def list_logistics(
     contract_id: int | None = None,
     order_id: int | None = None,
     overdue_only: bool = False,
+    linked: str | None = Query(default=None, pattern="^(yes|no)$"),
     group: str | None = Query(default=None, pattern="^(moving|problem)$"),
 ):
-    stmt = select(Logistics).join(DeliveryBatch).join(Order).join(Client).options(selectinload(Logistics.batch).selectinload(DeliveryBatch.client), selectinload(Logistics.batch).selectinload(DeliveryBatch.order)).distinct()
+    stmt = select(Logistics).join(DeliveryBatch).join(Order).join(Client).options(selectinload(Logistics.batch).selectinload(DeliveryBatch.client), selectinload(Logistics.batch).selectinload(DeliveryBatch.order), selectinload(Logistics.transport)).distinct()
+    # Mashina biriktirilmagan reys hech qaysi mashinaning xulosasiga
+    # tushmaydi, shuning uchun ularni alohida ko'rish kerak bo'ladi.
+    if linked == "no":
+        stmt = stmt.where(Logistics.transport_id.is_(None))
+    elif linked == "yes":
+        stmt = stmt.where(Logistics.transport_id.isnot(None))
     if search:
         value = f"%{search}%"
         stmt = stmt.where(or_(Logistics.logistics_number.ilike(value), DeliveryBatch.batch_number.ilike(value), Logistics.carrier_name.ilike(value), Logistics.driver_name.ilike(value), Logistics.driver_phone.ilike(value), Logistics.vehicle_number.ilike(value), Client.name.ilike(value), Order.order_number.ilike(value)))
@@ -1042,7 +1102,7 @@ def list_logistics(
     rows = db.scalars(stmt.order_by(Logistics.created_at.desc()).offset((page - 1) * page_size).limit(page_size)).unique()
     items = []
     for row in rows:
-        base = LogisticsRead.model_validate(row).model_dump()
+        base = logistics_read(row).model_dump()
         items.append(
             LogisticsListItem(
                 **base,
@@ -1060,7 +1120,7 @@ def get_logistics_detail(logistics_id: int, db: Session = Depends(get_db)):
     logistics = db.scalars(select(Logistics).where(Logistics.id == logistics_id).options(selectinload(Logistics.batch).selectinload(DeliveryBatch.client), selectinload(Logistics.batch).selectinload(DeliveryBatch.order), selectinload(Logistics.documents), selectinload(Logistics.notes_history))).first()
     if not logistics:
         raise HTTPException(status_code=404, detail="Logistika topilmadi.")
-    base = LogisticsRead.model_validate(logistics).model_dump()
+    base = logistics_read(logistics).model_dump()
     return LogisticsDetail(
         **base,
         batch=logistics.batch,
@@ -1081,6 +1141,8 @@ def update_logistics(logistics_id: int, payload: LogisticsUpdate, db: Session = 
     validate_logistics_dates(data)
     requested_status = data.get("status")
     update_model(logistics, data)
+    apply_transport_to_logistics(db, logistics)
+    sync_actual_dates_from_timeline(logistics)
     sync_logistics_status(logistics, logistics.batch, requested_status)
     sync_batch_status_from_logistics(logistics.batch, logistics)
     sync_order_status(logistics.batch.order, db=db)
@@ -1088,7 +1150,7 @@ def update_logistics(logistics_id: int, payload: LogisticsUpdate, db: Session = 
     db.refresh(logistics)
     if logistics.vehicle_number and logistics.vehicle_number != old_vehicle_number:
         notify_driver_of_trip(db, logistics)
-    return logistics
+    return logistics_read(logistics)
 
 
 @logistics_router.post("/{logistics_id}/documents", response_model=LogisticsDocumentRead, status_code=201, dependencies=[Depends(require_edit("yetkazib_berish"))])

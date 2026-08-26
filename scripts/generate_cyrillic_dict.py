@@ -51,7 +51,8 @@ const _uzKeepRe = new RegExp(
 function _uzTranslitWord(word) {
   // Word-initial "e" is "э"; done before the digraph pass so the e inside
   // ye/yo is never caught (in "Yetkazib" the boundary sits before the Y).
-  let out = word.replace(/\\be/g, "\\u0001").replace(/\\bE/g, "\\u0002");
+  // Tutuq belgisidan keyingi e so'z boshi emas: Ob'ekt -> Объект, Объэкт emas.
+  let out = word.replace(/(?<!['\u2019])\\be/g, "\\u0001").replace(/(?<!['\u2019])\\bE/g, "\\u0002");
   for (const [latin, cyr] of uzCyrillicPairs) out = out.split(latin).join(cyr);
   return out.replace(/\\u0001/g, "э").replace(/\\u0002/g, "Э").replace(/['’]/g, "ъ");
 }

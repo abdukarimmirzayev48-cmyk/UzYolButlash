@@ -7,6 +7,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from backend.app.db.session import Base
 from backend.app.models.client import TimestampMixin
+from backend.app.models.transport import Transport
 
 
 class BatchStatus(str, Enum):
@@ -142,6 +143,12 @@ class Logistics(Base, TimestampMixin):
     status: Mapped[LogisticsStatus] = mapped_column(SAEnum(LogisticsStatus), default=LogisticsStatus.not_assigned, nullable=False, index=True)
     carrier_id: Mapped[int | None] = mapped_column(index=True)
     carrier_name: Mapped[str | None] = mapped_column(String(255), index=True)
+    # Reys mashinaga bog'lanmagan edi: davlat raqami shunchaki matn bo'lib
+    # yozilardi. Bazada bitta raqam uchta yozuvda takrorlangan va reyslardagi
+    # raqamlardan biri parkda umuman yo'q -- shuning uchun «shu mashina
+    # bo'yicha nechta reys» degan savolga javob berib bo'lmasdi. Matn
+    # maydonlari qoldi, lekin ular endi bog'langan mashinadan to'ldiriladi.
+    transport_id: Mapped[int | None] = mapped_column(ForeignKey("transports.id", ondelete="SET NULL"), index=True)
     driver_name: Mapped[str | None] = mapped_column(String(255), index=True)
     driver_phone: Mapped[str | None] = mapped_column(String(64), index=True)
     vehicle_number: Mapped[str | None] = mapped_column(String(64), index=True)
@@ -152,6 +159,19 @@ class Logistics(Base, TimestampMixin):
     planned_delivery_date: Mapped[date | None] = mapped_column(Date, index=True)
     actual_pickup_date: Mapped[date | None] = mapped_column(Date)
     actual_delivery_date: Mapped[date | None] = mapped_column(Date)
+
+    # Reys vaqt nuqtalari. Ilgari faqat to'rtta SANA bor edi, shuning uchun
+    # «reys necha soat davom etdi», «necha soat kechikdi», «yuklash qancha
+    # vaqt oldi» degan savollarning bittasi ham hisoblanmasdi. Sanalar
+    # o'chirilmadi: ularga partiya holati va hisob-faktura bog'langan.
+    # Aniq vaqt kiritilsa, sana shundan to'ldiriladi -- manba bitta bo'lsin.
+    departed_at: Mapped[datetime | None] = mapped_column(DateTime)
+    loading_started_at: Mapped[datetime | None] = mapped_column(DateTime)
+    loading_finished_at: Mapped[datetime | None] = mapped_column(DateTime)
+    arrived_at: Mapped[datetime | None] = mapped_column(DateTime)
+    unloading_started_at: Mapped[datetime | None] = mapped_column(DateTime)
+    unloading_finished_at: Mapped[datetime | None] = mapped_column(DateTime)
+    returned_at: Mapped[datetime | None] = mapped_column(DateTime)
     cost_amount: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
     customer_price: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
     paid_by: Mapped[PaidBy | None] = mapped_column(SAEnum(PaidBy))
@@ -169,6 +189,7 @@ class Logistics(Base, TimestampMixin):
     created_by: Mapped[str | None] = mapped_column(String(255))
 
     batch: Mapped[DeliveryBatch] = relationship(back_populates="logistics")
+    transport: Mapped["Transport | None"] = relationship()
     documents: Mapped[list["LogisticsDocument"]] = relationship(back_populates="logistics", cascade="all, delete-orphan", order_by="LogisticsDocument.uploaded_at.desc()")
     notes_history: Mapped[list["LogisticsNote"]] = relationship(back_populates="logistics", cascade="all, delete-orphan", order_by="LogisticsNote.created_at.desc()")
     customer_invoices: Mapped[list["CustomerInvoice"]] = relationship(back_populates="logistics")
