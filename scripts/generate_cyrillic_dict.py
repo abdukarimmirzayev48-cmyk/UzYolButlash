@@ -85,7 +85,6 @@ _REJECT = re.compile(
     r"^\s*$"
     r"|^[\d\s.,:%+-]*$"                      # numbers / punctuation only
     r"|^[a-z0-9_]+$"                          # identifier / enum key
-    r"|^[a-z-]+(?:\s+[a-z-]+)*$"              # css class lists (all lowercase)
     r"|^[./#?]"                               # paths, selectors
     r"|^https?:|^data:|^mailto:"
     r"|^[A-Za-z-]+/[A-Za-z-]+$"               # mime types
@@ -103,6 +102,72 @@ _REJECT = re.compile(
     r'|"'                                      # embedded double quote -> code fragment
 )                                              # NB: single quotes are Uzbek (o', ta'til), never rejected
 _CODEY = set("[]{}=;`")  # "|" allowed: appears in real UI text
+
+# CSS sinf ro'yxatlari -- «btn primary», «summary-card wide» -- ilgari bitta
+# qoida bilan chetlab o'tilardi: butunlay kichik harfdagi so'zlar ketma-ketligi
+# rad etilardi. Lekin o'zbekcha ko'p ibora ham aynan shunday ko'rinadi --
+# «bekor qilindi», «hisob raqami», «muddati tugayapti» -- va ularning bari
+# lug'atdan tushib qolardi. Ekranda ular lotin alifbosida qolib ketardi.
+#
+# Endi sinf nomlari taxmin qilinmaydi, styles.css dan o'qiladi: agar iboraning
+# har bir so'zi haqiqiy sinf nomi bo'lsa, u sinf ro'yxati; birortasi bo'lmasa,
+# bu matn.
+_CSS_CLASSES: set[str] = set()
+
+
+def load_css_classes() -> None:
+    """Sinf nomlari ikki manbadan: uslublar faylidan va `class="..."` dan.
+
+    Faqat styles.css yetmaydi -- uslubi yo'q, lekin belgi sifatida ishlatiladigan
+    sinflar ham bor (`figure img`, `legend-dot gray`), va ular matn deb
+    hisoblanib lug'atga tushib qolardi.
+    """
+    text = (ROOT / "frontend" / "styles.css").read_text(encoding="utf-8")
+    _CSS_CLASSES.update(re.findall(r"\.([a-z][a-z0-9-]*)", text))
+    for path in sorted((ROOT / "frontend").rglob("*.js")) + [ROOT / "frontend" / "index.html"]:
+        if path.name == "cyrillic.js":
+            continue
+        for attribute in re.findall(r'class="([a-z0-9 ${}.?\[\]_-]+)"', path.read_text(encoding="utf-8")):
+            if "$" in attribute:
+                continue
+            _CSS_CLASSES.update(attribute.split())
+
+
+# Inglizcha izohlardagi qo'shtirnoqli iboralar -- «right now», «this week» --
+# yig'uvchiga matn bo'lib ko'rinadi. Bu so'zlarning birortasi ham o'zbekcha
+# emas, shuning uchun ular uchragan ibora matn emas.
+_ENGLISH_WORDS = {
+    "a", "an", "the", "and", "or", "of", "to", "in", "on", "at", "by", "for", "from",
+    "is", "are", "was", "were", "be", "been", "has", "have", "had", "does", "did",
+    "this", "that", "these", "those", "with", "not", "it", "its", "as", "if", "when",
+    "while", "but", "which", "what", "there", "their", "here", "right", "now", "next",
+    "nothing", "exists", "chosen", "week", "day", "row", "rows", "one", "two",
+}
+
+
+def is_english_phrase(s: str) -> bool:
+    # Faqat butunlay kichik harfdagi matnga qo'llanadi. Interfeys yorlig'ida
+    # doim bosh harf yoki qisqartma bo'ladi -- «TO gacha» dagi TO ni inglizcha
+    # «to» deb rad etib bo'lmaydi.
+    if s != s.lower():
+        return False
+    return any(word in _ENGLISH_WORDS for word in s.split())
+
+
+# `closest("figure img")` kabi tanlagichlarda sinf emas, teg nomi ham uchraydi.
+_HTML_TAGS = {
+    "a", "button", "div", "figure", "form", "img", "input", "label", "li", "ol",
+    "option", "p", "section", "select", "small", "span", "strong", "table",
+    "tbody", "td", "textarea", "th", "thead", "tr", "ul", "svg", "kbd", "main",
+}
+
+
+def is_css_class_list(s: str) -> bool:
+    words = s.split()
+    if not words or not _CSS_CLASSES:
+        return False
+    return all(word in _CSS_CLASSES or word in _HTML_TAGS for word in words)
+
 # Must contain a letter, and must look like a word rather than a token soup.
 _HAS_LETTER = re.compile(r"[A-Za-z]")
 _UZ_HINT = re.compile(r"[A-Z]|\s|'")
@@ -146,6 +211,8 @@ def is_ui_text(s: str) -> bool:
     if "', '" in s or '", "' in s:
         return False
     if _REJECT.search(s):
+        return False
+    if is_css_class_list(s) or is_english_phrase(s):
         return False
     if not _HAS_LETTER.search(s) or not _UZ_HINT.search(s):
         return False
@@ -270,6 +337,8 @@ def collect_py(path: Path) -> set[str]:
     nonsense. Interpolated (f-string) details are skipped here and handled at
     runtime by the transliterator fallback in localizeMessage().
     """
+    # Python izohlari `#` bilan boshlanadi va bu yerda ular muhim emas:
+    # quyidagi ikkala naqsh ham satr boshiga bog'langan.
     text = path.read_text(encoding="utf-8")
     found: set[str] = set()
     for m in _PY_DETAIL_RE.finditer(text):
@@ -297,6 +366,7 @@ UNIT_WORDS = [
 
 def main() -> None:
     load_english_keys()
+    load_css_classes()
     strings: set[str] = set()
     patterns: set[str] = set()
     for p in sorted((ROOT / "frontend" / "src").rglob("*.js")):

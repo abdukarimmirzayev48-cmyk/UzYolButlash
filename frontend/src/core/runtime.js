@@ -1356,6 +1356,7 @@ function statusLabel(status) {
     stockStatuses,
     stockAllocationStatuses,
     supplierStatuses,
+    transportStatuses,
   ];
   for (const group of groups) {
     const label = group.find(([key]) => key === status)?.[1];

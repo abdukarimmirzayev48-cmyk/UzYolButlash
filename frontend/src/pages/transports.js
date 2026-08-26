@@ -1,8 +1,28 @@
+// Reysda / yuklashda / tushirishda -- bu ro'yxatda yo'q. Ularni logistika
+// biladi va monitoring sahifasi reysdan hisoblab ko'rsatadi. Qo'lda yozilgan
+// holat bilan reysdan chiqadigan holat bir maydonni tortishtirsa, ekranda
+// «bo'sh» deb turgan mashina ayni paytda reysda bo'lib chiqadi.
 const transportStatuses = [
-  ["active", "Faol"],
-  ["inactive", "Faol emas"],
-  ["maintenance", "Ta'mirda"],
+  ["free", "Bo'sh"],
+  ["repair", "Ta'mirda"],
+  ["service", "Texnik xizmatda"],
+  ["idle", "Bekor turibdi"],
+  ["inactive", "Parkda emas"],
 ];
+
+const transportRiskLevels = [
+  ["expired", "Muddati o'tgan"],
+  ["soon", "Muddati tugayapti"],
+  ["unknown", "Kiritilmagan"],
+  ["ok", "Joyida"],
+];
+
+const TRANSPORT_RISK_TONES = { expired: "danger", soon: "warning", unknown: "muted", ok: "success" };
+
+function transportRiskChip(readiness) {
+  if (!readiness) return dash;
+  return statusChip({ label: optionLabel(transportRiskLevels, readiness.level), tone: TRANSPORT_RISK_TONES[readiness.level] });
+}
 
 const fuelEntryTypes = [
   ["added", "Quyildi"],
@@ -21,6 +41,30 @@ const transportWorkStatusLabels = {
   waiting: "Kutishda",
 };
 
+// Kartochka tepasidagi holat chizig'i. Ilgari bu yerda alohida jadval bor
+// edi, lekin uning sarlavhalari quyidagi kiritish bo'limlari bilan bir xil
+// bo'lib chiqdi -- «Hujjat muddatlari» sahifada ikki marta turardi. Endi
+// tepada faqat holat, pastda esa kiritish.
+function transportReadinessCard(label, until, daysLeft, level) {
+  const value = until
+    ? `<span>${esc(until)}</span> · ${daysLeft < 0 ? `<span>${Math.abs(daysLeft)}</span> <span>kun o'tdi</span>` : `<span>${daysLeft}</span> <span>kun qoldi</span>`}`
+    : `<span>Kiritilmagan</span>`;
+  return [label, value, TRANSPORT_RISK_TONES[level] === "success" ? "" : TRANSPORT_RISK_TONES[level]];
+}
+
+function transportReadinessPanel(readiness) {
+  if (!readiness) return "";
+  const service = readiness.service || {};
+  const serviceValue = service.remaining_km === null || service.remaining_km === undefined
+    ? `<span>Kiritilmagan</span>`
+    : service.remaining_km < 0
+      ? `<span>${fmtQty(Math.abs(service.remaining_km), "km")}</span> <span>o'tib ketdi</span>`
+      : `<span>${fmtQty(service.remaining_km, "km")}</span> <span>qoldi</span>`;
+  const cards = readiness.documents.map((row) => transportReadinessCard(row.label, row.until, row.days_left, row.level));
+  cards.push(["Texnik xizmatgacha", serviceValue, TRANSPORT_RISK_TONES[service.level] === "success" ? "" : TRANSPORT_RISK_TONES[service.level]]);
+  return `${summaryCards(cards)}${workflowWarningsPanel(readiness.warnings || [])}`;
+}
+
 function transportFormHtml(item = {}, employees = []) {
   const title = item.id ? "Transportni tahrirlash" : "Yangi transport";
   const employeeOptions = [["", "Tanlanmagan"], ...employees.map((e) => [String(e.id), e.full_name])];
@@ -32,16 +76,46 @@ function transportFormHtml(item = {}, employees = []) {
         ${item.id ? `<button class="btn" data-nav="/transports/${item.id}/fuel">Yoqilg'i nazorati</button>` : ""}
       </div>
     </div>
+    ${item.id ? transportReadinessPanel(item.readiness) : ""}
     <form id="transport-form">
       ${section("Transport ma'lumotlari", `<div class="grid">
-        ${selectField("driver_employee_id", "Haydovchi", employeeOptions, item.driver_employee_id != null ? String(item.driver_employee_id) : "")}
-        ${textField("driver_phone", "Haydovchi telefoni", item.driver_phone || "")}
         ${textField("vehicle_number", "Transport raqami", item.vehicle_number || "", "text", { required: true })}
         ${textField("trailer_number", "Tirkama raqami", item.trailer_number || "")}
+        ${textField("brand_model", "Marka va model", item.brand_model || "")}
+        ${textField("production_year", "Ishlab chiqarilgan yil", item.production_year || "", "text", { pattern: "(19|20)[0-9]{2}", maxlength: 4, inputmode: "numeric", title: "To'rt xonali yil kiriting" })}
         ${textField("vehicle_type", "Transport turi", item.vehicle_type || "")}
-        ${textField("capacity", "Sig'imi", item.capacity || "")}
-        ${selectField("status", "Status", transportStatuses, item.status || "active")}
+        ${textField("capacity_tons", "Sisterna sig'imi, t", item.capacity_tons || "", "number")}
+        ${textField("base_location", "Baza / bo'linma", item.base_location || "")}
+        ${textField("tracker_id", "GPS trekeri ID", item.tracker_id || "")}
+      </div>`)}
+      ${section("Haydovchi va mas'ul", `<div class="grid">
+        ${selectField("driver_employee_id", "Biriktirilgan haydovchi", employeeOptions, item.driver_employee_id != null ? String(item.driver_employee_id) : "")}
+        ${textField("driver_phone", "Haydovchi telefoni", item.driver_phone || "")}
+        ${textField("responsible_name", "Mas'ul xodim", item.responsible_name || "")}
+        ${selectField("status", "Parkdagi holati", transportStatuses, item.status || "free")}
+        ${textField("unavailable_reason", "Ishlamayotgan bo'lsa, sababi", item.unavailable_reason || "")}
         ${textField("current_location", "Hozirgi joylashuvi", item.current_location || "")}
+      </div>`)}
+      ${section("Hujjat muddatlari", `<div class="grid">
+        ${textField("tech_inspection_until", "Texnik ko'rik amal qiladi", item.tech_inspection_until || "", "date")}
+        ${textField("insurance_until", "Sug'urta amal qiladi", item.insurance_until || "", "date")}
+        ${textField("adr_until", "ADR ruxsatnomasi amal qiladi", item.adr_until || "", "date")}
+      </div><div class="form-hint">Muddat tugashiga bir oy qolganda yetkazib berish bo'limiga xabar boradi.</div>`)}
+      ${section("Texnik xizmat", `<div class="grid">
+        ${textField("service_interval_km", "TO oralig'i, km", item.service_interval_km || "", "number")}
+        ${textField("last_service_km", "Oxirgi TO qaysi kilometrda", item.last_service_km || "", "number")}
+        ${textField("last_service_date", "Oxirgi TO sanasi", item.last_service_date || "", "date")}
+      </div><div class="form-hint">Keyingi TO shu uch qiymatdan hisoblanadi, alohida yozilmaydi.</div>${item.readiness ? `<div class="service-position">` + detailList([
+        ["Joriy odometr", item.readiness.service.current_km ? fmtQty(item.readiness.service.current_km, "km") : null],
+        ["Keyingi TO, km", item.readiness.service.next_km ? fmtQty(item.readiness.service.next_km, "km") : null],
+      ]) + `</div>` : ""}`)}
+      ${section("Yoqilg'i", `<div class="grid">
+        ${textField("fuel_tank_liters", "Bak hajmi, l", item.fuel_tank_liters || "", "number")}
+        ${textField("fuel_norm_loaded", "Norma: yuk bilan, l/100 km", item.fuel_norm_loaded || "", "number")}
+        ${textField("fuel_norm_empty", "Norma: bo'sh, l/100 km", item.fuel_norm_empty || "", "number")}
+      </div><div class="form-hint">Norma kiritilmasa, ortiqcha sarfni hisoblab bo'lmaydi.</div>`)}
+      ${section("Qo'shimcha", `<div class="grid">
+        ${textField("capacity", "Sig'imi haqida izoh", item.capacity || "")}
         ${textArea("notes", "Izoh", item.notes || "")}
       </div>`)}
       <div class="form-footer"><button type="button" class="btn" data-nav="/transports">Bekor qilish</button><button class="btn primary" type="submit">Saqlash</button></div>
@@ -49,19 +123,25 @@ function transportFormHtml(item = {}, employees = []) {
   </div>`;
 }
 
+const TRANSPORT_NUMERIC_FIELDS = ["capacity_tons", "fuel_tank_liters", "fuel_norm_loaded", "fuel_norm_empty", "service_interval_km", "last_service_km"];
+const TRANSPORT_TEXT_FIELDS = [
+  "driver_phone", "vehicle_number", "trailer_number", "vehicle_type", "capacity",
+  "current_location", "notes", "brand_model", "base_location", "tracker_id",
+  "responsible_name", "unavailable_reason",
+  "last_service_date", "tech_inspection_until", "insurance_until", "adr_until",
+];
+
 function collectTransportPayload(form) {
   const driverEmployeeId = field(form, "driver_employee_id");
-  return {
+  const productionYear = field(form, "production_year");
+  const payload = {
     driver_employee_id: driverEmployeeId ? Number(driverEmployeeId) : null,
-    driver_phone: field(form, "driver_phone"),
-    vehicle_number: field(form, "vehicle_number"),
-    trailer_number: field(form, "trailer_number"),
-    vehicle_type: field(form, "vehicle_type"),
-    capacity: field(form, "capacity"),
-    status: field(form, "status") || "active",
-    current_location: field(form, "current_location"),
-    notes: field(form, "notes"),
+    production_year: productionYear ? Number(productionYear) : null,
+    status: field(form, "status") || "free",
   };
+  for (const name of TRANSPORT_TEXT_FIELDS) payload[name] = field(form, name);
+  for (const name of TRANSPORT_NUMERIC_FIELDS) payload[name] = field(form, name);
+  return payload;
 }
 
 function bindTransportForm(item = null) {
@@ -83,25 +163,26 @@ function bindTransportForm(item = null) {
 async function renderTransportsList() {
   const params = new URLSearchParams(location.search);
   const data = await api(`/api/transports?${params.toString()}`);
-  const activeCount = data.items.filter((item) => item.status === "active").length;
+  const freeCount = data.items.filter((item) => item.status === "free").length;
+  const riskCount = data.items.filter((item) => item.readiness && (item.readiness.level === "expired" || item.readiness.level === "soon")).length;
   const editable = canEdit("yetkazib_berish");
   app.innerHTML = opsListPage({
     className: "transports-ops-page",
     title: "Transportlar",
     tabs: [{ label: "Partiyalar", path: "/delivery-batches" }, { label: "Logistika", path: "/logistics" }, { label: "Transportlar", active: true }, { label: "Monitoring", path: "/transports/monitoring" }],
     clearPath: "/transports",
-    counter: `${fmt(data.total)} ta transport · ${fmt(activeCount)} ta faol`,
+    counter: `${fmt(data.total)} ta transport · ${fmt(freeCount)} ta bo'sh · ${fmt(riskCount)} tasida hujjat muddati`,
     formId: "transport-search-form",
-    filters: `<input name="search" placeholder="Haydovchi, transport raqami" value="${esc(params.get("search") || "")}" /><select name="status"><option value="">Status</option>${transportStatuses.map(([key, label]) => `<option value="${key}" ${params.get("status") === key ? "selected" : ""}>${label}</option>`).join("")}</select>`,
-    headers: ["Transport", "Haydovchi", "Telefon", "Tirkama", "Turi", "Sig'im", "Status", ""],
-    rows: data.items.map((item) => `<tr><td>${editable ? `<button class="ops-primary-link" data-nav="/transports/${item.id}/edit">${fmt(item.vehicle_number)}</button>` : fmt(item.vehicle_number)}</td><td>${fmt(item.driver_name)}</td><td>${fmt(item.driver_phone)}</td><td>${fmt(item.trailer_number)}</td><td>${fmt(item.vehicle_type)}</td><td>${fmt(item.capacity)}</td><td>${statusBadge(item.status)}</td><td><div class="ops-row-actions"><button class="link-btn" data-nav="/transports/${item.id}/fuel">Yoqilg'i</button>${editable ? `<button class="link-btn" data-nav="/transports/${item.id}/edit">Tahrirlash</button><button class="link-btn" data-delete-transport="${item.id}">O'chirish</button>` : ""}</div></td></tr>`).join(""),
+    filters: `${opsFilterField("Qidirish", `<input name="search" placeholder="Haydovchi, transport raqami" value="${esc(params.get("search") || "")}" />`)}${opsFilterField("Parkdagi holati", `<select name="status"><option value="">Barchasi</option>${transportStatuses.map(([key, label]) => `<option value="${key}" ${params.get("status") === key ? "selected" : ""}>${label}</option>`).join("")}</select>`)}${opsFilterField("Hujjatlar", `<select name="risk"><option value="">Barchasi</option>${transportRiskLevels.map(([key, label]) => `<option value="${key}" ${params.get("risk") === key ? "selected" : ""}>${label}</option>`).join("")}</select>`)}`,
+    headers: ["Transport", "Haydovchi", "Tirkama", "Sig'im", "Hujjatlar", "TO gacha", "Parkdagi holati", ""],
+    rows: data.items.map((item) => `<tr><td>${editable ? `<button class="ops-primary-link" data-nav="/transports/${item.id}/edit">${fmt(item.vehicle_number)}</button>` : fmt(item.vehicle_number)}</td><td>${fmt(item.driver_name)}</td><td>${fmt(item.trailer_number)}</td><td>${item.capacity_tons ? fmtQty(item.capacity_tons, "t") : fmt(item.capacity)}</td><td>${transportRiskChip(item.readiness)}</td><td class="ops-money">${item.readiness?.service?.remaining_km !== null && item.readiness?.service?.remaining_km !== undefined ? fmtQty(item.readiness.service.remaining_km, "km") : dash}</td><td>${statusBadge(item.status)}</td><td><div class="ops-row-actions"><button class="link-btn" data-nav="/transports/${item.id}/fuel">Yoqilg'i</button>${editable ? `<button class="link-btn" data-nav="/transports/${item.id}/edit">Tahrirlash</button><button class="link-btn" data-delete-transport="${item.id}">O'chirish</button>` : ""}</div></td></tr>`).join(""),
     emptyText: "Transportlar topilmadi.",
     colspan: 8,
     footer: opsFooter(data, "transport"),
     createPath: editable ? "/transports/new" : undefined,
     createLabel: "Transport qo'shish",
   });
-  bindOpsSearch("transport-search-form", "/transports", ["search", "status"]);
+  bindOpsSearch("transport-search-form", "/transports", ["search", "status", "risk"]);
   bindOpsPagination("transport", "/transports");
   document.querySelectorAll("[data-delete-transport]").forEach((button) => button.addEventListener("click", async () => {
     if (!confirmMsg("Transportni o'chirasizmi?")) return;

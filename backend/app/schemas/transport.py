@@ -13,9 +13,25 @@ class TransportBase(BaseModel):
     trailer_number: str | None = None
     vehicle_type: str | None = None
     capacity: str | None = None
-    status: TransportStatus = TransportStatus.active
+    status: TransportStatus = TransportStatus.free
     current_location: str | None = None
     notes: str | None = None
+    brand_model: str | None = None
+    production_year: int | None = None
+    base_location: str | None = None
+    capacity_tons: Decimal | None = None
+    fuel_tank_liters: Decimal | None = None
+    fuel_norm_loaded: Decimal | None = None
+    fuel_norm_empty: Decimal | None = None
+    tracker_id: str | None = None
+    service_interval_km: Decimal | None = None
+    last_service_km: Decimal | None = None
+    last_service_date: date | None = None
+    tech_inspection_until: date | None = None
+    insurance_until: date | None = None
+    adr_until: date | None = None
+    responsible_name: str | None = None
+    unavailable_reason: str | None = None
 
 
 class TransportCreate(TransportBase):
@@ -32,6 +48,47 @@ class TransportUpdate(BaseModel):
     status: TransportStatus | None = None
     current_location: str | None = None
     notes: str | None = None
+    brand_model: str | None = None
+    production_year: int | None = None
+    base_location: str | None = None
+    capacity_tons: Decimal | None = None
+    fuel_tank_liters: Decimal | None = None
+    fuel_norm_loaded: Decimal | None = None
+    fuel_norm_empty: Decimal | None = None
+    tracker_id: str | None = None
+    service_interval_km: Decimal | None = None
+    last_service_km: Decimal | None = None
+    last_service_date: date | None = None
+    tech_inspection_until: date | None = None
+    insurance_until: date | None = None
+    adr_until: date | None = None
+    responsible_name: str | None = None
+    unavailable_reason: str | None = None
+
+
+class TransportDocumentRow(BaseModel):
+    key: str
+    label: str
+    until: date | None = None
+    days_left: int | None = None
+    level: str
+
+
+class TransportServicePosition(BaseModel):
+    interval_km: Decimal | None = None
+    last_km: Decimal | None = None
+    last_date: date | None = None
+    next_km: Decimal | None = None
+    current_km: Decimal | None = None
+    remaining_km: Decimal | None = None
+    level: str
+
+
+class TransportReadiness(BaseModel):
+    documents: list[TransportDocumentRow] = Field(default_factory=list)
+    service: TransportServicePosition
+    level: str
+    warnings: list[str] = Field(default_factory=list)
 
 
 class TransportRead(TransportBase):
@@ -41,6 +98,9 @@ class TransportRead(TransportBase):
     driver_name: str | None = None
     created_at: datetime
     updated_at: datetime
+    # Saqlanmaydi, har o'qishda hisoblanadi -- shuning uchun oraliq yoki
+    # odometr o'zgarganda eskirib qolmaydi.
+    readiness: TransportReadiness | None = None
 
 
 class FuelLogBase(BaseModel):

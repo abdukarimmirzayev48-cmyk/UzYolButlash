@@ -9,8 +9,9 @@ from sqlalchemy.orm import Session, selectinload
 from backend.app.db.session import get_db
 from backend.app.models.attendance import Employee
 from backend.app.models.delivery import DeliveryBatch, Logistics, LogisticsStatus
-from backend.app.models.transport import FuelEntryType, Transport, TransportCheckIn, TransportFuelLog, TransportStatus
+from backend.app.models.transport import UNAVAILABLE_STATUSES, FuelEntryType, Transport, TransportCheckIn, TransportFuelLog, TransportStatus
 from backend.app.schemas.client import Page
+from backend.app.services import transport_readiness
 from backend.app.services.auth import require_edit
 from backend.app.services.telegram_bot import request_checkin
 from backend.app.schemas.transport import (
@@ -44,14 +45,59 @@ def get_transport_or_404(db: Session, transport_id: int) -> Transport:
     return transport
 
 
-def sync_transport_driver_name(transport: Transport, db: Session) -> None:
+def sync_transport_driver_name(transport: Transport, db: Session, *, had_link: bool = True) -> None:
+    """Xodim tanlansa, ism shundan olinadi.
+
+    Ilgari xodim tanlanmagan bo'lsa ism o'chirib tashlanardi. Formada esa ism
+    uchun alohida maydon yo'q -- faqat xodimlar ro'yxati. Natijada bog'lanmagan,
+    lekin ismi qo'lda yozilgan mashinada boshqa maydonni (masalan, sug'urta
+    muddatini) saqlasangiz, haydovchi ismi jimgina yo'qolardi. Endi ism faqat
+    haqiqatan bog'lanish uzilganda o'chiriladi.
+    """
     if transport.driver_employee_id is None:
-        transport.driver_name = None
+        if had_link:
+            transport.driver_name = None
         return
     employee = db.get(Employee, transport.driver_employee_id)
     if not employee:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Tanlangan xodim topilmadi.")
     transport.driver_name = employee.full_name
+
+
+def current_odometer(db: Session, transport_id: int) -> Decimal | None:
+    """Joriy odometr oxirgi qaydnomadan olinadi.
+
+    Uni transport kartochkasida alohida maydonda saqlash mumkin edi, lekin
+    unda bot yuborgan qiymat bilan qo'lda yozilgani ikki xil bo'lib qolardi.
+    Manba bitta bo'lgani ma'qul.
+    """
+    return db.scalar(
+        select(TransportCheckIn.odometer_km)
+        .where(TransportCheckIn.transport_id == transport_id, TransportCheckIn.odometer_km.isnot(None))
+        .order_by(TransportCheckIn.created_at.desc())
+        .limit(1)
+    )
+
+
+def odometers_for(db: Session, transport_ids: list[int]) -> dict[int, Decimal]:
+    """Ro'yxat uchun -- har bir mashinaga alohida so'rov yubormaslik uchun."""
+    if not transport_ids:
+        return {}
+    rows = db.execute(
+        select(TransportCheckIn.transport_id, TransportCheckIn.odometer_km, TransportCheckIn.created_at)
+        .where(TransportCheckIn.transport_id.in_(transport_ids), TransportCheckIn.odometer_km.isnot(None))
+        .order_by(TransportCheckIn.created_at.desc())
+    ).all()
+    latest: dict[int, Decimal] = {}
+    for transport_id, odometer, _ in rows:
+        latest.setdefault(transport_id, odometer)
+    return latest
+
+
+def with_readiness(transport: Transport, current_km: Decimal | None) -> TransportRead:
+    result = TransportRead.model_validate(transport)
+    readiness = transport_readiness.build_readiness(transport, today=date.today(), current_km=current_km)
+    return result.model_copy(update={"readiness": readiness})
 
 
 @router.get("", response_model=Page[TransportRead])
@@ -61,6 +107,7 @@ def list_transports(
     page_size: int = Query(100, ge=1, le=200),
     search: str | None = None,
     status_filter: str | None = Query(default=None, alias="status"),
+    risk_filter: str | None = Query(default=None, alias="risk"),
 ):
     stmt = select(Transport)
     filters = []
@@ -80,7 +127,13 @@ def list_transports(
         stmt = stmt.where(*filters)
     total = db.scalar(select(func.count()).select_from(stmt.subquery())) or 0
     rows = db.scalars(stmt.order_by(Transport.created_at.desc()).offset((page - 1) * page_size).limit(page_size)).all()
-    return Page(items=rows, total=total, page=page, page_size=page_size)
+    odometers = odometers_for(db, [row.id for row in rows])
+    items = [with_readiness(row, odometers.get(row.id)) for row in rows]
+    # Hujjat riski bazada saqlanmaydi -- u sanaga qarab hisoblanadi -- shuning
+    # uchun filtr SQL da emas, shu yerda qo'llanadi.
+    if risk_filter:
+        items = [item for item in items if item.readiness and item.readiness.level == risk_filter]
+    return Page(items=items, total=total if not risk_filter else len(items), page=page, page_size=page_size)
 
 
 def _batch_tonnage(batch: DeliveryBatch | None) -> Decimal:
@@ -133,7 +186,7 @@ def transport_monitoring(db: Session = Depends(get_db)):
         last_log = vehicle_logs[0] if vehicle_logs else None
         last_order_number = last_log.batch.order.order_number if last_log and last_log.batch and last_log.batch.order else None
 
-        if transport.status == TransportStatus.maintenance:
+        if transport.status in UNAVAILABLE_STATUSES:
             summary["maintenance"] += 1
             idle_rows.append({
                 "vehicle_number": transport.vehicle_number,
@@ -193,28 +246,30 @@ def transport_monitoring(db: Session = Depends(get_db)):
 @router.post("", response_model=TransportRead, status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_edit("yetkazib_berish"))])
 def create_transport(payload: TransportCreate, db: Session = Depends(get_db)):
     transport = Transport(**payload.model_dump())
-    sync_transport_driver_name(transport, db)
+    sync_transport_driver_name(transport, db, had_link=False)
     db.add(transport)
     db.commit()
     db.refresh(transport)
-    return transport
+    return with_readiness(transport, None)
 
 
 @router.get("/{transport_id}", response_model=TransportRead)
 def get_transport(transport_id: int, db: Session = Depends(get_db)):
-    return get_transport_or_404(db, transport_id)
+    transport = get_transport_or_404(db, transport_id)
+    return with_readiness(transport, current_odometer(db, transport.id))
 
 
 @router.patch("/{transport_id}", response_model=TransportRead, dependencies=[Depends(require_edit("yetkazib_berish"))])
 def update_transport(transport_id: int, payload: TransportUpdate, db: Session = Depends(get_db)):
     transport = get_transport_or_404(db, transport_id)
     data = payload.model_dump(exclude_unset=True)
+    had_link = transport.driver_employee_id is not None
     update_model(transport, data)
     if "driver_employee_id" in data:
-        sync_transport_driver_name(transport, db)
+        sync_transport_driver_name(transport, db, had_link=had_link)
     db.commit()
     db.refresh(transport)
-    return transport
+    return with_readiness(transport, current_odometer(db, transport.id))
 
 
 @router.delete("/{transport_id}", status_code=status.HTTP_204_NO_CONTENT, dependencies=[Depends(require_edit("yetkazib_berish"))])

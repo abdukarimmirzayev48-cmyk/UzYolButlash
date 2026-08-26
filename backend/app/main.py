@@ -39,6 +39,7 @@ from backend.app.services.notifications import (
     run_reminder_sweep,
     sweep_expired_contracts,
     sweep_overdue_contract_payments,
+    sweep_transport_documents,
 )
 from backend.app.services.telegram_bot import start_bot, stop_bot
 
@@ -132,6 +133,7 @@ def _run_reminder_sweep_job() -> None:
         run_reminder_sweep(db)
         sweep_overdue_contract_payments(db)
         sweep_expired_contracts(db)
+        sweep_transport_documents(db)
     finally:
         db.close()
 

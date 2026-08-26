@@ -1696,6 +1696,15 @@ body.sidebar-collapsed .app-shell {
   width: 100%;
 }
 
+/* `.form-hint` allaqachon ishlatilardi, lekin o'z uslubi yo'q edi -- oddiy
+   xatboshi bo'lib, matn bilan bir xil ko'rinardi. */
+.form-hint {
+  margin: 10px 0 0;
+  color: var(--muted);
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
 .status-card .form-hint {
   margin-top: 10px;
 }
@@ -3235,15 +3244,26 @@ tr:last-child td {
   width: min(180px, 13vw);
 }
 
+/* Transport holatlari: bo'sh -- yashil, ta'mir va texnik xizmat -- sariq,
+   parkda emas -- kulrang. */
+.status-badge.free,
 .status-badge.active,
 .status-badge.signed {
   background: #e8f6f1;
   color: #176b5b;
 }
 
-.status-badge.completed {
+.status-badge.completed,
+.status-badge.inactive,
+.status-badge.idle {
   background: #eef2f6;
   color: #465563;
+}
+
+.status-badge.repair,
+.status-badge.service {
+  background: #fdf3e3;
+  color: #8a5b12;
 }
 
 .status-badge.expired {
@@ -7506,4 +7526,12 @@ body.public-layout.sidebar-collapsed .app-shell {
     grid-template-columns: minmax(0, 1fr);
     gap: 4px;
   }
+}
+
+/* Hisoblangan TO qiymatlari kiritish maydonlaridan ajralib tursin -- ular
+   tahrirlanmaydi, shunchaki natija. */
+.service-position {
+  margin-top: 14px;
+  border-top: 1px solid var(--line);
+  padding-top: 12px;
 }

@@ -127,6 +127,64 @@ def sweep_overdue_contract_payments(db: Session) -> int:
     return sent
 
 
+MSG_TRANSPORT_DOCUMENT_EXPIRED = "Transport hujjati muddati o'tgan"
+MSG_TRANSPORT_DOCUMENT_EXPIRING = "Transport hujjati muddati tugayapti"
+MSG_TRANSPORT_SERVICE_DUE = "Transport texnik xizmat muddati keldi"
+
+
+def sweep_transport_documents(db: Session) -> int:
+    """Texko'rik, sug'urta va ADR muddati haqida oldindan xabar berish.
+
+    Muddati o'tgan hujjat bilan mashina yo'lda to'xtatiladi -- yuk bilan
+    birga. Ilgari bu muddatlar hech qayerda saqlanmasdi, demak ular haqida
+    ogohlantirish ham bo'lishi mumkin emas edi: xabar faqat post tepasida,
+    jarima yozilganda kelardi.
+
+    Xabar yetkazib berish huquqi bor xodimlarga boradi va har bir mashina
+    uchun bir marta yuboriladi -- shartnoma to'lovlaridagi kabi, havola
+    bo'yicha takrorlanmaydi.
+    """
+    from datetime import date
+
+    from backend.app.models.transport import Transport
+    from backend.app.models.user import User
+    from backend.app.services import transport_readiness
+
+    recipients = [
+        user.id
+        for user in db.query(User).filter(User.is_active.is_(True)).all()
+        if user.is_admin or "yetkazib_berish" in (user.edit_modules or [])
+    ]
+    if not recipients:
+        return 0
+
+    today = date.today()
+    sent = 0
+    for transport in db.query(Transport).all():
+        readiness = transport_readiness.build_readiness(transport, today=today)
+        expired = [row for row in readiness.documents if row.level == transport_readiness.LEVEL_EXPIRED]
+        expiring = [row for row in readiness.documents if row.level == transport_readiness.LEVEL_SOON]
+        link = f"/transports/{transport.id}"
+        # Bitta mashina uchun bitta xabar: eng og'iri aytiladi, qolganini
+        # kartochkada ko'radi. Aks holda uchta hujjat uchta xabar bo'lardi.
+        if expired:
+            title, kind = MSG_TRANSPORT_DOCUMENT_EXPIRED, "transport_document_expired"
+            rows = expired
+        elif expiring:
+            title, kind = MSG_TRANSPORT_DOCUMENT_EXPIRING, "transport_document_expiring"
+            rows = expiring
+        else:
+            continue
+        detail = ", ".join(f"{row.label} — {row.until}" for row in rows)
+        body = f"{transport.vehicle_number}: {detail}"
+        for user_id in recipients:
+            if _has_link_notification(db, user_id, kind, link):
+                continue
+            notify(db, user_id, title, body, kind, None, link)
+            sent += 1
+    return sent
+
+
 MSG_CONTRACT_EXPIRED = "Shartnoma muddati tugadi"
 MSG_CONTRACT_EXPIRING = "Shartnoma muddati tugayapti"
 

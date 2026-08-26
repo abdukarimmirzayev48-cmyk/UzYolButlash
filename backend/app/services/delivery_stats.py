@@ -22,7 +22,7 @@ from datetime import date, datetime
 from decimal import Decimal
 
 from backend.app.models.delivery import BatchStatus, DeliveryBatch, LogisticsStatus
-from backend.app.models.transport import Transport, TransportStatus
+from backend.app.models.transport import UNAVAILABLE_STATUSES, Transport, TransportStatus
 
 LIST_LIMIT = 8
 
@@ -227,8 +227,8 @@ def build_overview(
             "problems": len(problems),
             "trips_need_assignment": len(needs_assignment),
             "fleet_total": len(transports),
-            "fleet_active": sum(1 for t in transports if t.status == TransportStatus.active),
-            "fleet_maintenance": sum(1 for t in transports if t.status == TransportStatus.maintenance),
+            "fleet_active": sum(1 for t in transports if t.status not in UNAVAILABLE_STATUSES),
+            "fleet_maintenance": sum(1 for t in transports if t.status in (TransportStatus.repair, TransportStatus.service)),
         },
         "result": {
             "delivered": len(delivered),
