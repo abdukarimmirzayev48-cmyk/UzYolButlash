@@ -186,6 +186,8 @@ class SupplierPaymentBase(BaseModel):
 
 
 class SupplierPaymentCreate(SupplierPaymentBase):
+    # Mijoz to'lovidagi kabi: bo'sh qoldirilsa raqamni server beradi.
+    payment_number: str | None = Field(default=None, min_length=1, max_length=128)
     allocations: list[SupplierPaymentAllocationCreate] = Field(default_factory=list)
     documents: list[SupplierFinanceDocumentCreate] = Field(default_factory=list)
     initial_note: SupplierFinanceNoteCreate | None = None

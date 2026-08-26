@@ -43,6 +43,7 @@ from backend.app.schemas.supplier_finance import (
     SupplierPaymentSummary,
     SupplierPaymentUpdate,
 )
+from backend.app.services import payment_numbers
 from backend.app.services.auth import require_edit
 from backend.app.services.order_status import sync_order_status
 
@@ -360,6 +361,10 @@ def list_payments(
 @payment_router.post("", response_model=SupplierPaymentDetail, status_code=201, dependencies=[Depends(require_edit("moliya"))])
 def create_payment(payload: SupplierPaymentCreate, db: Session = Depends(get_db)):
     data = payload.model_dump(exclude={"allocations", "documents", "initial_note"})
+    if not data.get("payment_number"):
+        data["payment_number"] = payment_numbers.next_payment_number(
+            db, SupplierPayment.payment_number, "SPAY", data["payment_date"]
+        )
     payment = SupplierPayment(**data)
     if not db.get(Supplier, payment.supplier_id):
         raise HTTPException(status_code=400, detail="Ta'minotchi mavjud emas.")

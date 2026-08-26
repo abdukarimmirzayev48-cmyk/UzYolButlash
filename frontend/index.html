@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>UzYolButlash ERP</title>
-    <link rel="stylesheet" href="/static/styles.css?v=20260825-search" />
+    <link rel="stylesheet" href="/static/styles.css?v=20260826-paynum" />
   </head>
   <body>
     <header class="app-topbar">
@@ -70,16 +70,13 @@
           </div>
         </div>
       </nav>
-      <div class="top-search" id="top-search">
-        <label class="searchbox">
-          <span class="searchbox-icon" data-noloc aria-hidden="true">
-            <svg xmlns="http://www.w3.org/2000/svg" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
-          </span>
-          <input type="search" id="top-search-input" autocomplete="off" placeholder="Shartnoma, mijoz yoki STIR bo'yicha qidirish" aria-label="Qidirish" />
-          <kbd data-noloc>⌘K</kbd>
-        </label>
-        <div class="search-results" id="top-search-results" hidden></div>
-      </div>
+      <button class="top-search-trigger" id="top-search-trigger" type="button" aria-label="Qidirish">
+        <span class="searchbox-icon" data-noloc aria-hidden="true">
+          <svg xmlns="http://www.w3.org/2000/svg" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+        </span>
+        <span class="top-search-trigger-label">Qidirish</span>
+        <kbd data-noloc>⌘K</kbd>
+      </button>
       <div class="top-actions">
         <div class="top-notif" id="top-notif">
           <button class="top-icon-btn" type="button" id="top-notif-toggle" aria-label="Bildirishnomalar" title="Bildirishnomalar">
@@ -179,6 +176,18 @@
         </section>
       </nav>
     </aside>
+    <div class="search-overlay" id="top-search-overlay" hidden>
+      <div class="search-panel">
+        <label class="searchbox">
+          <span class="searchbox-icon" data-noloc aria-hidden="true">
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+          </span>
+          <input type="search" id="top-search-input" autocomplete="off" placeholder="Shartnoma, mijoz, buyurtma yoki partiya bo'yicha qidirish" aria-label="Qidirish" />
+          <kbd data-noloc>ESC</kbd>
+        </label>
+        <div class="search-results" id="top-search-results" hidden></div>
+      </div>
+    </div>
     <main class="app-shell">
       <div id="toast" class="toast" hidden></div>
       <div id="app"></div>
@@ -197,17 +206,17 @@
     <script src="/static/src/components/Panels.js?v=20260629-frontend-refactor" defer></script>
     <script src="/static/src/index.js?v=20260629-frontend-refactor" defer></script>
     <script src="/static/src/config/constants.js?v=20260825-nocash" defer></script>
-    <script src="/static/src/config/cyrillic.js?v=20260825-procflow" defer></script>
-    <script src="/static/src/core/runtime.js?v=20260825-orderux" defer></script>
+    <script src="/static/src/config/cyrillic.js?v=20260826-paynum" defer></script>
+    <script src="/static/src/core/runtime.js?v=20260826-paynum" defer></script>
     <script src="/static/src/pages/clients.js?v=20260824-links" defer></script>
     <script src="/static/src/pages/customerRequests.js?v=20260819-dialog" defer></script>
     <script src="/static/src/pages/publicTalabnoma.js?v=20260819-geo-tz" defer></script>
     <script src="/static/src/pages/contracts.js?v=20260825-search" defer></script>
-    <script src="/static/src/pages/orders.js?v=20260825-orderux" defer></script>
+    <script src="/static/src/pages/orders.js?v=20260826-paynum" defer></script>
     <script src="/static/src/pages/delivery.js?v=20260824-links" defer></script>
     <script src="/static/src/pages/transports.js?v=20260824-dates" defer></script>
-    <script src="/static/src/pages/customerFinance.js?v=20260825-nocash" defer></script>
-    <script src="/static/src/pages/supply.js?v=20260825-procflow" defer></script>
+    <script src="/static/src/pages/customerFinance.js?v=20260826-paynum" defer></script>
+    <script src="/static/src/pages/supply.js?v=20260826-paynum" defer></script>
     <script src="/static/src/pages/dashboard.js?v=20260823-forms" defer></script>
     <script src="/static/src/pages/products.js?v=20260802-sotuv-gate" defer></script>
     <script src="/static/src/pages/attendance.js?v=20260814-merge-departments" defer></script>

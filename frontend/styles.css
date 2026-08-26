@@ -899,12 +899,88 @@ body.sidebar-collapsed .app-shell {
 
 
 /* ---- Topbardagi tez qidiruv ---- */
-.top-search {
-  position: relative;
-  flex: 1;
-  min-width: 0;
-  max-width: 460px;
-  margin: 0 18px;
+/* Qidiruv katagi topbarda `flex: 1` bilan turardi. Menyu 725px joy egallagani
+   uchun 1440px li ekranda katakka atigi 95px, ichidagi maydonga esa 20px joy
+   qolardi -- ya'ni lupa bilan `⌘K` yonma-yon turgan, hech narsa yozib
+   bo'lmaydigan bo'sh quti. 1280px da kenglik butunlay nolga tushardi.
+
+   Endi topbarda faqat tugma turadi -- uning kengligi menyuga bog'liq emas --
+   qidiruv esa sahifa ustidagi oynada ochiladi. Oyna kengligi topbardagi joyga
+   qaram emas, shuning uchun hech qanday ekranda siqilib qolmaydi. */
+.top-search-trigger {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+  height: 38px;
+  margin: 0 14px 0 auto;
+  padding: 0 11px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.72);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.top-search-trigger:hover {
+  border-color: rgba(255, 255, 255, 0.4);
+  background: rgba(255, 255, 255, 0.14);
+  color: #ffffff;
+}
+
+.top-search-trigger-label {
+  white-space: nowrap;
+}
+
+.search-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  display: flex;
+  justify-content: center;
+  padding: 96px 20px 20px;
+  background: rgba(16, 24, 40, 0.44);
+}
+
+.search-panel {
+  width: min(620px, 100%);
+  height: fit-content;
+  border-radius: 14px;
+  background: var(--surface);
+  box-shadow: 0 24px 60px rgba(16, 24, 40, 0.28);
+  padding: 10px;
+}
+
+.search-panel .searchbox {
+  height: 46px;
+  border-color: var(--line);
+  background: var(--bg);
+  color: var(--muted);
+}
+
+.search-panel .searchbox input {
+  color: var(--text);
+  font-size: 14px;
+}
+
+.search-panel .searchbox input::placeholder {
+  color: var(--muted);
+}
+
+.search-panel .searchbox kbd {
+  border-color: var(--line);
+  color: var(--muted);
+}
+
+/* Oyna ichida ro'yxat maydon ostida oddiy oqimda turadi. */
+.search-panel .search-results {
+  position: static;
+  margin-top: 8px;
+  border: 0;
+  box-shadow: none;
+  padding: 0;
 }
 
 .searchbox {
@@ -1027,12 +1103,12 @@ body.sidebar-collapsed .app-shell {
 }
 
 @media (max-width: 1180px) {
-  .top-search { max-width: 280px; margin: 0 12px; }
-  .searchbox kbd { display: none; }
+  .top-search-trigger kbd { display: none; }
 }
 
-@media (max-width: 900px) {
-  .top-search { display: none; }
+@media (max-width: 1080px) {
+  .top-search-trigger-label { display: none; }
+  .top-search-trigger { padding: 0 9px; }
 }
 
 /* ---- Shartnoma kartochkasi: keyingi qadam, ko'rsatkichlar, jarayon ----

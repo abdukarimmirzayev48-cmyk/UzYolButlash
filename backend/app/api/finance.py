@@ -50,6 +50,7 @@ from backend.app.schemas.finance import (
     PaymentSummary,
     PaymentUpdate,
 )
+from backend.app.services import payment_numbers
 from backend.app.services.auth import get_current_user, require_edit
 from backend.app.services.order_status import sync_order_status
 from backend.app.services.contract_status import sync_contract_status, sync_contracts_for_invoices
@@ -425,6 +426,10 @@ def list_payments(db: Session = Depends(get_db), page: int = Query(1, ge=1), pag
 @payment_router.post("", response_model=PaymentDetail, status_code=201, dependencies=[Depends(require_edit("moliya"))])
 def create_payment(payload: PaymentCreate, db: Session = Depends(get_db)):
     data = payload.model_dump(exclude={"allocations", "documents", "initial_note"})
+    if not data.get("payment_number"):
+        data["payment_number"] = payment_numbers.next_payment_number(
+            db, CustomerPayment.payment_number, "CPAY", data["payment_date"]
+        )
     payment = CustomerPayment(**data)
     if not db.get(Client, payment.client_id):
         raise HTTPException(status_code=400, detail="Mijoz mavjud emas.")

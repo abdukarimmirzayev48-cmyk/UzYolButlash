@@ -328,9 +328,12 @@ async function paymentForm(payment = null) {
   }
   const clients = await fetchClientsOptions(selectedClientId);
   const invoices = await fetchAllocatableInvoices(selectedClientId, payment);
-  const paymentNumber = payment?.payment_number || (selectedClientId ? `CPAY-${today.replaceAll("-", "")}-${selectedClientId}` : "");
+  // Raqamni server beradi. Ilgari u shu yerda yasalardi, lekin mijoz keyin
+  // tanlanadi -- maydon esa faqat o'qish uchun, shuning uchun raqam bo'sh
+  // qolar va saqlash «matn bo'lishi kerak» xatosi bilan to'xtardi.
+  const paymentNumber = payment?.payment_number || "";
   const allocationInvoices = payment ? invoices : autoDistributePaymentAmount(invoices, payment?.amount || "");
-  return `<div class="page"><div class="page-header"><div class="page-title"><h1>${payment ? "Mijoz to'lovini tahrirlash" : "Yangi mijoz to'lovi"}</h1><p>Mijoz to'lovi va hisob-fakturalarga taqsimlash.</p></div><div class="actions"><button class="btn" data-nav="${payment?`/customer-payments/${payment.id}`:"/customer-payments"}">Orqaga</button></div></div><form id="payment-form">${section("Asosiy ma'lumotlar", `<div class="grid"><label class="form-field">Mijoz <span class="required-mark">*</span>${selectSearch("client_id", "Mijoz nomi yoki STIR bo'yicha qidiring")}<select name="client_id" required><option value="">Mijozni tanlang</option>${clients}</select></label>${readonlyField("payment_number","To'lov raqami",paymentNumber)}${textField("payment_date","To'lov sanasi",payment?.payment_date||today,"date",{ required: true })}${textField("amount","To'lov summasi",payment?.amount||"","number",{ required: true })}${selectField("payment_method","To'lov usuli",paymentMethods,payment?.payment_method||"bank_transfer")}${textField("bank_account","Bank hisob raqami",payment?.bank_account)}${textField("reference_number","Havola raqami",payment?.reference_number)}${textArea("notes","Izoh",payment?.notes)}</div>`)}${section("Qo'lda taqsimlash", `<div id="payment-allocation-section">${paymentAllocationTable(allocationInvoices, payment?.amount || "")}</div>`)}${section("Hujjatlar", `<div class="empty">Moliya hujjatlarini to'lov saqlangandan keyin Hujjatlar bo'limidan yuklash mumkin.</div>`)}<div class="form-footer"><button class="btn" type="button" data-nav="${payment?`/customer-payments/${payment.id}`:"/customer-payments"}">Bekor qilish</button><button class="btn primary">Saqlash</button></div></form></div>`;
+  return `<div class="page"><div class="page-header"><div class="page-title"><h1>${payment ? "Mijoz to'lovini tahrirlash" : "Yangi mijoz to'lovi"}</h1><p>Mijoz to'lovi va hisob-fakturalarga taqsimlash.</p></div><div class="actions"><button class="btn" data-nav="${payment?`/customer-payments/${payment.id}`:"/customer-payments"}">Orqaga</button></div></div><form id="payment-form">${section("Asosiy ma'lumotlar", `<div class="grid"><label class="form-field">Mijoz <span class="required-mark">*</span>${selectSearch("client_id", "Mijoz nomi yoki STIR bo'yicha qidiring")}<select name="client_id" required><option value="">Mijozni tanlang</option>${clients}</select></label>${readonlyField("payment_number","To'lov raqami",paymentNumber,"text",{ placeholder: "Saqlashda avtomatik beriladi" })}${textField("payment_date","To'lov sanasi",payment?.payment_date||today,"date",{ required: true })}${textField("amount","To'lov summasi",payment?.amount||"","number",{ required: true })}${selectField("payment_method","To'lov usuli",paymentMethods,payment?.payment_method||"bank_transfer")}${textField("bank_account","Bank hisob raqami",payment?.bank_account)}${textField("reference_number","Havola raqami",payment?.reference_number)}${textArea("notes","Izoh",payment?.notes)}</div>`)}${section("Qo'lda taqsimlash", `<div id="payment-allocation-section">${paymentAllocationTable(allocationInvoices, payment?.amount || "")}</div>`)}${section("Hujjatlar", `<div class="empty">Moliya hujjatlarini to'lov saqlangandan keyin Hujjatlar bo'limidan yuklash mumkin.</div>`)}<div class="form-footer"><button class="btn" type="button" data-nav="${payment?`/customer-payments/${payment.id}`:"/customer-payments"}">Bekor qilish</button><button class="btn primary">Saqlash</button></div></form></div>`;
 }
 
 function bindPaymentForm(payment = null) {
@@ -399,7 +402,9 @@ function bindPaymentForm(payment = null) {
     if (totalAllocated > amount) return showToast("Jami taqsimlash summasi to'lov summasidan oshmasligi kerak.", true);
     const payload = {
       client_id: clientId,
-      payment_number: field(form, "payment_number"),
+      // Tahrirlashda mavjud raqam yuboriladi; yangi to'lovda maydon bo'sh
+      // bo'ladi va server o'zi beradi.
+      payment_number: field(form, "payment_number") || undefined,
       payment_date: field(form, "payment_date"),
       amount: field(form, "amount"),
       currency: "UZS",

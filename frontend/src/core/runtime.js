@@ -1304,14 +1304,24 @@ function moneyInputField(name, label, value = "", options = {}) {
 
 function fmtMoney(value) {
   if (value === null || value === undefined || value === "") return dash;
+  // Qiymat maydondan ham kelishi mumkin, u yerda esa u guruhlangan matn
+  // bo'ladi: `Number("800 000")` NaN qaytaradi, `Intl` esa NaN ni ru-RU da
+  // «не число» deb yozadi -- to'lov oynasidagi «То'лов суммаси» kartochkasida
+  // aynan shu chiqib turgan edi. Shuning uchun avval xuddi maydon qiymati
+  // kabi tozalanadi.
+  const amount = Number(normalizeNumberInputValue(value));
+  if (!Number.isFinite(amount)) return dash;
   // The currency word is part of the same text node as the digits, so the DOM
   // pass can never reach it -- translate it here, while it is still separate.
-  return `${new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 2 }).format(Number(value))} ${localizeText("so'm")}`;
+  return `${new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 2 }).format(amount)} ${localizeText("so'm")}`;
 }
 
 function fmtQty(value, unit = "") {
   if (value === null || value === undefined || value === "") return dash;
-  const amount = new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 3 }).format(Number(value));
+  // fmtMoney dagi kabi: maydondan kelgan guruhlangan matn ham qabul qilinadi.
+  const parsed = Number(normalizeNumberInputValue(value));
+  if (!Number.isFinite(parsed)) return dash;
+  const amount = new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 3 }).format(parsed);
   if (!unit) return amount;
   // Plain text, never markup. Wrapping the unit in its own element to get it
   // translated meant every caller that assigns to textContent -- the wizard
@@ -1763,10 +1773,12 @@ function workflowTabs(active, items, attr) {
 const SEARCH_DEBOUNCE_MS = 220;
 
 function initTopSearch() {
-  const holder = document.querySelector("#top-search");
+  const trigger = document.querySelector("#top-search-trigger");
+  const overlay = document.querySelector("#top-search-overlay");
+  const panel = document.querySelector(".search-panel");
   const input = document.querySelector("#top-search-input");
   const results = document.querySelector("#top-search-results");
-  if (!holder || !input || !results) return;
+  if (!trigger || !overlay || !panel || !input || !results) return;
 
   let timer = null;
   let active = -1;
@@ -1774,6 +1786,18 @@ function initTopSearch() {
   const close = () => {
     results.hidden = true;
     active = -1;
+  };
+
+  const closeOverlay = () => {
+    close();
+    overlay.hidden = true;
+  };
+
+  const openOverlay = () => {
+    overlay.hidden = false;
+    input.focus();
+    input.select();
+    if (input.value.trim().length >= 2) run();
   };
 
   const draw = (groups) => {
@@ -1831,30 +1855,33 @@ function initTopSearch() {
         chosen.click();
       }
     } else if (event.key === "Escape") {
-      close();
-      input.blur();
+      closeOverlay();
     }
   });
 
   results.addEventListener("click", (event) => {
     const item = event.target.closest("[data-search-path]");
     if (!item) return;
-    close();
+    closeOverlay();
     input.value = "";
     navigate(item.dataset.searchPath);
   });
 
-  document.addEventListener("click", (event) => {
-    if (!holder.contains(event.target)) close();
+  trigger.addEventListener("click", openOverlay);
+  // Oyna ortiga bosilsa yopiladi, panel ichiga bosilsa -- yo'q.
+  overlay.addEventListener("mousedown", (event) => {
+    if (!panel.contains(event.target)) closeOverlay();
   });
 
-  // Cmd/Ctrl + K -- qidiruvga o'tish. Brauzerning o'z qidiruvi bilan
+  // Cmd/Ctrl + K -- qidiruv oynasini ochadi. Brauzerning o'z qidiruvi bilan
   // to'qnashmaydi, chunki bu birikma sahifa ichida band emas.
   document.addEventListener("keydown", (event) => {
     if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
       event.preventDefault();
-      input.focus();
-      input.select();
+      if (overlay.hidden) openOverlay();
+      else closeOverlay();
+    } else if (event.key === "Escape" && !overlay.hidden) {
+      closeOverlay();
     }
   });
 }

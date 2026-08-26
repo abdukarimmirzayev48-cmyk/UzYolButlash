@@ -1336,11 +1336,6 @@ async function openOrderChildForm(order, kind, item = {}) {
   });
 }
 
-function generatedPaymentNumber(clientId = "") {
-  const now = new Date();
-  return `CPAY-${now.toISOString().slice(0, 10).replaceAll("-", "")}-${now.toTimeString().slice(0, 8).replaceAll(":", "")}${clientId ? `-${clientId}` : ""}`;
-}
-
 function orderSummaryForModal(order) {
   return detailList([
     ["Buyurtma raqami", order.order_number],
@@ -1660,7 +1655,8 @@ async function openOrderPaymentModal(order, related = {}) {
       try {
         await api("/api/customer-payments", { method: "POST", body: JSON.stringify({
           client_id: order.client_id,
-          payment_number: generatedPaymentNumber(order.client_id),
+          // Raqamni server beradi -- brauzer bazani ko'rmagani uchun
+          // takrorlanmasligini kafolatlay olmaydi.
           payment_date: field(form, "payment_date"),
           amount: field(form, "amount"),
           currency: "UZS",

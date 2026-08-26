@@ -180,6 +180,9 @@ class PaymentBase(BaseModel):
 
 
 class PaymentCreate(PaymentBase):
+    # Bo'sh qoldirilsa raqamni server beradi -- brauzer bazani ko'rmagani uchun
+    # takrorlanmasligini kafolatlay olmaydi.
+    payment_number: str | None = Field(default=None, min_length=1, max_length=128)
     allocations: list[AllocationCreate] = Field(default_factory=list)
     documents: list[FinanceDocumentCreate] = Field(default_factory=list)
     initial_note: FinanceNoteCreate | None = None
