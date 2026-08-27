@@ -24,10 +24,52 @@ function transportRiskChip(readiness) {
   return statusChip({ label: optionLabel(transportRiskLevels, readiness.level), tone: TRANSPORT_RISK_TONES[readiness.level] });
 }
 
-const fuelEntryTypes = [
-  ["added", "Quyildi"],
-  ["consumed", "Sarflandi"],
+// Hodisa turlari. «Quyildi» va «sarflandi» ilgari alohida yoqilg'i
+// daftarida edi; jurnal bitta bo'lgach, ular ham shu ro'yxatga kirdi.
+const transportEventTypes = [
+  ["refuel", "Yoqilg'i quyildi"],
+  ["consumption", "Yoqilg'i sarflandi"],
+  ["fuel_drop", "Keskin tushish"],
+  ["suspected_siphoning", "Slivga shubha"],
+  ["sensor_jump", "Datchik sakradi"],
+  ["idling", "Dvigatel ishlab turdi"],
+  ["route_deviation", "Yo'nalishdan chetlashish"],
+  ["unapproved_stop", "Kelishilmagan to'xtash"],
+  ["other", "Boshqa"],
 ];
+
+const transportEventCheckResults = [
+  ["not_checked", "Tekshirilmagan"],
+  ["normal", "Tekshirildi — normal"],
+  ["needs_explanation", "Tushuntirish kerak"],
+  ["violation_confirmed", "Buzilish tasdiqlandi"],
+];
+
+const transportEventStatuses = [
+  ["open", "Ochiq"],
+  ["in_review", "Tekshiruvda"],
+  ["closed", "Yopilgan"],
+  ["cancelled", "Bekor qilindi"],
+];
+
+const TRANSPORT_EVENT_TONES = {
+  refuel: "success",
+  consumption: "muted",
+  fuel_drop: "warning",
+  suspected_siphoning: "danger",
+  sensor_jump: "warning",
+  idling: "muted",
+  route_deviation: "warning",
+  unapproved_stop: "warning",
+  other: "muted",
+};
+
+const TRANSPORT_CHECK_TONES = {
+  not_checked: "warning",
+  normal: "success",
+  needs_explanation: "warning",
+  violation_confirmed: "danger",
+};
 
 const transportCheckInKinds = [
   ["report", "Hisobot"],
@@ -201,7 +243,7 @@ async function renderTransportsList() {
   app.innerHTML = opsListPage({
     className: "transports-ops-page",
     title: "Transportlar",
-    tabs: [{ label: "Partiyalar", path: "/delivery-batches" }, { label: "Logistika", path: "/logistics" }, { label: "Transportlar", active: true }, { label: "Monitoring", path: "/transports/monitoring" }],
+    tabs: [{ label: "Partiyalar", path: "/delivery-batches" }, { label: "Logistika", path: "/logistics" }, { label: "Transportlar", active: true }, { label: "Hodisalar", path: "/transport-events" }, { label: "Monitoring", path: "/transports/monitoring" }],
     clearPath: "/transports",
     counter: `${fmt(data.total)} ta transport · ${fmt(freeCount)} ta bo'sh · ${fmt(riskCount)} tasida hujjat muddati`,
     formId: "transport-search-form",
@@ -248,63 +290,165 @@ async function renderEditTransport(id) {
   bindTransportForm(item);
 }
 
-function fuelLogModal(transportId, log, onSaved) {
-  document.querySelector("#fuel-log-modal-backdrop")?.remove();
+// Hodisa oynasi ikki qismga bo'lingan: yuqorisi -- nima bo'lgani, pastki
+// qismi -- tekshiruv izi. Ikkovi bir uyumda tursa, yozuvni kim va qachon
+// yopganini ko'rish qiyin bo'ladi.
+function transportEventModal(event, defaults, onSaved) {
+  document.querySelector("#event-modal-backdrop")?.remove();
   const backdrop = document.createElement("div");
-  backdrop.id = "fuel-log-modal-backdrop";
+  backdrop.id = "event-modal-backdrop";
   backdrop.className = "modal-backdrop";
+  const value = (name, fallback = "") => event?.[name] ?? defaults?.[name] ?? fallback;
   backdrop.innerHTML = `
-    <div class="modal-panel" style="max-width:480px">
+    <div class="modal-panel wide">
       <div class="modal-header">
-        <h2>${log ? "Yozuvni tahrirlash" : "Yoqilg'i yozuvi qo'shish"}</h2>
+        <h2>${event ? "Hodisani tahrirlash" : "Hodisa qo'shish"}</h2>
         <button class="modal-close" type="button" aria-label="Yopish">&#x2715;</button>
       </div>
-      <form id="fuel-log-form">
+      <form id="transport-event-form">
         <div class="modal-body">
-          ${textField("entry_date", "Sana", log?.entry_date || todayIso(), "date", { required: true })}
-          ${selectField("entry_type", "Turi", fuelEntryTypes, log?.entry_type || "added")}
-          ${textField("amount_liters", "Miqdori (litr)", log?.amount_liters ?? "", "number", { required: true, step: "0.01", min: "0.01" })}
-          ${textField("cost_amount", "Narxi (so'm)", log?.cost_amount ?? "", "number", { step: "0.01", min: "0" })}
-          ${textArea("note", "Izoh", log?.note ?? "")}
+          <h3>Hodisa</h3>
+          <div class="grid">
+            ${textField("occurred_at", "Sana va vaqt", String(value("occurred_at", "")).slice(0, 16), "datetime-local", { required: true })}
+            ${selectField("event_type", "Turi", transportEventTypes, value("event_type", "refuel"))}
+            ${textField("source", "Sabab / signal manbasi", value("source"))}
+            ${textField("location", "Joyi", value("location"))}
+            ${textField("gps_coordinates", "GPS koordinatasi", value("gps_coordinates"))}
+            ${textField("odometer_km", "Odometr (km)", value("odometer_km"), "number")}
+            ${textField("speed_kmh", "Tezlik (km/soat)", value("speed_kmh"), "number")}
+            ${selectField("engine_running", "Dvigatel", [["", "Noma'lum"], ["1", "Ishlayapti"], ["0", "O'chirilgan"]], value("engine_running") === true ? "1" : value("engine_running") === false ? "0" : "")}
+          </div>
+          <h3>Yoqilg'i</h3>
+          <div class="grid">
+            ${textField("fuel_before_liters", "Bakda: oldin (l)", value("fuel_before_liters"), "number")}
+            ${textField("fuel_after_liters", "Bakda: keyin (l)", value("fuel_after_liters"), "number")}
+            ${textField("amount_liters", "Miqdori (l)", value("amount_liters"), "number")}
+            ${textField("possible_loss_liters", "Ehtimoliy yo'qotish (l)", value("possible_loss_liters"), "number")}
+            ${textField("confirmed_consumption_liters", "Tasdiqlangan sarf (l)", value("confirmed_consumption_liters"), "number")}
+            ${textField("cost_amount", "Narxi", value("cost_amount"), "number")}
+            ${textField("document_reference", "Hujjat / chek", value("document_reference"))}
+          </div>
+          <p class="form-hint">Bak ko'rsatkichlari kiritilsa, miqdor shulardan hisoblanadi.</p>
+          <h3>Tekshiruv</h3>
+          <div class="grid">
+            ${selectField("check_result", "Tekshiruv natijasi", transportEventCheckResults, value("check_result", "not_checked"))}
+            ${textField("checked_by", "Kim tekshirdi", value("checked_by"))}
+            ${selectField("status", "Holati", transportEventStatuses, value("status", "open"))}
+            ${textField("approved_by", "Kim kelishdi", value("approved_by"))}
+            ${textField("damage_amount", "Zarar / undirish summasi", value("damage_amount"), "number")}
+            ${textField("evidence_url", "Dalil havolasi", value("evidence_url"))}
+          </div>
+          ${textArea("driver_explanation", "Haydovchi tushuntirishi", value("driver_explanation"))}
+          ${textArea("decision", "Qaror", value("decision"))}
+          ${textArea("note", "Izoh", value("note"))}
         </div>
         <div class="modal-footer">
           <button type="button" class="btn modal-cancel">Bekor qilish</button>
           <button type="submit" class="btn primary">Saqlash</button>
         </div>
       </form>
-    </div>
-  `;
+    </div>`;
   document.body.appendChild(backdrop);
+  // Oyna `document.body` ga qo'shiladi, kuzatuvchi esa faqat `#app` ni
+  // kuzatadi -- shuning uchun tarjima qo'lda chaqiriladi.
+  localizeDom(backdrop);
   const close = () => backdrop.remove();
   backdrop.querySelector(".modal-close").addEventListener("click", close);
   backdrop.querySelector(".modal-cancel").addEventListener("click", close);
   backdrop.addEventListener("click", (e) => { if (e.target === backdrop) close(); });
 
-  backdrop.querySelector("#fuel-log-form").addEventListener("submit", async (e) => {
+  backdrop.querySelector("#transport-event-form").addEventListener("submit", async (e) => {
     e.preventDefault();
     const form = e.currentTarget;
+    const engine = field(form, "engine_running");
     const payload = {
-      entry_date: field(form, "entry_date"),
-      entry_type: field(form, "entry_type"),
+      occurred_at: field(form, "occurred_at"),
+      event_type: field(form, "event_type"),
+      source: field(form, "source"),
+      location: field(form, "location"),
+      gps_coordinates: field(form, "gps_coordinates"),
+      odometer_km: field(form, "odometer_km"),
+      speed_kmh: field(form, "speed_kmh"),
+      engine_running: engine === null ? null : engine === "1",
+      fuel_before_liters: field(form, "fuel_before_liters"),
+      fuel_after_liters: field(form, "fuel_after_liters"),
       amount_liters: field(form, "amount_liters"),
-      cost_amount: field(form, "cost_amount") || null,
+      possible_loss_liters: field(form, "possible_loss_liters"),
+      confirmed_consumption_liters: field(form, "confirmed_consumption_liters"),
+      cost_amount: field(form, "cost_amount"),
+      document_reference: field(form, "document_reference"),
+      evidence_url: field(form, "evidence_url"),
+      approved_by: field(form, "approved_by"),
+      driver_explanation: field(form, "driver_explanation"),
+      check_result: field(form, "check_result"),
+      checked_by: field(form, "checked_by"),
+      decision: field(form, "decision"),
+      damage_amount: field(form, "damage_amount"),
+      status: field(form, "status"),
       note: field(form, "note"),
     };
-    if (!payload.entry_date || !payload.amount_liters) { showToast("Sana va miqdor kiritilishi shart.", true); return; }
     try {
-      if (log) {
-        await api(`/api/transports/${transportId}/fuel-logs/${log.id}`, { method: "PATCH", body: JSON.stringify(payload) });
-        showToast("Yozuv yangilandi.");
+      if (event) {
+        await api(`/api/transports/events/${event.id}`, { method: "PATCH", body: JSON.stringify(payload) });
       } else {
-        await api(`/api/transports/${transportId}/fuel-logs`, { method: "POST", body: JSON.stringify(payload) });
-        showToast("Yozuv qo'shildi.");
+        await api("/api/transports/events", { method: "POST", body: JSON.stringify({ ...payload, transport_id: Number(defaults.transport_id) }) });
       }
+      showToast("Hodisa saqlandi.");
       close();
       await onSaved();
     } catch (error) {
       showToast(error.message, true);
     }
   });
+}
+
+function transportEventRow(event, { showVehicle = false, editable = false } = {}) {
+  const liters = event.fuel_before_liters != null && event.fuel_after_liters != null
+    ? Math.abs(numberValue(event.fuel_after_liters) - numberValue(event.fuel_before_liters))
+    : event.amount_liters;
+  return `<tr>
+    <td><button class="ops-primary-link" data-open-event="${event.id}">${fmt(event.event_number)}</button></td>
+    <td>${fmtDate(event.occurred_at)}</td>
+    ${showVehicle ? `<td>${fmt(event.transport?.vehicle_number)}</td>` : ""}
+    <td>${statusChip({ label: optionLabel(transportEventTypes, event.event_type), tone: TRANSPORT_EVENT_TONES[event.event_type] })}</td>
+    <td>${fmt(event.source || event.location)}</td>
+    <td class="ops-money">${liters != null ? fmtQty(liters, "litr") : dash}</td>
+    <td class="ops-money">${event.possible_loss_liters != null ? fmtQty(event.possible_loss_liters, "litr") : dash}</td>
+    <td>${fmt(event.logistics_number)}</td>
+    <td>${statusChip({ label: optionLabel(transportEventCheckResults, event.check_result), tone: TRANSPORT_CHECK_TONES[event.check_result] })}</td>
+    <td class="ops-money">${event.damage_amount != null ? fmtMoney(event.damage_amount) : dash}</td>
+    <td>${statusBadge(event.status)}</td>
+    ${editable ? `<td><div class="ops-row-actions"><button class="link-btn" data-open-event="${event.id}">Ochish</button><button class="link-btn" data-delete-event="${event.id}">O'chirish</button></div></td>` : ""}
+  </tr>`;
+}
+
+function transportEventSummaryCards(summary) {
+  return summaryCards([
+    ["Hodisalar", `<span>${fmt(summary.total)}</span> <span>ta</span>`],
+    ["Ochiq", `<span>${fmt(summary.open_count)}</span> <span>ta</span>`, summary.open_count ? "warning" : ""],
+    ["Tekshirilmagan", `<span>${fmt(summary.not_checked_count)}</span> <span>ta</span>`, summary.not_checked_count ? "warning" : ""],
+    ["Quyilgan", fmtQty(summary.refuelled_liters, "litr")],
+    ["Ehtimoliy yo'qotish", fmtQty(summary.possible_loss_liters, "litr"), numberValue(summary.possible_loss_liters) > 0 ? "danger" : ""],
+    ["Undirilgan zarar", fmtMoney(summary.damage_amount)],
+  ]);
+}
+
+function bindTransportEventActions(events, rerender, editable) {
+  document.querySelectorAll("[data-open-event]").forEach((button) => button.addEventListener("click", () => {
+    const event = events.find((item) => item.id === Number(button.dataset.openEvent));
+    if (event) transportEventModal(event, null, rerender);
+  }));
+  if (!editable) return;
+  document.querySelectorAll("[data-delete-event]").forEach((button) => button.addEventListener("click", async () => {
+    if (!confirmMsg("Ushbu hodisani o'chirishni tasdiqlaysizmi?")) return;
+    try {
+      await api(`/api/transports/events/${button.dataset.deleteEvent}`, { method: "DELETE" });
+      showToast("Hodisa o'chirildi.");
+      rerender();
+    } catch (error) {
+      showToast(error.message, true);
+    }
+  }));
 }
 
 function transportCheckInRowHtml(checkin) {
@@ -327,42 +471,35 @@ function transportCheckInRowHtml(checkin) {
 
 async function renderTransportFuelLog(id) {
   app.innerHTML = `<div class="page"><div class="empty">Yuklanmoqda...</div></div>`;
-  const [transport, summary, checkins] = await Promise.all([
+  const [transport, events, summary, checkins] = await Promise.all([
     api(`/api/transports/${id}`),
-    api(`/api/transports/${id}/fuel-logs`),
+    api(`/api/transports/events?transport_id=${id}&page_size=200`),
+    api(`/api/transports/events/summary?transport_id=${id}`),
     api(`/api/transports/${id}/checkins?page_size=50`),
   ]);
   const editable = canEdit("yetkazib_berish");
-  const headerActions = editable ? [{ label: "Yozuv qo'shish", modal: "add-fuel-log", primary: true }] : [];
+  const headerActions = editable ? [{ label: "Hodisa qo'shish", modal: "add-event", primary: true }] : [];
   if (editable && transport.driver_employee_id) headerActions.push({ label: "Hisobot so'rash", modal: "request-checkin" });
+  const rerender = () => renderTransportFuelLog(id);
 
   app.innerHTML = `<div class="page">
     ${workflowHeader({
-      title: `${transport.vehicle_number} — Yoqilg'i nazorati`,
-      subtitle: fmt(transport.driver_name),
+      // Sarlavha -- ma'lumot, ya'ni davlat raqami. Unga jumla qo'shilsa,
+      // butun matn lug'atga tushmaydigan yangi satr bo'lib qoladi.
+      title: transport.vehicle_number,
+      subtitle: subtitleLine([{ value: "Yoqilg'i va hodisalar" }, { value: transport.driver_name, raw: true }]),
       backPath: `/transports/${id}/edit`,
       actions: headerActions,
     })}
-    ${summaryCards([
-      ["Jami quyilgan", `${fmtQty(summary.total_added_liters)} litr`],
-      ["Jami sarflangan", `${fmtQty(summary.total_consumed_liters)} litr`],
-      ["Qoldiq", `${fmtQty(summary.balance_liters)} litr`, numberValue(summary.balance_liters) < 0 ? "danger" : ""],
-      ["Jami xarajat", fmtMoney(summary.total_cost_amount)],
-    ])}
-    ${section("Yoqilg'i yozuvlari", opsTableOrEmpty(
-      summary.logs,
-      ["Sana", "Turi", "Miqdori (litr)", "Narxi", "Izoh", editable ? "Amallar" : ""],
-      (log) => `<tr>
-        <td>${fmt(log.entry_date)}</td>
-        <td>${statusChip({ label: optionLabel(fuelEntryTypes, log.entry_type), tone: log.entry_type === "added" ? "success" : "warning" })}</td>
-        <td>${fmtQty(log.amount_liters)}</td>
-        <td>${log.cost_amount != null ? fmtMoney(log.cost_amount) : dash}</td>
-        <td>${fmt(log.note)}</td>
-        <td>${editable ? `<div class="table-actions"><button class="link-btn" data-edit-fuel-log="${log.id}">Tahrirlash</button><button class="link-btn" data-delete-fuel-log="${log.id}">O'chirish</button></div>` : ""}</td>
-      </tr>`,
-      "Yoqilg'i yozuvlari hali yo'q."
+    ${transportEventSummaryCards(summary)}
+    ${workflowWarningsPanel(summary.warnings || [])}
+    ${section("Hodisalar jurnali", opsTableOrEmpty(
+      events.items,
+      ["Hodisa", "Sana", "Turi", "Sabab / joyi", "Miqdor", "Yo'qotish", "Reys", "Tekshiruv", "Zarar", "Holati", editable ? "Amallar" : ""],
+      (event) => transportEventRow(event, { editable }),
+      "Hodisalar hali yozilmagan."
     ))}
-    ${section("Telegram hisobotlari (haydovchi)", opsTableOrEmpty(
+    ${section("Haydovchi hisobotlari", opsTableOrEmpty(
       checkins.items,
       ["Sana", "Turi", "Haydovchi", "Spidometr", "Yoqilg'i", "Fayllar", "Izoh"],
       transportCheckInRowHtml,
@@ -370,9 +507,8 @@ async function renderTransportFuelLog(id) {
     ))}
   </div>`;
 
-  const rerender = () => renderTransportFuelLog(id);
-
-  document.querySelector("[data-add-fuel-log]")?.addEventListener("click", () => fuelLogModal(id, null, rerender));
+  document.querySelector("[data-add-event]")?.addEventListener("click", () =>
+    transportEventModal(null, { transport_id: id, occurred_at: new Date().toISOString().slice(0, 16) }, rerender));
   document.querySelector("[data-request-checkin]")?.addEventListener("click", async () => {
     try {
       await api(`/api/transports/${id}/checkin-request`, { method: "POST" });
@@ -381,20 +517,55 @@ async function renderTransportFuelLog(id) {
       showToast(error.message, true);
     }
   });
-  document.querySelectorAll("[data-edit-fuel-log]").forEach((button) => button.addEventListener("click", () => {
-    const log = summary.logs.find((item) => item.id === Number(button.dataset.editFuelLog));
-    fuelLogModal(id, log, rerender);
-  }));
-  document.querySelectorAll("[data-delete-fuel-log]").forEach((button) => button.addEventListener("click", async () => {
-    if (!confirmMsg("Ushbu yoqilg'i yozuvini o'chirishni tasdiqlaysizmi?")) return;
-    try {
-      await api(`/api/transports/${id}/fuel-logs/${button.dataset.deleteFuelLog}`, { method: "DELETE" });
-      showToast("Yozuv o'chirildi.");
-      rerender();
-    } catch (error) {
-      showToast(error.message, true);
-    }
-  }));
+  bindTransportEventActions(events.items, rerender, editable);
+}
+
+// Butun park bo'yicha jurnal. Nazorat aynan shu ro'yxatdan boshlanadi:
+// tekshirilmagan hodisa qaysi mashinada ekani emas, umuman qanchasi
+// qolgani muhim.
+async function renderTransportEvents() {
+  const params = new URLSearchParams(location.search);
+  const [data, summary, transports] = await Promise.all([
+    api(`/api/transports/events?${params.toString()}`),
+    // Xulosa ro'yxat bilan bir xil filtrlanadi -- bir sahifada ikki xil
+    // raqam turmasin.
+    api(`/api/transports/events/summary?${params.toString()}`),
+    api("/api/transports?page_size=200"),
+  ]);
+  const editable = canEdit("yetkazib_berish");
+  const rerender = () => renderTransportEvents();
+  const vehicleOptions = transports.items
+    .map((item) => `<option value="${item.id}" ${params.get("transport_id") === String(item.id) ? "selected" : ""}>${esc(item.vehicle_number)}</option>`)
+    .join("");
+
+  app.innerHTML = opsListPage({
+    className: "transport-events-ops-page",
+    title: "Yoqilg'i va hodisalar",
+    tabs: [
+      { label: "Partiyalar", path: "/delivery-batches" },
+      { label: "Logistika", path: "/logistics" },
+      { label: "Transportlar", path: "/transports" },
+      { label: "Hodisalar", active: true },
+      { label: "Monitoring", path: "/transports/monitoring" },
+    ],
+    clearPath: "/transport-events",
+    counter: `${fmt(data.total)} ta hodisa · ${fmt(summary.not_checked_count)} tasi tekshirilmagan`,
+    formId: "transport-event-search-form",
+    filters: `${opsFilterField("Qidirish", `<input name="search" placeholder="Hodisa, mashina, joy" value="${esc(params.get("search") || "")}" />`)}${
+      opsFilterField("Mashina", `<select name="transport_id"><option value="">Barchasi</option>${vehicleOptions}</select>`)}${
+      opsFilterField("Turi", `<select name="event_type"><option value="">Barchasi</option>${transportEventTypes.map(([key, label]) => `<option value="${key}" ${params.get("event_type") === key ? "selected" : ""}>${label}</option>`).join("")}</select>`)}${
+      opsFilterField("Tekshiruv", `<select name="check_result"><option value="">Barchasi</option>${transportEventCheckResults.map(([key, label]) => `<option value="${key}" ${params.get("check_result") === key ? "selected" : ""}>${label}</option>`).join("")}</select>`)}${
+      opsFilterField("Holati", `<select name="status"><option value="">Barchasi</option>${transportEventStatuses.map(([key, label]) => `<option value="${key}" ${params.get("status") === key ? "selected" : ""}>${label}</option>`).join("")}</select>`)}`,
+    headers: ["Hodisa", "Sana", "Mashina", "Turi", "Sabab / joyi", "Miqdor", "Yo'qotish", "Reys", "Tekshiruv", "Zarar", "Holati", editable ? "Amallar" : ""],
+    rows: data.items.map((event) => transportEventRow(event, { showVehicle: true, editable })).join(""),
+    emptyText: "Hodisalar topilmadi.",
+    colspan: editable ? 12 : 11,
+    footer: opsFooter(data, "transportevent"),
+  });
+  app.querySelector(".page")?.insertAdjacentHTML("afterbegin", `${transportEventSummaryCards(summary)}${workflowWarningsPanel(summary.warnings || [])}`);
+  bindOpsSearch("transport-event-search-form", "/transport-events", ["search", "transport_id", "event_type", "check_result", "status"]);
+  bindOpsPagination("transportevent", "/transport-events");
+  bindTransportEventActions(data.items, rerender, editable);
 }
 
 async function renderTransportMonitoring() {
@@ -403,7 +574,7 @@ async function renderTransportMonitoring() {
   const s = data.summary;
   app.innerHTML = opsPageShell(
     "Transport monitoring",
-    [{ label: "Partiyalar", path: "/delivery-batches" }, { label: "Logistika", path: "/logistics" }, { label: "Transportlar", path: "/transports" }, { label: "Monitoring", active: true }],
+    [{ label: "Partiyalar", path: "/delivery-batches" }, { label: "Logistika", path: "/logistics" }, { label: "Transportlar", path: "/transports" }, { label: "Hodisalar", path: "/transport-events" }, { label: "Monitoring", active: true }],
     `${summaryCards([
       ["Jami avtomashina", `${fmt(s.total)}ta`],
       ["Ish holatida", `${fmt(s.working)}ta`],

@@ -1172,7 +1172,7 @@ async function renderDeliveryBatchesList() {
   app.innerHTML = opsListPage({
     className: "batches-ops-page",
     title: "Partiyalar",
-    tabs: [{ label: "Buyurtmalar", path: "/orders" }, { label: "Partiyalar", active: true }, { label: "Logistika", path: "/logistics" }, { label: "Transportlar", path: "/transports" }],
+    tabs: [{ label: "Buyurtmalar", path: "/orders" }, { label: "Partiyalar", active: true }, { label: "Logistika", path: "/logistics" }, { label: "Transportlar", path: "/transports" }, { label: "Hodisalar", path: "/transport-events" }],
     createPath: editable ? "/delivery-batches/new" : undefined,
     clearPath: "/delivery-batches",
     counter: `${fmt(data.total)} ta partiya`,
@@ -1918,7 +1918,7 @@ async function renderLogisticsList() {
   app.innerHTML = opsListPage({
     className: "logistics-ops-page",
     title: "Logistika",
-    tabs: [{ label: "Partiyalar", path: "/delivery-batches" }, { label: "Logistika", active: true }, { label: "Transportlar", path: "/transports" }],
+    tabs: [{ label: "Partiyalar", path: "/delivery-batches" }, { label: "Logistika", active: true }, { label: "Transportlar", path: "/transports" }, { label: "Hodisalar", path: "/transport-events" }],
     clearPath: "/logistics",
     counter: `${fmt(data.total)} ta logistika yozuvi · ${fmt(unlinkedCount)} tasiga mashina biriktirilmagan`,
     formId: "logistics-search-form",

@@ -68,7 +68,7 @@ from backend.app.models.inventory import (
     StockLot,
     StockMovement,
 )
-from backend.app.models.transport import Transport, TransportCheckIn, TransportFuelLog
+from backend.app.models.transport import Transport, TransportCheckIn, TransportEvent
 from backend.app.models.product import Product, ProductCategory
 from backend.app.models.customer_request import (
     CompanyRegistry,
@@ -139,7 +139,7 @@ __all__ = [
     "StockMovement",
     "Transport",
     "TransportCheckIn",
-    "TransportFuelLog",
+    "TransportEvent",
     "Product",
     "ProductCategory",
     "CompanyRegistry",

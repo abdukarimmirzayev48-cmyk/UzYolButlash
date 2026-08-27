@@ -4,23 +4,23 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy import func, or_, select
-from sqlalchemy.orm import Session, selectinload
+from sqlalchemy.orm import Session, object_session, selectinload
 
 from backend.app.db.session import get_db
 from backend.app.models.attendance import Employee
 from backend.app.models.delivery import DeliveryBatch, Logistics, LogisticsStatus
-from backend.app.models.transport import UNAVAILABLE_STATUSES, FuelEntryType, Transport, TransportCheckIn, TransportFuelLog, TransportStatus
+from backend.app.models.transport import UNAVAILABLE_STATUSES, Transport, TransportCheckIn, TransportEvent, TransportStatus
 from backend.app.schemas.client import Page
-from backend.app.services import logistics_timeline, transport_readiness, transport_usage
+from backend.app.services import logistics_timeline, transport_events, transport_readiness, transport_usage
 from backend.app.services.auth import require_edit
 from backend.app.services.telegram_bot import request_checkin
 from backend.app.schemas.transport import (
     TransportTrip,
     TransportUsage,
-    FuelLogCreate,
-    FuelLogRead,
-    FuelLogSummary,
-    FuelLogUpdate,
+    TransportEventCreate,
+    TransportEventRead,
+    TransportEventSummary,
+    TransportEventUpdate,
     TransportCheckInRead,
     TransportCreate,
     TransportRead,
@@ -309,6 +309,151 @@ def create_transport(payload: TransportCreate, db: Session = Depends(get_db)):
     return with_readiness(transport, None)
 
 
+def get_event_or_404(db: Session, event_id: int) -> TransportEvent:
+    event = db.get(TransportEvent, event_id)
+    if not event:
+        raise HTTPException(status_code=404, detail="Hodisa topilmadi.")
+    return event
+
+
+def event_read(event: TransportEvent) -> TransportEventRead:
+    result = TransportEventRead.model_validate(event)
+    logistics_number = None
+    if event.logistics_id:
+        logistics_number = db_logistics_number(event)
+    return result.model_copy(update={"logistics_number": logistics_number})
+
+
+def db_logistics_number(event: TransportEvent) -> str | None:
+    """Reys raqami hodisada saqlanmaydi, bog'lanish orqali o'qiladi."""
+    from backend.app.models.delivery import Logistics
+
+    session = object_session(event)
+    if session is None:
+        return None
+    logistics = session.get(Logistics, event.logistics_id)
+    return logistics.logistics_number if logistics else None
+
+
+def assign_event_number(db: Session, event: TransportEvent) -> None:
+    if event.event_number:
+        return
+    day = event.occurred_at.date()
+    prefix = f"EV-{day.strftime('%Y%m%d')}"
+    taken = set(db.scalars(select(TransportEvent.event_number).where(TransportEvent.event_number.like(f"{prefix}%"))).all())
+    event.event_number = transport_events.next_event_number(taken, day)
+
+
+def event_filters(
+    search: str | None,
+    transport_id: int | None,
+    event_type: str | None,
+    check_result: str | None,
+    status_filter: str | None,
+):
+    """Ro'yxat va xulosa aynan bir xil filtrlangan bo'lishi kerak.
+
+    Aks holda ekranda «1 ta hodisa» yozilib turadi, kartochkada esa «7 tasi
+    tekshirilmagan» -- ikkovi bir sahifada, bir-biriga zid.
+    """
+    stmt = select(TransportEvent)
+    if transport_id:
+        stmt = stmt.where(TransportEvent.transport_id == transport_id)
+    if event_type:
+        stmt = stmt.where(TransportEvent.event_type == event_type)
+    if check_result:
+        stmt = stmt.where(TransportEvent.check_result == check_result)
+    if status_filter:
+        stmt = stmt.where(TransportEvent.status == status_filter)
+    if search:
+        value = f"%{search}%"
+        stmt = stmt.join(Transport).where(
+            or_(
+                TransportEvent.event_number.ilike(value),
+                TransportEvent.source.ilike(value),
+                TransportEvent.location.ilike(value),
+                TransportEvent.note.ilike(value),
+                Transport.vehicle_number.ilike(value),
+            )
+        )
+    return stmt
+
+
+@router.get("/events", response_model=Page[TransportEventRead])
+def list_all_events(
+    db: Session = Depends(get_db),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=1, le=200),
+    search: str | None = None,
+    transport_id: int | None = None,
+    event_type: str | None = None,
+    check_result: str | None = None,
+    status_filter: str | None = Query(default=None, alias="status"),
+):
+    """Butun park bo'yicha hodisalar jurnali.
+
+    Har bir mashinaning o'z sahifasi ham bor, lekin nazorat aynan shu
+    ro'yxatdan boshlanadi: tekshirilmagan hodisa qaysi mashinada ekani emas,
+    umuman qanchasi qolgani muhim.
+    """
+    stmt = event_filters(search, transport_id, event_type, check_result, status_filter).options(
+        selectinload(TransportEvent.transport)
+    )
+    total = db.scalar(select(func.count()).select_from(stmt.subquery())) or 0
+    rows = db.scalars(
+        stmt.order_by(TransportEvent.occurred_at.desc(), TransportEvent.id.desc())
+        .offset((page - 1) * page_size)
+        .limit(page_size)
+    ).unique()
+    return Page(items=[event_read(row) for row in rows], total=total, page=page, page_size=page_size)
+
+
+@router.get("/events/summary", response_model=TransportEventSummary)
+def events_summary(
+    db: Session = Depends(get_db),
+    search: str | None = None,
+    transport_id: int | None = None,
+    event_type: str | None = None,
+    check_result: str | None = None,
+    status_filter: str | None = Query(default=None, alias="status"),
+):
+    stmt = event_filters(search, transport_id, event_type, check_result, status_filter)
+    events = list(db.scalars(stmt).unique())
+    return TransportEventSummary(**transport_events.build_summary(events).__dict__)
+
+
+@router.post("/events", response_model=TransportEventRead, status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_edit("yetkazib_berish"))])
+def create_event(payload: TransportEventCreate, db: Session = Depends(get_db)):
+    get_transport_or_404(db, payload.transport_id)
+    event = TransportEvent(**payload.model_dump())
+    assign_event_number(db, event)
+    db.add(event)
+    db.commit()
+    db.refresh(event)
+    return event_read(event)
+
+
+@router.get("/events/{event_id}", response_model=TransportEventRead)
+def get_event(event_id: int, db: Session = Depends(get_db)):
+    return event_read(get_event_or_404(db, event_id))
+
+
+@router.patch("/events/{event_id}", response_model=TransportEventRead, dependencies=[Depends(require_edit("yetkazib_berish"))])
+def update_event(event_id: int, payload: TransportEventUpdate, db: Session = Depends(get_db)):
+    event = get_event_or_404(db, event_id)
+    update_model(event, payload.model_dump(exclude_unset=True))
+    db.commit()
+    db.refresh(event)
+    return event_read(event)
+
+
+@router.delete("/events/{event_id}", status_code=status.HTTP_204_NO_CONTENT, dependencies=[Depends(require_edit("yetkazib_berish"))])
+def delete_event(event_id: int, db: Session = Depends(get_db)):
+    db.delete(get_event_or_404(db, event_id))
+    db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
 @router.get("/{transport_id}", response_model=TransportRead)
 def get_transport(transport_id: int, db: Session = Depends(get_db)):
     transport = get_transport_or_404(db, transport_id)
@@ -335,60 +480,6 @@ def update_transport(transport_id: int, payload: TransportUpdate, db: Session = 
 def delete_transport(transport_id: int, db: Session = Depends(get_db)):
     transport = get_transport_or_404(db, transport_id)
     db.delete(transport)
-    db.commit()
-    return Response(status_code=status.HTTP_204_NO_CONTENT)
-
-
-def get_fuel_log_or_404(db: Session, transport_id: int, log_id: int) -> TransportFuelLog:
-    log = db.get(TransportFuelLog, log_id)
-    if not log or log.transport_id != transport_id:
-        raise HTTPException(status_code=404, detail="Yoqilg'i yozuvi topilmadi.")
-    return log
-
-
-@router.get("/{transport_id}/fuel-logs", response_model=FuelLogSummary)
-def list_fuel_logs(transport_id: int, db: Session = Depends(get_db)):
-    get_transport_or_404(db, transport_id)
-    logs = db.scalars(
-        select(TransportFuelLog)
-        .where(TransportFuelLog.transport_id == transport_id)
-        .order_by(TransportFuelLog.entry_date.desc(), TransportFuelLog.id.desc())
-    ).all()
-    total_added = sum((log.amount_liters for log in logs if log.entry_type == FuelEntryType.added), Decimal("0"))
-    total_consumed = sum((log.amount_liters for log in logs if log.entry_type == FuelEntryType.consumed), Decimal("0"))
-    total_cost = sum((log.cost_amount or Decimal("0") for log in logs), Decimal("0"))
-    return FuelLogSummary(
-        total_added_liters=total_added,
-        total_consumed_liters=total_consumed,
-        balance_liters=total_added - total_consumed,
-        total_cost_amount=total_cost,
-        logs=logs,
-    )
-
-
-@router.post("/{transport_id}/fuel-logs", response_model=FuelLogRead, status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_edit("yetkazib_berish"))])
-def create_fuel_log(transport_id: int, payload: FuelLogCreate, db: Session = Depends(get_db)):
-    get_transport_or_404(db, transport_id)
-    log = TransportFuelLog(transport_id=transport_id, **payload.model_dump())
-    db.add(log)
-    db.commit()
-    db.refresh(log)
-    return log
-
-
-@router.patch("/{transport_id}/fuel-logs/{log_id}", response_model=FuelLogRead, dependencies=[Depends(require_edit("yetkazib_berish"))])
-def update_fuel_log(transport_id: int, log_id: int, payload: FuelLogUpdate, db: Session = Depends(get_db)):
-    log = get_fuel_log_or_404(db, transport_id, log_id)
-    update_model(log, payload.model_dump(exclude_unset=True))
-    db.commit()
-    db.refresh(log)
-    return log
-
-
-@router.delete("/{transport_id}/fuel-logs/{log_id}", status_code=status.HTTP_204_NO_CONTENT, dependencies=[Depends(require_edit("yetkazib_berish"))])
-def delete_fuel_log(transport_id: int, log_id: int, db: Session = Depends(get_db)):
-    log = get_fuel_log_or_404(db, transport_id, log_id)
-    db.delete(log)
     db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 

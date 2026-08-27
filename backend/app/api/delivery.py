@@ -32,13 +32,13 @@ from backend.app.models.inventory import StockAllocation
 from backend.app.models.user import User
 from backend.app.models.order import Order, OrderItem
 from backend.app.models.procurement import SupplierAddress, SupplierAddressType
-from backend.app.models.transport import Transport
+from backend.app.models.transport import Transport, TransportEvent, TransportEventCheckResult, TransportEventType
 from backend.app.services import delivery_stats
 from backend.app.services.auth import get_current_user, require_edit
 from backend.app.services.order_status import sync_order_status
 from backend.app.services.telegram_bot import notify_driver_of_trip
 from backend.app.services.product_summary import product_summary
-from backend.app.services import batch_difference, batch_transport_check, logistics_fuel, logistics_timeline
+from backend.app.services import batch_difference, batch_transport_check, logistics_fuel, logistics_timeline, transport_events
 from backend.app.schemas.client import Page
 from backend.app.schemas.delivery import (
     DeliveryBatchAcceptanceConfirm,
@@ -241,6 +241,50 @@ def sync_fuel_and_distance(logistics: Logistics) -> None:
         logistics.distance_km = position.odometer_distance_km
 
 
+def open_siphoning_event(db: Session, logistics: Logistics) -> None:
+    """Reys hisobi ortiqcha sarf topsa, hodisalar jurnalida yozuv ochiladi.
+
+    Raqamni tizim topadi, javobni odam beradi. Uni operator qo'lda qayta
+    yozishini kutish -- eng ishonchsiz joy: hisob ekranda ko'rinib turadi,
+    lekin hech qayerda qolmaydi va bir haftadan keyin uni hech kim eslay
+    olmaydi.
+
+    Bitta reysga bitta hodisa: takroriy saqlash yangi yozuv ochmaydi,
+    faqat miqdorni yangilaydi -- va faqat odam hali tegmagan bo'lsa.
+    """
+    if not logistics.transport_id:
+        return
+    position = logistics_fuel_position(logistics)
+    suspected = position.suspected_liters
+    existing = db.scalars(
+        select(TransportEvent).where(
+            TransportEvent.logistics_id == logistics.id,
+            TransportEvent.event_type == TransportEventType.suspected_siphoning,
+        )
+    ).first()
+    if not suspected or suspected <= 0:
+        # Ma'lumot to'g'rilanib, shubha yo'qolsa, hali hech kim tekshirmagan
+        # yozuv o'chiriladi. Tekshirilganiga tegilmaydi -- unda odamning
+        # xulosasi bor.
+        if existing and existing.check_result == TransportEventCheckResult.not_checked and not (existing.decision or "").strip():
+            db.delete(existing)
+        return
+    if existing:
+        if existing.check_result == TransportEventCheckResult.not_checked:
+            existing.possible_loss_liters = suspected
+            existing.odometer_km = logistics.odometer_end_km
+        return
+    fields = transport_events.siphoning_event_fields(logistics=logistics, suspected_liters=suspected)
+    if fields["occurred_at"] is None:
+        fields["occurred_at"] = datetime.now()
+    event = TransportEvent(**fields)
+    day = event.occurred_at.date()
+    prefix = f"EV-{day.strftime('%Y%m%d')}"
+    taken = set(db.scalars(select(TransportEvent.event_number).where(TransportEvent.event_number.like(f"{prefix}%"))).all())
+    event.event_number = transport_events.next_event_number(taken, day)
+    db.add(event)
+
+
 def sync_actual_dates_from_timeline(logistics: Logistics) -> None:
     """Aniq vaqt kiritilsa, eski sana maydonlari shundan to'ldiriladi.
 
@@ -399,6 +443,7 @@ def ensure_logistics(db: Session, batch: DeliveryBatch, payload: LogisticsCreate
     apply_transport_to_logistics(db, logistics)
     sync_actual_dates_from_timeline(logistics)
     sync_fuel_and_distance(logistics)
+    open_siphoning_event(db, logistics)
     sync_logistics_status(logistics, batch, requested_status)
     sync_batch_status_from_logistics(batch, logistics)
     return logistics
@@ -1204,6 +1249,7 @@ def update_logistics(logistics_id: int, payload: LogisticsUpdate, db: Session = 
     apply_transport_to_logistics(db, logistics)
     sync_actual_dates_from_timeline(logistics)
     sync_fuel_and_distance(logistics)
+    open_siphoning_event(db, logistics)
     sync_logistics_status(logistics, logistics.batch, requested_status)
     sync_batch_status_from_logistics(logistics.batch, logistics)
     sync_order_status(logistics.batch.order, db=db)

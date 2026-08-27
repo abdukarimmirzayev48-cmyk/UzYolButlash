@@ -3,7 +3,13 @@ from decimal import Decimal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from backend.app.models.transport import FuelEntryType, TransportCheckInKind, TransportStatus
+from backend.app.models.transport import (
+    TransportCheckInKind,
+    TransportEventCheckResult,
+    TransportEventStatus,
+    TransportEventType,
+    TransportStatus,
+)
 
 
 class TransportBase(BaseModel):
@@ -135,43 +141,102 @@ class TransportRead(TransportBase):
     trips: list[TransportTrip] = Field(default_factory=list)
 
 
-class FuelLogBase(BaseModel):
-    entry_date: date
-    entry_type: FuelEntryType
-    amount_liters: Decimal = Field(gt=0)
-    cost_amount: Decimal | None = None
+class TransportEventBase(BaseModel):
+    transport_id: int
+    logistics_id: int | None = None
+    occurred_at: datetime
+    event_type: TransportEventType
+    source: str | None = None
+    location: str | None = None
+    gps_coordinates: str | None = None
+    odometer_km: Decimal | None = Field(default=None, ge=0)
+    speed_kmh: Decimal | None = Field(default=None, ge=0)
+    engine_running: bool | None = None
+    fuel_before_liters: Decimal | None = Field(default=None, ge=0)
+    fuel_after_liters: Decimal | None = Field(default=None, ge=0)
+    amount_liters: Decimal | None = Field(default=None, ge=0)
+    possible_loss_liters: Decimal | None = Field(default=None, ge=0)
+    confirmed_consumption_liters: Decimal | None = Field(default=None, ge=0)
+    cost_amount: Decimal | None = Field(default=None, ge=0)
+    document_reference: str | None = None
+    evidence_url: str | None = None
+    is_approved: bool = False
+    approved_by: str | None = None
+    driver_explanation: str | None = None
+    check_result: TransportEventCheckResult = TransportEventCheckResult.not_checked
+    checked_by: str | None = None
+    decision: str | None = None
+    damage_amount: Decimal | None = Field(default=None, ge=0)
+    status: TransportEventStatus = TransportEventStatus.open
     note: str | None = None
     created_by: str | None = None
 
 
-class FuelLogCreate(FuelLogBase):
-    pass
+class TransportEventCreate(TransportEventBase):
+    # Raqamni server beradi -- brauzer bazani ko'rmagani uchun
+    # takrorlanmasligini kafolatlay olmaydi.
+    event_number: str | None = None
 
 
-class FuelLogUpdate(BaseModel):
-    entry_date: date | None = None
-    entry_type: FuelEntryType | None = None
-    amount_liters: Decimal | None = Field(default=None, gt=0)
-    cost_amount: Decimal | None = None
+class TransportEventUpdate(BaseModel):
+    logistics_id: int | None = None
+    occurred_at: datetime | None = None
+    event_type: TransportEventType | None = None
+    source: str | None = None
+    location: str | None = None
+    gps_coordinates: str | None = None
+    odometer_km: Decimal | None = Field(default=None, ge=0)
+    speed_kmh: Decimal | None = Field(default=None, ge=0)
+    engine_running: bool | None = None
+    fuel_before_liters: Decimal | None = Field(default=None, ge=0)
+    fuel_after_liters: Decimal | None = Field(default=None, ge=0)
+    amount_liters: Decimal | None = Field(default=None, ge=0)
+    possible_loss_liters: Decimal | None = Field(default=None, ge=0)
+    confirmed_consumption_liters: Decimal | None = Field(default=None, ge=0)
+    cost_amount: Decimal | None = Field(default=None, ge=0)
+    document_reference: str | None = None
+    evidence_url: str | None = None
+    is_approved: bool | None = None
+    approved_by: str | None = None
+    driver_explanation: str | None = None
+    check_result: TransportEventCheckResult | None = None
+    checked_by: str | None = None
+    decision: str | None = None
+    damage_amount: Decimal | None = Field(default=None, ge=0)
+    status: TransportEventStatus | None = None
     note: str | None = None
-    created_by: str | None = None
 
 
-class FuelLogRead(FuelLogBase):
+class TransportEventVehicle(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
-    transport_id: int
+    vehicle_number: str
+    driver_name: str | None = None
+
+
+class TransportEventRead(TransportEventBase):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    event_number: str
     created_at: datetime
     updated_at: datetime
+    transport: TransportEventVehicle | None = None
+    logistics_number: str | None = None
 
 
-class FuelLogSummary(BaseModel):
-    total_added_liters: Decimal
-    total_consumed_liters: Decimal
-    balance_liters: Decimal
-    total_cost_amount: Decimal
-    logs: list[FuelLogRead]
+class TransportEventSummary(BaseModel):
+    total: int = 0
+    open_count: int = 0
+    not_checked_count: int = 0
+    refuelled_liters: Decimal = Decimal("0")
+    consumed_liters: Decimal = Decimal("0")
+    balance_liters: Decimal = Decimal("0")
+    total_cost_amount: Decimal = Decimal("0")
+    possible_loss_liters: Decimal = Decimal("0")
+    damage_amount: Decimal = Decimal("0")
+    warnings: list[str] = Field(default_factory=list)
 
 
 class TransportCheckInEmployeeSummary(BaseModel):

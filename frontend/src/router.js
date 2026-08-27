@@ -139,6 +139,8 @@ async function render() {
       await renderEditTransport(getTransportIdFromPath());
     } else if (/^\/transports\/\d+\/fuel$/.test(location.pathname)) {
       await renderTransportFuelLog(getTransportIdFromPath());
+    } else if (location.pathname === "/transport-events") {
+      await renderTransportEvents();
     } else if (location.pathname === "/transports") {
       await renderTransportsList();
     } else if (location.pathname === "/audit-log") {

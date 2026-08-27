@@ -2,7 +2,7 @@ from datetime import date as date_cls, datetime
 from decimal import Decimal
 from enum import Enum
 
-from sqlalchemy import Date, DateTime, Enum as SAEnum, ForeignKey, Integer, Numeric, String, Text
+from sqlalchemy import Boolean, Date, DateTime, Enum as SAEnum, ForeignKey, Integer, Numeric, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from backend.app.db.session import Base
@@ -36,9 +36,45 @@ class TransportStatus(str, Enum):
 UNAVAILABLE_STATUSES = (TransportStatus.repair, TransportStatus.service, TransportStatus.inactive)
 
 
-class FuelEntryType(str, Enum):
-    added = "added"
-    consumed = "consumed"
+class TransportEventType(str, Enum):
+    """Hodisa turlari.
+
+    «Quyildi» va «sarflandi» alohida yoqilg'i jurnalida edi. Hodisalar
+    jurnali ham aynan shu narsani -- bakdagi o'zgarishni -- yozadi, ya'ni
+    ikkita jadval bir voqeani ikki xil aytardi. Shuning uchun jurnal bitta:
+    quyish ham, keskin tushish ham, kelishilmagan to'xtash ham bitta
+    ro'yxatda turadi va har birining tekshiruv izi bor.
+    """
+
+    refuel = "refuel"
+    consumption = "consumption"
+    fuel_drop = "fuel_drop"
+    suspected_siphoning = "suspected_siphoning"
+    sensor_jump = "sensor_jump"
+    idling = "idling"
+    route_deviation = "route_deviation"
+    unapproved_stop = "unapproved_stop"
+    other = "other"
+
+
+# Bak balansiga kiradigan turlar. Qolganlari -- tekshiruv yozuvi, ular
+# yoqilg'i qoldig'ini o'zgartirmaydi.
+FUEL_IN_TYPES = (TransportEventType.refuel,)
+FUEL_OUT_TYPES = (TransportEventType.consumption,)
+
+
+class TransportEventCheckResult(str, Enum):
+    not_checked = "not_checked"
+    normal = "normal"
+    needs_explanation = "needs_explanation"
+    violation_confirmed = "violation_confirmed"
+
+
+class TransportEventStatus(str, Enum):
+    open = "open"
+    in_review = "in_review"
+    closed = "closed"
+    cancelled = "cancelled"
 
 
 class TransportCheckInKind(str, Enum):
@@ -94,23 +130,65 @@ class Transport(Base, TimestampMixin):
     unavailable_reason: Mapped[str | None] = mapped_column(String(255))
 
     driver: Mapped[Employee | None] = relationship()
-    fuel_logs: Mapped[list["TransportFuelLog"]] = relationship(back_populates="transport", cascade="all, delete-orphan", order_by="TransportFuelLog.entry_date.desc(), TransportFuelLog.id.desc()")
+    events: Mapped[list["TransportEvent"]] = relationship(back_populates="transport", cascade="all, delete-orphan", order_by="TransportEvent.occurred_at.desc(), TransportEvent.id.desc()")
     check_ins: Mapped[list["TransportCheckIn"]] = relationship(back_populates="transport", cascade="all, delete-orphan", order_by="TransportCheckIn.created_at.desc()")
 
 
-class TransportFuelLog(Base, TimestampMixin):
-    __tablename__ = "transport_fuel_logs"
+class TransportEvent(Base, TimestampMixin):
+    """Yoqilg'i va yo'l hodisalari jurnali.
+
+    Har bir quyish, har bir keskin tushish, har bir kelishilmagan to'xtash --
+    alohida yozuv. Muhimi hodisaning o'zi emas, uning izi: haydovchi nima
+    dedi, kim tekshirdi, natija nima bo'ldi, qancha zarar undirildi. Shu
+    izsiz hodisa ro'yxati oddiy raqamlar to'plami bo'lib qoladi.
+
+    GPS koordinatasi, tezlik va dvigatel holati qo'lda kiritiladi --
+    trekerga ulanish yo'q.
+    """
+
+    __tablename__ = "transport_events"
 
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
+    event_number: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
     transport_id: Mapped[int] = mapped_column(ForeignKey("transports.id", ondelete="CASCADE"), index=True)
-    entry_date: Mapped[date_cls] = mapped_column(Date, nullable=False, default=date_cls.today, index=True)
-    entry_type: Mapped[FuelEntryType] = mapped_column(SAEnum(FuelEntryType), nullable=False, index=True)
-    amount_liters: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False)
+    logistics_id: Mapped[int | None] = mapped_column(ForeignKey("logistics.id", ondelete="SET NULL"), index=True)
+    occurred_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.now, index=True)
+    event_type: Mapped[TransportEventType] = mapped_column(SAEnum(TransportEventType), nullable=False, index=True)
+
+    source: Mapped[str | None] = mapped_column(String(255))
+    location: Mapped[str | None] = mapped_column(String(255))
+    gps_coordinates: Mapped[str | None] = mapped_column(String(128))
+    odometer_km: Mapped[Decimal | None] = mapped_column(Numeric(10, 1))
+    speed_kmh: Mapped[Decimal | None] = mapped_column(Numeric(6, 1))
+    engine_running: Mapped[bool | None] = mapped_column(Boolean)
+
+    fuel_before_liters: Mapped[Decimal | None] = mapped_column(Numeric(10, 2))
+    fuel_after_liters: Mapped[Decimal | None] = mapped_column(Numeric(10, 2))
+    # Quyilgan yoki sarflangan miqdor. Bak ko'rsatkichlari kiritilsa,
+    # shulardan hisoblanadi; kiritilmasa, qo'lda yoziladi.
+    amount_liters: Mapped[Decimal | None] = mapped_column(Numeric(10, 2))
+    possible_loss_liters: Mapped[Decimal | None] = mapped_column(Numeric(10, 2))
+    confirmed_consumption_liters: Mapped[Decimal | None] = mapped_column(Numeric(10, 2))
     cost_amount: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
+
+    document_reference: Mapped[str | None] = mapped_column(String(255))
+    evidence_url: Mapped[str | None] = mapped_column(String(500))
+    is_approved: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    approved_by: Mapped[str | None] = mapped_column(String(255))
+    driver_explanation: Mapped[str | None] = mapped_column(Text)
+    check_result: Mapped[TransportEventCheckResult] = mapped_column(
+        SAEnum(TransportEventCheckResult), default=TransportEventCheckResult.not_checked, nullable=False, index=True
+    )
+    checked_by: Mapped[str | None] = mapped_column(String(255))
+    decision: Mapped[str | None] = mapped_column(Text)
+    damage_amount: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
+    status: Mapped[TransportEventStatus] = mapped_column(
+        SAEnum(TransportEventStatus), default=TransportEventStatus.open, nullable=False, index=True
+    )
     note: Mapped[str | None] = mapped_column(Text)
     created_by: Mapped[str | None] = mapped_column(String(255))
 
-    transport: Mapped[Transport] = relationship(back_populates="fuel_logs")
+    transport: Mapped[Transport] = relationship(back_populates="events")
 
 
 class TransportCheckIn(Base):
