@@ -7,6 +7,8 @@ const OVERVIEW_ICONS = {
   wallet: '<path d="M19 7V5a2 2 0 0 0-2-2H5a2 2 0 0 0 0 4h15a1 1 0 0 1 1 1v4a1 1 0 0 1-1 1h-3a2 2 0 0 1 0-4h4"/><path d="M3 5v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-3"/>',
   truck: '<path d="M14 18V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v11a1 1 0 0 0 1 1h2"/><path d="M15 18H9"/><path d="M19 18h2a1 1 0 0 0 1-1v-3.65a1 1 0 0 0-.22-.62l-3.48-4.35A1 1 0 0 0 17.52 8H14"/><circle cx="17" cy="18" r="2"/><circle cx="7" cy="18" r="2"/>',
   clock: '<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>',
+  droplet: '<path d="M12 22a7 7 0 0 0 7-7c0-2-1-3.9-3-5.5s-3.5-4-4-6.5c-.5 2.5-2 4.9-4 6.5S5 13 5 15a7 7 0 0 0 7 7z"/>',
+  route: '<circle cx="6" cy="19" r="3"/><path d="M9 19h8.5a3.5 3.5 0 0 0 0-7h-11a3.5 3.5 0 0 1 0-7H15"/><circle cx="18" cy="5" r="3"/>',
   alert: '<path d="M12 9v4"/><path d="M12 17h.01"/><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"/>',
   hourglass: '<path d="M5 22h14"/><path d="M5 2h14"/><path d="M17 22v-4.17a2 2 0 0 0-.59-1.42L12 12l-4.41 4.41A2 2 0 0 0 7 17.83V22"/><path d="M7 2v4.17a2 2 0 0 0 .59 1.42L12 12l4.41-4.41A2 2 0 0 0 17 6.17V2"/>',
   plus: '<line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>',
@@ -918,6 +920,13 @@ function collectBatchPayload(form) {
       route_name: field(form, "route_name"),
       distance_km: field(form, "distance_km"),
       loaded_mileage_km: field(form, "loaded_mileage_km"),
+      odometer_start_km: field(form, "odometer_start_km"),
+      odometer_end_km: field(form, "odometer_end_km"),
+      planned_distance_km: field(form, "planned_distance_km"),
+      gps_distance_km: field(form, "gps_distance_km"),
+      fuel_before_liters: field(form, "fuel_before_liters"),
+      fuel_added_liters: field(form, "fuel_added_liters"),
+      fuel_after_liters: field(form, "fuel_after_liters"),
       empty_mileage_km: field(form, "empty_mileage_km"),
       fuel_consumption_liters: field(form, "fuel_consumption_liters"),
       fuel_cost_amount: field(form, "fuel_cost_amount"),
@@ -1051,11 +1060,18 @@ async function batchForm(batch = null) {
           <h3>Reys tafsilotlari</h3>
           <div class="grid">
           ${textField("route_name", "Yo'nalish (Ob'ekt)", logistics.route_name || "")}
+          ${textField("odometer_start_km", "Odometr: chiqishda", logistics.odometer_start_km || "", "number")}
+          ${textField("odometer_end_km", "Odometr: qaytishda", logistics.odometer_end_km || "", "number")}
           ${textField("distance_km", "Masofa (km)", logistics.distance_km || "", "number")}
+          ${textField("planned_distance_km", "Reja masofa (km)", logistics.planned_distance_km || "", "number")}
+          ${textField("gps_distance_km", "GPS masofasi (km)", logistics.gps_distance_km || "", "number")}
           ${textField("loaded_mileage_km", "Yuk bilan probeg (km)", logistics.loaded_mileage_km || "", "number")}
           ${textField("empty_mileage_km", "Bo'sh probeg (km)", logistics.empty_mileage_km || "", "number")}
           <div class="total-box"><span>Umumiy probeg</span><strong data-logistics-total-mileage>${fmtQty(numberValue(logistics.loaded_mileage_km) + numberValue(logistics.empty_mileage_km), "km")}</strong></div>
           <div class="total-box"><span>Tonna-km</span><strong data-logistics-ton-km>${dash}</strong></div>
+          ${textField("fuel_before_liters", "Bakda: chiqishda (l)", logistics.fuel_before_liters || "", "number")}
+          ${textField("fuel_added_liters", "Yo'lda quyildi (l)", logistics.fuel_added_liters || "", "number")}
+          ${textField("fuel_after_liters", "Bakda: qaytishda (l)", logistics.fuel_after_liters || "", "number")}
           ${textField("fuel_consumption_liters", "GSM sarfi (litr)", logistics.fuel_consumption_liters || "", "number")}
           ${textField("fuel_cost_amount", "GSM qiymati (QQSsiz)", logistics.fuel_cost_amount || "", "number")}
           ${textField("driver_wage_amount", "Haydovchi ish haqi", logistics.driver_wage_amount || "", "number")}
@@ -1924,6 +1940,49 @@ function logisticsStatusTone(status) {
   return "warning";
 }
 
+// Birlik `fmtQty` orqali qo'yiladi -- u butun ilova bo'ylab bir xil ishlaydi
+// va birlikni o'zi lug'atdan o'tkazadi.
+function unitField(label, value, unit, icon) {
+  return detailMiniField(label, value === null || value === undefined ? "" : fmtQty(value, unit), icon);
+}
+
+const litersField = (label, value, icon = "droplet") => unitField(label, value, "litr", icon);
+const kmField = (label, value) => unitField(label, value, "km", "route");
+
+function logisticsFuelBody(row) {
+  const fuel = row.fuel;
+  if (!fuel) return `<div class="empty">Yoqilg'i ma'lumotlari kiritilmagan.</div>`;
+  const hasTank = fuel.before_liters !== null && fuel.before_liters !== undefined;
+  return `
+    ${summaryCards([
+      ["Haqiqiy sarf", fuel.actual_liters !== null && fuel.actual_liters !== undefined ? fmtQty(fuel.actual_liters, "litr") : dash],
+      ["Norma bo'yicha", fuel.norm_liters !== null && fuel.norm_liters !== undefined ? fmtQty(fuel.norm_liters, "litr") : dash],
+      ["Chetlanish", fuel.difference_liters !== null && fuel.difference_liters !== undefined
+        ? fmtQty(fuel.difference_liters, "litr")
+        : dash, fuel.difference_liters > 0 ? "warning" : ""],
+      ["Slivga shubha", fuel.suspected_liters !== null && fuel.suspected_liters !== undefined
+        ? fmtQty(fuel.suspected_liters, "litr")
+        : dash, fuel.suspected_liters ? "danger" : ""],
+    ])}
+    <div class="detail-two-col">
+      ${detailTonePanel({ label: "Bak hisobi", tone: hasTank ? "muted" : "warning", icon: "droplet", body: `
+        ${litersField("Chiqishda", fuel.before_liters)}
+        ${litersField("Yo'lda quyildi", fuel.added_liters)}
+        ${litersField("Qaytishda", fuel.after_liters)}
+      `})}
+      ${detailTonePanel({ label: "Masofa", tone: "muted", icon: "route", body: `
+        ${kmField("Odometr bo'yicha", fuel.odometer_distance_km)}
+        ${kmField("GPS bo'yicha", fuel.gps_distance_km)}
+        ${kmField("Farq", fuel.gps_difference_km)}
+        ${kmField("Rejadan ortiq", fuel.overrun_km)}
+      `})}
+    </div>
+    ${fuel.liters_per_100km !== null && fuel.liters_per_100km !== undefined
+      ? `<p class="form-hint"><span>Haqiqiy sarf</span>: <span data-noloc>${fmtQty(fuel.liters_per_100km)} l/100 km</span>${fuel.tolerance_liters !== null && fuel.tolerance_liters !== undefined ? ` · <span>Ruxsat etilgan chetlanish</span>: <span data-noloc>${fmtQty(fuel.tolerance_liters)} l</span>` : ""}</p>`
+      : ""}
+    ${workflowWarningsPanel(fuel.warnings || [])}`;
+}
+
 // Logistika kartochkasi o'z uslubida chiziladi, shuning uchun vaqt chizig'i
 // uchun alohida ko'rinish.
 function logisticsTimelineBody(row) {
@@ -2026,6 +2085,11 @@ async function renderLogisticsDetail(id) {
       ${detailCard({
         icon: "clock", title: "Reys vaqtlari",
         body: logisticsTimelineBody(row),
+      })}
+
+      ${detailCard({
+        icon: "droplet", title: "Yoqilg'i hisobi",
+        body: logisticsFuelBody(row),
       })}
 
       ${detailCard({

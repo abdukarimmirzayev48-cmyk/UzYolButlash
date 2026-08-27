@@ -23,6 +23,11 @@ PROTECTED = [
     "UZS", "USD", "EUR", "RUB", "KZT",
     # Names of outside systems, same reasoning as the brands above.
     "Didox", "Rouming", "MXIK", "IKPU", "STIR",
+    # «ГПС» valyuta kodlari kabi transliteratsiya xatosi: o'zbekcha matnda
+    # ham GPS deb yoziladi. ADR va TTN esa kirillchada АДР va ТТН bo'lib
+    # yoziladi va shundayligicha qoldirilgan -- ular allaqachon shu
+    # ko'rinishda ishlatilib kelmoqda.
+    "GPS",
 ]
 
 # Ordinary transliteration gets these wrong; fix them once here so the fix

@@ -75,6 +75,13 @@ class LogisticsBase(BaseModel):
     carrier_id: int | None = None
     carrier_name: str | None = None
     transport_id: int | None = None
+    fuel_before_liters: Decimal | None = Field(default=None, ge=0)
+    fuel_added_liters: Decimal | None = Field(default=None, ge=0)
+    fuel_after_liters: Decimal | None = Field(default=None, ge=0)
+    odometer_start_km: Decimal | None = Field(default=None, ge=0)
+    odometer_end_km: Decimal | None = Field(default=None, ge=0)
+    gps_distance_km: Decimal | None = Field(default=None, ge=0)
+    planned_distance_km: Decimal | None = Field(default=None, ge=0)
     departed_at: datetime | None = None
     loading_started_at: datetime | None = None
     loading_finished_at: datetime | None = None
@@ -135,6 +142,26 @@ class LogisticsTimeline(BaseModel):
     warnings: list[str] = Field(default_factory=list)
 
 
+class LogisticsFuelPosition(BaseModel):
+    before_liters: Decimal | None = None
+    added_liters: Decimal | None = None
+    after_liters: Decimal | None = None
+    actual_liters: Decimal | None = None
+    norm_liters: Decimal | None = None
+    difference_liters: Decimal | None = None
+    difference_percent: Decimal | None = None
+    tolerance_liters: Decimal | None = None
+    suspected_liters: Decimal | None = None
+    liters_per_100km: Decimal | None = None
+    odometer_distance_km: Decimal | None = None
+    distance_km: Decimal | None = None
+    gps_distance_km: Decimal | None = None
+    gps_difference_km: Decimal | None = None
+    planned_distance_km: Decimal | None = None
+    overrun_km: Decimal | None = None
+    warnings: list[str] = Field(default_factory=list)
+
+
 class LogisticsTransportSummary(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -156,6 +183,8 @@ class LogisticsRead(LogisticsBase):
     transport: LogisticsTransportSummary | None = None
     # Saqlanmaydi, vaqt nuqtalaridan hisoblanadi.
     timeline: LogisticsTimeline | None = None
+    # Saqlanmaydi: bak hisobi, mashina normasi va masofadan hisoblanadi.
+    fuel: LogisticsFuelPosition | None = None
 
 
 class DeliveryBatchDocumentBase(BaseModel):

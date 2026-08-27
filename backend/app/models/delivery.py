@@ -181,6 +181,23 @@ class Logistics(Base, TimestampMixin):
     empty_mileage_km: Mapped[Decimal | None] = mapped_column(Numeric(10, 2))
     fuel_consumption_liters: Mapped[Decimal | None] = mapped_column(Numeric(10, 2))
     fuel_cost_amount: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
+
+    # Yoqilg'i hisobi. `fuel_consumption_liters` ilgari ham bor edi, lekin u
+    # qo'lda yozilardi va hech narsa bilan solishtirilmasdi -- ya'ni unga
+    # istalgan raqamni yozish mumkin edi. Endi u boshidagi, quyilgan va
+    # oxiridagi qoldiqdan hisoblanadi va mashina normasiga solishtiriladi.
+    fuel_before_liters: Mapped[Decimal | None] = mapped_column(Numeric(10, 2))
+    fuel_added_liters: Mapped[Decimal | None] = mapped_column(Numeric(10, 2))
+    fuel_after_liters: Mapped[Decimal | None] = mapped_column(Numeric(10, 2))
+
+    # Masofa. Odometr ko'rsatkichi reysning ikki uchida olinadi; GPS masofasi
+    # esa qo'lda kiritiladi -- trekerga ulanish yo'q, dispetcher uni
+    # trekerning o'z panelidan ko'chirib yozadi. Ikkovining farqi o'zi
+    # savol tug'diradi: odometr aylantirilgan bo'lishi mumkin.
+    odometer_start_km: Mapped[Decimal | None] = mapped_column(Numeric(10, 1))
+    odometer_end_km: Mapped[Decimal | None] = mapped_column(Numeric(10, 1))
+    gps_distance_km: Mapped[Decimal | None] = mapped_column(Numeric(10, 2))
+    planned_distance_km: Mapped[Decimal | None] = mapped_column(Numeric(10, 2))
     driver_wage_amount: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
     esp_tax_percent: Mapped[Decimal | None] = mapped_column(Numeric(5, 2), default=Decimal("12"))
     other_expenses_amount: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))

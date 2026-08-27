@@ -38,7 +38,7 @@ from backend.app.services.auth import get_current_user, require_edit
 from backend.app.services.order_status import sync_order_status
 from backend.app.services.telegram_bot import notify_driver_of_trip
 from backend.app.services.product_summary import product_summary
-from backend.app.services import batch_difference, batch_transport_check, logistics_timeline
+from backend.app.services import batch_difference, batch_transport_check, logistics_fuel, logistics_timeline
 from backend.app.schemas.client import Page
 from backend.app.schemas.delivery import (
     DeliveryBatchAcceptanceConfirm,
@@ -212,6 +212,35 @@ def apply_transport_to_logistics(db: Session, logistics: Logistics) -> None:
         logistics.driver_phone = transport.driver_phone
 
 
+def sync_fuel_and_distance(logistics: Logistics) -> None:
+    """Bak hisobi va odometr kiritilgan bo'lsa, sarf va masofa shundan olinadi.
+
+    `fuel_consumption_liters` va `distance_km` ilgari qo'lda yoziladigan
+    yakka maydonlar edi. Ular o'chirilmadi -- hisobot va foyda hisobi
+    ularga bog'langan -- lekin o'lchovdan chiqadigan qiymat ustun turadi:
+    ikkita manba bir narsani boshqa-boshqa aytmasin.
+    """
+    position = logistics_fuel.build_position(
+        fuel_before=logistics.fuel_before_liters,
+        fuel_added=logistics.fuel_added_liters,
+        fuel_after=logistics.fuel_after_liters,
+        recorded_consumption=None,
+        loaded_km=None,
+        empty_km=None,
+        distance_km=None,
+        odometer_start=logistics.odometer_start_km,
+        odometer_end=logistics.odometer_end_km,
+        gps_distance=None,
+        planned_distance=None,
+        norm_loaded=None,
+        norm_empty=None,
+    )
+    if position.actual_liters is not None:
+        logistics.fuel_consumption_liters = position.actual_liters
+    if position.odometer_distance_km is not None:
+        logistics.distance_km = position.odometer_distance_km
+
+
 def sync_actual_dates_from_timeline(logistics: Logistics) -> None:
     """Aniq vaqt kiritilsa, eski sana maydonlari shundan to'ldiriladi.
 
@@ -225,10 +254,40 @@ def sync_actual_dates_from_timeline(logistics: Logistics) -> None:
         logistics.actual_delivery_date = logistics.arrived_at.date()
 
 
+def logistics_fuel_position(logistics: Logistics) -> logistics_fuel.FuelPosition:
+    """Norma mashina kartochkasidan olinadi.
+
+    Reysga norma nusxalanmaydi: mashina normasi o'zgarsa, eski reysdagi
+    nusxa qolib ketardi va ikkovi bir-biriga zid raqam ko'rsatardi.
+    """
+    transport = logistics.transport
+    return logistics_fuel.build_position(
+        fuel_before=logistics.fuel_before_liters,
+        fuel_added=logistics.fuel_added_liters,
+        fuel_after=logistics.fuel_after_liters,
+        recorded_consumption=logistics.fuel_consumption_liters,
+        loaded_km=logistics.loaded_mileage_km,
+        empty_km=logistics.empty_mileage_km,
+        distance_km=logistics.distance_km,
+        odometer_start=logistics.odometer_start_km,
+        odometer_end=logistics.odometer_end_km,
+        gps_distance=logistics.gps_distance_km,
+        planned_distance=logistics.planned_distance_km,
+        norm_loaded=transport.fuel_norm_loaded if transport else None,
+        norm_empty=transport.fuel_norm_empty if transport else None,
+    )
+
+
 def logistics_read(logistics: Logistics) -> LogisticsRead:
-    """Reys vaqt chizig'i saqlanmaydi, har o'qishda hisoblanadi."""
+    """Reys vaqt chizig'i va yoqilg'i hisobi saqlanmaydi, har o'qishda
+    hisoblanadi -- shunda mashina normasi o'zgarsa, hisob ham yangilanadi."""
     result = LogisticsRead.model_validate(logistics)
-    return result.model_copy(update={"timeline": logistics_timeline.build_timeline(logistics)})
+    return result.model_copy(
+        update={
+            "timeline": logistics_timeline.build_timeline(logistics),
+            "fuel": logistics_fuel_position(logistics),
+        }
+    )
 
 
 def validate_logistics_dates(data: dict[str, Any]) -> None:
@@ -339,6 +398,7 @@ def ensure_logistics(db: Session, batch: DeliveryBatch, payload: LogisticsCreate
         logistics.paid_by = PaidBy.company
     apply_transport_to_logistics(db, logistics)
     sync_actual_dates_from_timeline(logistics)
+    sync_fuel_and_distance(logistics)
     sync_logistics_status(logistics, batch, requested_status)
     sync_batch_status_from_logistics(batch, logistics)
     return logistics
@@ -1143,6 +1203,7 @@ def update_logistics(logistics_id: int, payload: LogisticsUpdate, db: Session = 
     update_model(logistics, data)
     apply_transport_to_logistics(db, logistics)
     sync_actual_dates_from_timeline(logistics)
+    sync_fuel_and_distance(logistics)
     sync_logistics_status(logistics, logistics.batch, requested_status)
     sync_batch_status_from_logistics(logistics.batch, logistics)
     sync_order_status(logistics.batch.order, db=db)
