@@ -56,6 +56,8 @@ async function renderCustomerRequestsList() {
   app.innerHTML = opsListPage({
     className: "customer-requests-ops-page",
     title: "Talabnomalar",
+    createPath: canEdit("sotuv") ? "/customer-requests/new" : undefined,
+    createLabel: "Talabnoma yaratish",
     clearPath: "/customer-requests",
     counter: `${fmt(data.total)} ta talabnoma`,
     formId: "customer-request-search-form",
@@ -278,27 +280,40 @@ async function renderEditCustomerRequest(id) {
   bindCustomerRequestForm(request);
 }
 
+// Bir forma ikkala holat uchun: yangi talabnoma ham, tahrirlash ham.
+// Ikkita nusxa bo'lsa, maydon qo'shilganda biri unutilib qoladi va portal
+// bilan ichki forma bir-biridan farq qila boshlaydi.
+async function renderNewCustomerRequest() {
+  app.innerHTML = `<div class="page"><div class="empty">Yuklanmoqda...</div></div>`;
+  const products = await customerRequestProductOptions();
+  const today = new Date();
+  app.innerHTML = customerRequestForm({ schedule: [{ year: today.getFullYear(), month: today.getMonth() + 1, quantity: "" }] }, products);
+  bindCustomerRequestForm({});
+}
+
 function customerRequestForm(request, products) {
+  const isNew = !request.id;
+  const backPath = isNew ? "/customer-requests" : `/customer-requests/${request.id}`;
   return `
     <div class="page">
       <div class="page-header">
         <div class="page-title">
-          <h1>Talabnomani tahrirlash</h1>
-          <p>${fmt(request.request_number)} · ${fmt(request.company_name)}</p>
+          <h1>${isNew ? "Yangi talabnoma" : "Talabnomani tahrirlash"}</h1>
+          <p>${isNew ? "Telefon yoki xat orqali kelgan talabnomani kiriting." : `${fmt(request.request_number)} · ${fmt(request.company_name)}`}</p>
         </div>
-        <div class="actions"><button class="btn" data-nav="/customer-requests/${request.id}">Orqaga</button></div>
+        <div class="actions"><button class="btn" data-nav="${backPath}">Orqaga</button></div>
       </div>
       <form id="customer-request-form">
-        ${section("Mijoz turi va to'lov manbasi", `<div class="grid">${selectField("customer_type", "Mijoz turi", customerTypes, request.customer_type, { required: true })}${selectField("payment_source", "To'lov manbasi", paymentSources, request.payment_source, { required: true })}</div>`)}
+        ${section("Mijoz turi va to'lov manbasi", `<div class="grid">${selectField("customer_type", "Mijoz turi", customerTypes, request.customer_type || "legal_entity", { required: true })}${selectField("payment_source", "To'lov manbasi", paymentSources, request.payment_source || "own_funds", { required: true })}</div>`)}
         ${section("Korxona ma'lumotlari", `<div class="grid">${textField("company_name", "Korxona nomi", request.company_name, "text", { required: true })}${textField("inn", "STIR", request.inn)}${textField("region", "Hudud", request.region)}${textField("oked", "OKED", request.oked)}${textField("director_full_name", "Direktor F.I.Sh.", request.director_full_name)}${textArea("legal_address", "Yuridik manzil", request.legal_address)}${textArea("activity_type", "Asosiy faoliyat turi", request.activity_type)}${textArea("function_description", "Funksiyasi va vazifalari", request.function_description)}${textField("privatization_project_name", "205 xususiylashtirish loyiha", request.privatization_project_name)}</div>`)}
         ${section("Rekvizitlar", `<div class="grid">${textField("bank_account", "Hisob raqami", request.bank_account)}${textField("bank_name", "Bank nomi", request.bank_name)}${textField("mfo", "MFO", request.mfo)}</div>`)}
         ${section("Kontakt ma'lumotlari", `<div class="grid">${textField("phone", "Telefon raqami", request.phone, "text", { required: true })}${textField("contact_full_name", "Kontakt shaxs F.I.Sh.", request.contact_full_name)}${textField("contact_phone", "Kontakt telefon raqami", request.contact_phone)}</div>`)}
-        ${section("Mahsulot talabi", `<div class="grid">${selectField("product_id", "Mahsulot nomi", products, String(request.product?.id || request.product_id || ""), { required: true })}${textField("total_quantity", "Umumiy miqdor", request.total_quantity, "number", { required: true })}${textField("unit", "O'lchov birligi", request.unit, "text", { required: true })}</div>`)}
+        ${section("Mahsulot talabi", `<div class="grid">${selectField("product_id", "Mahsulot nomi", products, String(request.product?.id || request.product_id || ""), { required: true })}${textField("total_quantity", "Umumiy miqdor", request.total_quantity, "number", { required: true })}${textField("unit", "O'lchov birligi", request.unit || "t", "text", { required: true })}</div>`)}
         ${section("Kalendar grafik", customerRequestScheduleEditor(request.schedule || [], request.unit))}
         ${section("Ichki izoh", `<div class="grid">${textArea("internal_comment", "Izoh", request.internal_comment)}</div>`)}
         <div class="form-footer">
-          <button type="button" class="btn" data-nav="/customer-requests/${request.id}">Bekor qilish</button>
-          <button class="btn primary">Saqlash</button>
+          <button type="button" class="btn" data-nav="${backPath}">Bekor qilish</button>
+          <button class="btn primary">${isNew ? "Talabnoma yaratish" : "Saqlash"}</button>
         </div>
       </form>
     </div>
@@ -394,9 +409,15 @@ function bindCustomerRequestForm(request) {
       schedule: collectRequestSchedule(),
     };
     try {
-      await api(`/api/customer-requests/${request.id}`, { method: "PATCH", body: JSON.stringify(payload) });
-      showToast("Talabnoma muvaffaqiyatli yangilandi.");
-      navigate(`/customer-requests/${request.id}`);
+      if (request.id) {
+        await api(`/api/customer-requests/${request.id}`, { method: "PATCH", body: JSON.stringify(payload) });
+        showToast("Talabnoma muvaffaqiyatli yangilandi.");
+        navigate(`/customer-requests/${request.id}`);
+      } else {
+        const saved = await api("/api/customer-requests", { method: "POST", body: JSON.stringify(payload) });
+        showToast("Talabnoma yaratildi.");
+        navigate(`/customer-requests/${saved.id}`);
+      }
     } catch (error) {
       showToast(error.message, true);
     }

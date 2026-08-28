@@ -75,6 +75,8 @@ async function render() {
       await renderSupplierPaymentDetail(getSupplierPaymentIdFromPath());
     } else if (location.pathname === "/supplier-payments") {
       await renderSupplierPaymentsList();
+    } else if (location.pathname === "/customer-requests/new") {
+      await renderNewCustomerRequest();
     } else if (/^\/customer-requests\/\d+\/edit$/.test(location.pathname)) {
       await renderEditCustomerRequest(getCustomerRequestIdFromPath());
     } else if (/^\/customer-requests\/\d+$/.test(location.pathname)) {

@@ -35,7 +35,8 @@ from backend.app.schemas.customer_request import (
     PublicProductRead,
 )
 from backend.app.services import customer_request_workflow
-from backend.app.services.auth import require_edit
+from backend.app.models.user import User
+from backend.app.services.auth import get_current_user, require_edit
 
 
 router = APIRouter(prefix="/api/customer-requests", tags=["customer-requests"])
@@ -244,6 +245,35 @@ def create_public_customer_request(payload: CustomerRequestCreate, db: Session =
             "message": "Talabnoma muvaffaqiyatli yuborildi.",
         },
     }
+
+
+@router.post("", response_model=CustomerRequestDetail, status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_edit("sotuv"))])
+def create_customer_request(payload: CustomerRequestCreate, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """Talabnomani ichkaridan kiritish.
+
+    Ilgari talabnoma faqat ochiq portal orqali kelardi. Amalda esa mijoz
+    ko'pincha telefon qiladi yoki xat yuboradi, va operator uni o'zi
+    kiritishi kerak bo'ladi -- bunday talabnomani tizimga qo'shishning yo'li
+    yo'q edi.
+
+    Tekshiruvlar portaldagi bilan bir xil: mahsulot majburiy, grafik
+    yig'indisi umumiy miqdorga teng bo'lishi kerak. Farqi -- tarixda kim
+    kiritgani qoladi, «public» emas.
+    """
+    product = db.get(Product, payload.product_id)
+    if not product:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Mahsulot majburiy.")
+    validate_schedule_total(payload.total_quantity, payload.schedule)
+    data = payload.model_dump(exclude={"schedule"})
+    data["phone"] = data.get("phone") or data.get("contact_phone") or ""
+    request = CustomerRequest(request_number=next_request_number(db), **data)
+    db.add(request)
+    db.flush()
+    for item in payload.schedule:
+        db.add(CustomerRequestSchedule(request_id=request.id, **item.model_dump()))
+    add_status_history(db, request, None, CustomerRequestStatus.new, "Talabnoma qo'lda kiritildi.", user.username)
+    db.commit()
+    return serialize_detail(get_request_or_404(db, request.id))
 
 
 @router.get("", response_model=Page[CustomerRequestListItem])
