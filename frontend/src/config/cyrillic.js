@@ -1309,6 +1309,7 @@ const uzCyrillic = {
   "Ochish": "Очиш",
   "Odometr (km)": "Одометр (км)",
   "Odometr bo'yicha": "Одометр бўйича",
+  "Odometr ko'rsatkichlari bir-biriga zid": "Одометр кўрсаткичлари бир-бирига зид",
   "Odometr va GPS masofasi bir-biriga mos emas": "Одометр ва GPS масофаси бир-бирига мос эмас",
   "Odometr: chiqishda": "Одометр: чиқишда",
   "Odometr: qaytishda": "Одометр: қайтишда",

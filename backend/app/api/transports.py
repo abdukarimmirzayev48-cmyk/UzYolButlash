@@ -84,56 +84,58 @@ def sync_transport_driver_name(transport: Transport, db: Session, *, had_link: b
     transport.driver_name = employee.full_name
 
 
-def current_odometer(db: Session, transport_id: int) -> Decimal | None:
-    """Joriy odometr ikkita manbadan: haydovchi qaydnomasi va reys oxiri.
+def odometer_readings(db: Session, transport_ids: list[int]) -> dict[int, dict]:
+    """Har bir mashina uchun odometrning ikkita oxirgi manbasi.
 
-    Uni transport kartochkasida alohida maydonda saqlash mumkin edi, lekin
-    unda har bir manba o'z qiymatini yozib, ular bir-biriga zid bo'lib
-    qolardi. Shuning uchun saqlanmaydi, o'qilganda hisoblanadi.
+    Manbalar ikkita: haydovchi qaydnomasi va reys oxiri. Ilgari faqat
+    qaydnoma o'qilardi, keyin ikkovidan kattasi olinardi -- lekin «kattasi»
+    ikkovi ham to'g'ri degan taxminga asoslanadi. Ishlab turgan bazada
+    qaydnomada 520 555 km, o'sha mashinaning reyslarida esa 43 630 km
+    turibdi: bu «biri yangiroq» emas, «biri xato» degani, va uni jimgina
+    tanlab olish keyingi TO hisobini butunlay buzadi.
 
-    Ikkovidan kattasi olinadi: odometr orqaga yurmaydi, ya'ni kattasi --
-    keyingi o'lchov. Reysda odometr yozila boshlagach, faqat qaydnomaga
-    qarash kam bo'lib qoldi: qaydnoma har kuni kelmaydi, reys esa yoziladi.
+    Shuning uchun vaqt bo'yicha oxirgisi olinadi, oldingisi kattaroq bo'lib
+    chiqsa esa aytiladi: odometr orqaga yurmaydi.
     """
-    from backend.app.models.delivery import Logistics
-
-    checkin = db.scalar(
-        select(TransportCheckIn.odometer_km)
-        .where(TransportCheckIn.transport_id == transport_id, TransportCheckIn.odometer_km.isnot(None))
-        .order_by(TransportCheckIn.created_at.desc())
-        .limit(1)
-    )
-    trip = db.scalar(
-        select(func.max(Logistics.odometer_end_km)).where(Logistics.transport_id == transport_id)
-    )
-    values = [Decimal(value) for value in (checkin, trip) if value is not None]
-    return max(values) if values else None
-
-
-def odometers_for(db: Session, transport_ids: list[int]) -> dict[int, Decimal]:
-    """Ro'yxat uchun -- har bir mashinaga alohida so'rov yubormaslik uchun."""
     from backend.app.models.delivery import Logistics
 
     if not transport_ids:
         return {}
-    latest: dict[int, Decimal] = {}
-    rows = db.execute(
+    readings: dict[int, dict] = {transport_id: {} for transport_id in transport_ids}
+    checkins = db.execute(
         select(TransportCheckIn.transport_id, TransportCheckIn.odometer_km, TransportCheckIn.created_at)
         .where(TransportCheckIn.transport_id.in_(transport_ids), TransportCheckIn.odometer_km.isnot(None))
         .order_by(TransportCheckIn.created_at.desc())
     ).all()
-    for transport_id, odometer, _ in rows:
-        latest.setdefault(transport_id, Decimal(odometer))
+    for transport_id, odometer, at in checkins:
+        readings[transport_id].setdefault("checkin", (Decimal(odometer), at))
     trips = db.execute(
-        select(Logistics.transport_id, func.max(Logistics.odometer_end_km))
+        select(Logistics.transport_id, Logistics.odometer_end_km, Logistics.returned_at, Logistics.actual_delivery_date)
         .where(Logistics.transport_id.in_(transport_ids), Logistics.odometer_end_km.isnot(None))
-        .group_by(Logistics.transport_id)
     ).all()
-    for transport_id, odometer in trips:
-        value = Decimal(odometer)
-        if transport_id not in latest or value > latest[transport_id]:
-            latest[transport_id] = value
-    return latest
+    for transport_id, odometer, returned_at, delivery_date in trips:
+        at = returned_at or (datetime.combine(delivery_date, datetime.min.time()) if delivery_date else None)
+        if at is None:
+            continue
+        current = readings[transport_id].get("trip")
+        if current is None or at > current[1]:
+            readings[transport_id]["trip"] = (Decimal(odometer), at)
+    return readings
+
+
+def odometer_state(reading: dict) -> tuple[Decimal | None, bool]:
+    """Oxirgi o'lchov va manbalar bir-biriga zid ekani."""
+    entries = [value for value in (reading.get("checkin"), reading.get("trip")) if value]
+    if not entries:
+        return None, False
+    entries.sort(key=lambda pair: pair[1])
+    latest = entries[-1][0]
+    conflict = len(entries) > 1 and entries[0][0] > entries[-1][0]
+    return latest, conflict
+
+
+def current_odometer(db: Session, transport_id: int) -> tuple[Decimal | None, bool]:
+    return odometer_state(odometer_readings(db, [transport_id]).get(transport_id, {}))
 
 
 # Mashina bo'yicha reyslar. Faqat bog'langanlari olinadi -- davlat raqami
@@ -190,9 +192,11 @@ def usage_of(transport: Transport, trips: list[Logistics]) -> TransportUsage:
     return TransportUsage(**usage.__dict__)
 
 
-def with_readiness(transport: Transport, current_km: Decimal | None) -> TransportRead:
+def with_readiness(transport: Transport, current_km: Decimal | None, odometer_conflict: bool = False) -> TransportRead:
     result = TransportRead.model_validate(transport)
-    readiness = transport_readiness.build_readiness(transport, today=date.today(), current_km=current_km)
+    readiness = transport_readiness.build_readiness(
+        transport, today=date.today(), current_km=current_km, odometer_conflict=odometer_conflict
+    )
     return result.model_copy(update={"readiness": readiness})
 
 
@@ -223,8 +227,8 @@ def list_transports(
         stmt = stmt.where(*filters)
     total = db.scalar(select(func.count()).select_from(stmt.subquery())) or 0
     rows = db.scalars(stmt.order_by(Transport.created_at.desc()).offset((page - 1) * page_size).limit(page_size)).all()
-    odometers = odometers_for(db, [row.id for row in rows])
-    items = [with_readiness(row, odometers.get(row.id)) for row in rows]
+    readings = odometer_readings(db, [row.id for row in rows])
+    items = [with_readiness(row, *odometer_state(readings.get(row.id, {}))) for row in rows]
     # Hujjat riski bazada saqlanmaydi -- u sanaga qarab hisoblanadi -- shuning
     # uchun filtr SQL da emas, shu yerda qo'llanadi.
     if risk_filter:
@@ -346,7 +350,7 @@ def create_transport(payload: TransportCreate, db: Session = Depends(get_db)):
     db.add(transport)
     db.commit()
     db.refresh(transport)
-    return with_readiness(transport, None)
+    return with_readiness(transport, None, False)
 
 
 # Izohga yoziladigan yorliqlar. Interfeysdagi ro'yxat bilan bir xil
@@ -756,7 +760,7 @@ def get_transport(transport_id: int, db: Session = Depends(get_db)):
         ).unique()
     )
     summary = transport_repairs.build_summary(repairs, now=datetime.now())
-    return with_readiness(transport, current_odometer(db, transport.id)).model_copy(
+    return with_readiness(transport, *current_odometer(db, transport.id)).model_copy(
         update={
             "usage": usage_of(transport, trips),
             "trips": [trip_row(row) for row in trips],
@@ -776,7 +780,7 @@ def update_transport(transport_id: int, payload: TransportUpdate, db: Session = 
         sync_transport_driver_name(transport, db, had_link=had_link)
     db.commit()
     db.refresh(transport)
-    return with_readiness(transport, current_odometer(db, transport.id))
+    return with_readiness(transport, *current_odometer(db, transport.id))
 
 
 @router.delete("/{transport_id}", status_code=status.HTTP_204_NO_CONTENT, dependencies=[Depends(require_edit("yetkazib_berish"))])

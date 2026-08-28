@@ -50,6 +50,7 @@ MSG_SERVICE_DUE = "Texnik xizmat muddati keldi"
 MSG_SERVICE_SOON = "Texnik xizmatga oz qoldi"
 MSG_SERVICE_UNKNOWN = "Texnik xizmat ma'lumoti kiritilmagan"
 MSG_NORM_MISSING = "Yoqilg'i normasi kiritilmagan"
+MSG_ODOMETER_CONFLICT = "Odometr ko'rsatkichlari bir-biriga zid"
 
 DOCUMENTS = (
     (
@@ -148,7 +149,9 @@ def build_service(transport, current_km: Decimal | None) -> ServicePosition:
     return position
 
 
-def build_readiness(transport, *, today: date, current_km: Decimal | None = None) -> Readiness:
+def build_readiness(
+    transport, *, today: date, current_km: Decimal | None = None, odometer_conflict: bool = False
+) -> Readiness:
     result = Readiness()
     for key, label, messages in DOCUMENTS:
         until = getattr(transport, key)
@@ -168,6 +171,10 @@ def build_readiness(transport, *, today: date, current_km: Decimal | None = None
 
     if not transport.fuel_norm_loaded or not transport.fuel_norm_empty:
         result.warnings.append(MSG_NORM_MISSING)
+    # Odometr orqaga yurmaydi. Ikkita manba zid bo'lsa, keyingi TO hisobiga
+    # ishonib bo'lmaydi -- shuning uchun raqamni tuzatguncha aytib turiladi.
+    if odometer_conflict:
+        result.warnings.append(MSG_ODOMETER_CONFLICT)
 
     levels = [row.level for row in result.documents] + [result.service.level]
     result.level = max(levels, key=lambda value: LEVEL_ORDER[value])
