@@ -173,6 +173,7 @@ const paidByTypes = [
 
 const batchDocumentTypes = [
   ["ttn", "TTN"],
+  ["waybill", "Yo'l varaqasi"],
   ["acceptance_act", "Qabul dalolatnomasi"],
   ["quality_certificate", "Sifat sertifikati"],
   ["supplier_invoice", "Ta'minotchi hisobi"],

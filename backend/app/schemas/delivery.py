@@ -10,6 +10,7 @@ from backend.app.models.delivery import (
     LogisticsDocumentType,
     LogisticsStatus,
     PaidBy,
+    TripCheckResult,
 )
 from backend.app.schemas.client import ClientRead
 from backend.app.schemas.contract import ContractRead
@@ -75,6 +76,16 @@ class LogisticsBase(BaseModel):
     carrier_id: int | None = None
     carrier_name: str | None = None
     transport_id: int | None = None
+    gross_weight_tons: Decimal | None = Field(default=None, ge=0)
+    tare_weight_tons: Decimal | None = Field(default=None, ge=0)
+    loading_seal: str | None = None
+    unloading_seal: str | None = None
+    loading_temperature_c: Decimal | None = None
+    unloading_temperature_c: Decimal | None = None
+    approved_by: str | None = None
+    checked_by: str | None = None
+    check_result: TripCheckResult = TripCheckResult.not_checked
+    check_decision: str | None = None
     fuel_before_liters: Decimal | None = Field(default=None, ge=0)
     fuel_added_liters: Decimal | None = Field(default=None, ge=0)
     fuel_after_liters: Decimal | None = Field(default=None, ge=0)
@@ -162,6 +173,21 @@ class LogisticsFuelPosition(BaseModel):
     warnings: list[str] = Field(default_factory=list)
 
 
+class LogisticsCargoPosition(BaseModel):
+    gross_weight_tons: Decimal | None = None
+    tare_weight_tons: Decimal | None = None
+    net_weight_tons: Decimal | None = None
+    document_quantity: Decimal | None = None
+    weight_difference_tons: Decimal | None = None
+    loading_seal: str | None = None
+    unloading_seal: str | None = None
+    seals_match: bool | None = None
+    loading_temperature_c: Decimal | None = None
+    unloading_temperature_c: Decimal | None = None
+    temperature_drop_c: Decimal | None = None
+    warnings: list[str] = Field(default_factory=list)
+
+
 class LogisticsTransportSummary(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -185,6 +211,8 @@ class LogisticsRead(LogisticsBase):
     timeline: LogisticsTimeline | None = None
     # Saqlanmaydi: bak hisobi, mashina normasi va masofadan hisoblanadi.
     fuel: LogisticsFuelPosition | None = None
+    # Saqlanmaydi: tarozi, plomba va temperaturadan hisoblanadi.
+    cargo: LogisticsCargoPosition | None = None
 
 
 class DeliveryBatchDocumentBase(BaseModel):

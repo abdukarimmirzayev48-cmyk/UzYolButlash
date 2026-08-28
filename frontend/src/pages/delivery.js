@@ -924,6 +924,16 @@ function collectBatchPayload(form) {
       odometer_end_km: field(form, "odometer_end_km"),
       planned_distance_km: field(form, "planned_distance_km"),
       gps_distance_km: field(form, "gps_distance_km"),
+      gross_weight_tons: field(form, "gross_weight_tons"),
+      tare_weight_tons: field(form, "tare_weight_tons"),
+      loading_seal: field(form, "loading_seal"),
+      unloading_seal: field(form, "unloading_seal"),
+      loading_temperature_c: field(form, "loading_temperature_c"),
+      unloading_temperature_c: field(form, "unloading_temperature_c"),
+      approved_by: field(form, "approved_by"),
+      checked_by: field(form, "checked_by"),
+      check_result: field(form, "check_result") || "not_checked",
+      check_decision: field(form, "check_decision"),
       fuel_before_liters: field(form, "fuel_before_liters"),
       fuel_added_liters: field(form, "fuel_added_liters"),
       fuel_after_liters: field(form, "fuel_after_liters"),
@@ -1052,6 +1062,13 @@ async function batchForm(batch = null) {
           <h3>Reys vaqtlari</h3>
           <div class="grid">${timelineFields(logistics)}</div>
           <p class="form-hint">Aniq vaqt kiritilsa, haqiqiy sanalar shundan to'ldiriladi.</p>
+          <h3>Reys nazorati</h3>
+          <div class="grid">
+          ${textField("approved_by", "Kim ruxsat berdi", logistics.approved_by || "")}
+          ${textField("checked_by", "Kim tekshirdi", logistics.checked_by || "")}
+          ${selectField("check_result", "Tekshiruv natijasi", tripCheckResults, logistics.check_result || "not_checked")}
+          ${textArea("check_decision", "Qaror", logistics.check_decision || "")}
+          </div>
           <h3>Manzillar</h3>
           <div class="grid">
           ${textArea("loading_address", "Yuklash manzili", logistics.loading_address)}
@@ -1069,6 +1086,12 @@ async function batchForm(batch = null) {
           ${textField("empty_mileage_km", "Bo'sh probeg (km)", logistics.empty_mileage_km || "", "number")}
           <div class="total-box"><span>Umumiy probeg</span><strong data-logistics-total-mileage>${fmtQty(numberValue(logistics.loaded_mileage_km) + numberValue(logistics.empty_mileage_km), "km")}</strong></div>
           <div class="total-box"><span>Tonna-km</span><strong data-logistics-ton-km>${dash}</strong></div>
+          ${textField("gross_weight_tons", "Brutto (t)", logistics.gross_weight_tons || "", "number")}
+          ${textField("tare_weight_tons", "Tara (t)", logistics.tare_weight_tons || "", "number")}
+          ${textField("loading_seal", "Yuklash plombasi", logistics.loading_seal || "")}
+          ${textField("unloading_seal", "Tushirish plombasi", logistics.unloading_seal || "")}
+          ${textField("loading_temperature_c", "Yuklash temperaturasi (°C)", logistics.loading_temperature_c || "", "number")}
+          ${textField("unloading_temperature_c", "Tushirish temperaturasi (°C)", logistics.unloading_temperature_c || "", "number")}
           ${textField("fuel_before_liters", "Bakda: chiqishda (l)", logistics.fuel_before_liters || "", "number")}
           ${textField("fuel_added_liters", "Yo'lda quyildi (l)", logistics.fuel_added_liters || "", "number")}
           ${textField("fuel_after_liters", "Bakda: qaytishda (l)", logistics.fuel_after_liters || "", "number")}
@@ -1940,6 +1963,56 @@ function logisticsStatusTone(status) {
   return "warning";
 }
 
+const tripCheckResults = [
+  ["not_checked", "Tekshirilmagan"],
+  ["normal", "Tekshirildi — normal"],
+  ["needs_explanation", "Tushuntirish kerak"],
+  ["violation_confirmed", "Buzilish tasdiqlandi"],
+];
+
+const TRIP_CHECK_TONES = { not_checked: "warning", normal: "success", needs_explanation: "warning", violation_confirmed: "danger" };
+
+// Yuk nazorati: tarozi, plomba, temperatura. Bitum sovuydi, shuning uchun
+// temperatura yuk hujjatining bir qismi.
+function logisticsCargoBody(row) {
+  const cargo = row.cargo;
+  if (!cargo) return `<div class="empty">Yuk ma'lumotlari kiritilmagan.</div>`;
+  const tons = (value) => (value === null || value === undefined ? "" : fmtQty(value, "t"));
+  const degrees = (value) => (value === null || value === undefined ? "" : `${fmtQty(value)} °C`);
+  return `
+    ${summaryCards([
+      ["Netto (tarozi)", cargo.net_weight_tons !== null && cargo.net_weight_tons !== undefined ? fmtQty(cargo.net_weight_tons, "t") : dash],
+      ["Hujjat bo'yicha", cargo.document_quantity !== null && cargo.document_quantity !== undefined ? fmtQty(cargo.document_quantity, "t") : dash],
+      ["Farq", cargo.weight_difference_tons !== null && cargo.weight_difference_tons !== undefined
+        ? fmtQty(cargo.weight_difference_tons, "t")
+        : dash, cargo.weight_difference_tons && Math.abs(numberValue(cargo.weight_difference_tons)) > 0.2 ? "warning" : ""],
+      ["Temperatura tushishi", cargo.temperature_drop_c !== null && cargo.temperature_drop_c !== undefined ? `${fmtQty(cargo.temperature_drop_c)} °C` : dash],
+    ])}
+    <div class="detail-two-col">
+      ${detailTonePanel({ label: "Tarozi", tone: "muted", icon: "box", body: `
+        ${detailMiniField("Brutto", tons(cargo.gross_weight_tons), "box")}
+        ${detailMiniField("Tara", tons(cargo.tare_weight_tons), "box")}
+        ${detailMiniField("Netto", tons(cargo.net_weight_tons), "box")}
+      `})}
+      ${detailTonePanel({ label: "Plomba va temperatura", tone: cargo.seals_match === false ? "warning" : "muted", icon: "hash", body: `
+        ${detailMiniField("Yuklash plombasi", cargo.loading_seal || "", "hash")}
+        ${detailMiniField("Tushirish plombasi", cargo.unloading_seal || "", "hash")}
+        ${detailMiniField("Yuklashda", degrees(cargo.loading_temperature_c), "alert")}
+        ${detailMiniField("Tushirishda", degrees(cargo.unloading_temperature_c), "alert")}
+      `})}
+    </div>
+    ${workflowWarningsPanel(cargo.warnings || [])}`;
+}
+
+function logisticsCheckBody(row) {
+  return `<div class="detail-field-grid">
+    <div class="detail-field"><span>Tekshiruv natijasi</span><strong>${statusChip({ label: optionLabel(tripCheckResults, row.check_result), tone: TRIP_CHECK_TONES[row.check_result] })}</strong></div>
+    <div class="detail-field"><span>Kim ruxsat berdi</span><strong>${fmt(row.approved_by)}</strong></div>
+    <div class="detail-field"><span>Kim tekshirdi</span><strong>${fmt(row.checked_by)}</strong></div>
+    <div class="detail-field"><span>Qaror</span><strong>${fmt(row.check_decision)}</strong></div>
+  </div>`;
+}
+
 // Birlik `fmtQty` orqali qo'yiladi -- u butun ilova bo'ylab bir xil ishlaydi
 // va birlikni o'zi lug'atdan o'tkazadi.
 function unitField(label, value, unit, icon) {
@@ -2088,8 +2161,18 @@ async function renderLogisticsDetail(id) {
       })}
 
       ${detailCard({
+        icon: "box", title: "Yuk nazorati",
+        body: logisticsCargoBody(row),
+      })}
+
+      ${detailCard({
         icon: "droplet", title: "Yoqilg'i hisobi",
         body: logisticsFuelBody(row),
+      })}
+
+      ${detailCard({
+        icon: "check", title: "Reys nazorati",
+        body: logisticsCheckBody(row),
       })}
 
       ${detailCard({

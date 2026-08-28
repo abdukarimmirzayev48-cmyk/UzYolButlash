@@ -38,7 +38,7 @@ from backend.app.services.auth import get_current_user, require_edit
 from backend.app.services.order_status import sync_order_status
 from backend.app.services.telegram_bot import notify_driver_of_trip
 from backend.app.services.product_summary import product_summary
-from backend.app.services import batch_difference, batch_transport_check, logistics_fuel, logistics_timeline, transport_events
+from backend.app.services import batch_difference, batch_transport_check, logistics_cargo, logistics_fuel, logistics_timeline, transport_events
 from backend.app.schemas.client import Page
 from backend.app.schemas.delivery import (
     DeliveryBatchAcceptanceConfirm,
@@ -322,14 +322,33 @@ def logistics_fuel_position(logistics: Logistics) -> logistics_fuel.FuelPosition
     )
 
 
+def logistics_document_quantity(logistics: Logistics) -> Decimal | None:
+    """Hujjatdagi yuklangan miqdor -- partiya bandlaridan.
+
+    Tarozi ko'rsatkichi shu raqamga solishtiriladi: ikkovi mos kelmasa, yo
+    tarozi, yo hujjat noto'g'ri.
+    """
+    batch = logistics.batch
+    if not batch or not batch.items:
+        return None
+    loaded = [item.loaded_quantity for item in batch.items if item.loaded_quantity is not None]
+    if not loaded:
+        return None
+    return sum((Decimal(value) for value in loaded), Decimal("0"))
+
+
 def logistics_read(logistics: Logistics) -> LogisticsRead:
-    """Reys vaqt chizig'i va yoqilg'i hisobi saqlanmaydi, har o'qishda
-    hisoblanadi -- shunda mashina normasi o'zgarsa, hisob ham yangilanadi."""
+    """Reys vaqt chizig'i, yoqilg'i va yuk hisobi saqlanmaydi, har o'qishda
+    hisoblanadi -- shunda mashina normasi yoki partiya miqdori o'zgarsa,
+    hisob ham yangilanadi."""
     result = LogisticsRead.model_validate(logistics)
     return result.model_copy(
         update={
             "timeline": logistics_timeline.build_timeline(logistics),
             "fuel": logistics_fuel_position(logistics),
+            "cargo": logistics_cargo.build_position(
+                logistics=logistics, document_quantity=logistics_document_quantity(logistics)
+            ),
         }
     )
 
@@ -1185,7 +1204,7 @@ def list_logistics(
     linked: str | None = Query(default=None, pattern="^(yes|no)$"),
     group: str | None = Query(default=None, pattern="^(moving|problem)$"),
 ):
-    stmt = select(Logistics).join(DeliveryBatch).join(Order).join(Client).options(selectinload(Logistics.batch).selectinload(DeliveryBatch.client), selectinload(Logistics.batch).selectinload(DeliveryBatch.order), selectinload(Logistics.transport)).distinct()
+    stmt = select(Logistics).join(DeliveryBatch).join(Order).join(Client).options(selectinload(Logistics.batch).selectinload(DeliveryBatch.client), selectinload(Logistics.batch).selectinload(DeliveryBatch.order), selectinload(Logistics.batch).selectinload(DeliveryBatch.items), selectinload(Logistics.transport)).distinct()
     # Mashina biriktirilmagan reys hech qaysi mashinaning xulosasiga
     # tushmaydi, shuning uchun ularni alohida ko'rish kerak bo'ladi.
     if linked == "no":
@@ -1222,7 +1241,7 @@ def list_logistics(
 
 @logistics_router.get("/{logistics_id}", response_model=LogisticsDetail)
 def get_logistics_detail(logistics_id: int, db: Session = Depends(get_db)):
-    logistics = db.scalars(select(Logistics).where(Logistics.id == logistics_id).options(selectinload(Logistics.batch).selectinload(DeliveryBatch.client), selectinload(Logistics.batch).selectinload(DeliveryBatch.order), selectinload(Logistics.documents), selectinload(Logistics.notes_history))).first()
+    logistics = db.scalars(select(Logistics).where(Logistics.id == logistics_id).options(selectinload(Logistics.batch).selectinload(DeliveryBatch.client), selectinload(Logistics.batch).selectinload(DeliveryBatch.order), selectinload(Logistics.batch).selectinload(DeliveryBatch.items), selectinload(Logistics.transport), selectinload(Logistics.documents), selectinload(Logistics.notes_history))).first()
     if not logistics:
         raise HTTPException(status_code=404, detail="Logistika topilmadi.")
     base = logistics_read(logistics).model_dump()

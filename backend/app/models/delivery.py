@@ -49,6 +49,13 @@ class LogisticsStatus(str, Enum):
     issue = "issue"
 
 
+class TripCheckResult(str, Enum):
+    not_checked = "not_checked"
+    normal = "normal"
+    needs_explanation = "needs_explanation"
+    violation_confirmed = "violation_confirmed"
+
+
 class PaidBy(str, Enum):
     company = "company"
     customer = "customer"
@@ -57,6 +64,7 @@ class PaidBy(str, Enum):
 
 class BatchDocumentType(str, Enum):
     ttn = "ttn"
+    waybill = "waybill"
     acceptance_act = "acceptance_act"
     quality_certificate = "quality_certificate"
     supplier_invoice = "supplier_invoice"
@@ -67,6 +75,7 @@ class BatchDocumentType(str, Enum):
 
 class LogisticsDocumentType(str, Enum):
     transport_invoice = "transport_invoice"
+    waybill = "waybill"
     driver_document = "driver_document"
     vehicle_document = "vehicle_document"
     loading_photo = "loading_photo"
@@ -194,6 +203,25 @@ class Logistics(Base, TimestampMixin):
     # esa qo'lda kiritiladi -- trekerga ulanish yo'q, dispetcher uni
     # trekerning o'z panelidan ko'chirib yozadi. Ikkovining farqi o'zi
     # savol tug'diradi: odometr aylantirilgan bo'lishi mumkin.
+    # Yuk nazorati. Bitum sovuydi, shuning uchun temperatura yuk hujjatining
+    # bir qismi: sovib qolgan bitum bilan yo'l qoplamasi yotqizib bo'lmaydi va
+    # buni ob'ektda emas, yuklashda bilish kerak. Plomba raqami ikki uchida
+    # yoziladi -- ularning farqi yo'lda ochilgan degani.
+    gross_weight_tons: Mapped[Decimal | None] = mapped_column(Numeric(18, 3))
+    tare_weight_tons: Mapped[Decimal | None] = mapped_column(Numeric(18, 3))
+    loading_seal: Mapped[str | None] = mapped_column(String(64))
+    unloading_seal: Mapped[str | None] = mapped_column(String(64))
+    loading_temperature_c: Mapped[Decimal | None] = mapped_column(Numeric(6, 1))
+    unloading_temperature_c: Mapped[Decimal | None] = mapped_column(Numeric(6, 1))
+
+    # Reys nazorati: kim ruxsat berdi, kim tekshirdi va nima qaror qilindi.
+    approved_by: Mapped[str | None] = mapped_column(String(255))
+    checked_by: Mapped[str | None] = mapped_column(String(255))
+    check_result: Mapped[TripCheckResult] = mapped_column(
+        SAEnum(TripCheckResult), default=TripCheckResult.not_checked, nullable=False, index=True
+    )
+    check_decision: Mapped[str | None] = mapped_column(Text)
+
     odometer_start_km: Mapped[Decimal | None] = mapped_column(Numeric(10, 1))
     odometer_end_km: Mapped[Decimal | None] = mapped_column(Numeric(10, 1))
     gps_distance_km: Mapped[Decimal | None] = mapped_column(Numeric(10, 2))
