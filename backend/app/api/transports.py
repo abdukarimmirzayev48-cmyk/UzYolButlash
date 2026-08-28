@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
 from typing import Any
 
@@ -9,12 +9,30 @@ from sqlalchemy.orm import Session, object_session, selectinload
 from backend.app.db.session import get_db
 from backend.app.models.attendance import Employee
 from backend.app.models.delivery import DeliveryBatch, Logistics, LogisticsStatus
-from backend.app.models.transport import UNAVAILABLE_STATUSES, Transport, TransportCheckIn, TransportEvent, TransportStatus
+from backend.app.models.transport import (
+    OPEN_REPAIR_STATUSES,
+    SERVICE_CATEGORIES,
+    UNAVAILABLE_STATUSES,
+    RepairStatus,
+    Transport,
+    TransportCheckIn,
+    TransportEvent,
+    TransportRepair,
+    TransportRepairPart,
+    TransportStatus,
+)
 from backend.app.schemas.client import Page
-from backend.app.services import logistics_timeline, transport_events, transport_readiness, transport_usage
-from backend.app.services.auth import require_edit
+from backend.app.services import logistics_timeline, repair_workflow, transport_events, transport_readiness, transport_repairs, transport_usage
+from backend.app.models.user import User
+from backend.app.services.auth import get_current_user, require_edit
 from backend.app.services.telegram_bot import request_checkin
 from backend.app.schemas.transport import (
+    RepairPartRead,
+    TransportRepairCreate,
+    TransportRepairRead,
+    TransportRepairStatusUpdate,
+    TransportRepairSummary,
+    TransportRepairUpdate,
     TransportTrip,
     TransportUsage,
     TransportEventCreate,
@@ -309,6 +327,255 @@ def create_transport(payload: TransportCreate, db: Session = Depends(get_db)):
     return with_readiness(transport, None)
 
 
+# Izohga yoziladigan yorliqlar. Interfeysdagi ro'yxat bilan bir xil
+# bo'lishi kerak, aks holda tarixda boshqa nom paydo bo'ladi.
+REPAIR_STATUS_LABELS = {
+    "new": "Yangi ariza",
+    "diagnosis": "Diagnostika",
+    "waiting_parts": "Ehtiyot qism kutilmoqda",
+    "in_repair": "Ta'mirda",
+    "done": "Tayyor",
+    "closed": "Yopilgan",
+    "cancelled": "Bekor qilingan",
+}
+
+def get_repair_or_404(db: Session, repair_id: int) -> TransportRepair:
+    repair = db.scalars(
+        select(TransportRepair).where(TransportRepair.id == repair_id).options(
+            selectinload(TransportRepair.parts), selectinload(TransportRepair.transport)
+        )
+    ).first()
+    if not repair:
+        raise HTTPException(status_code=404, detail="Ta'mir arizasi topilmadi.")
+    return repair
+
+
+def repair_read(repair: TransportRepair) -> TransportRepairRead:
+    """Turib qolish soati, xarajat va mumkin bo'lgan o'tishlar saqlanmaydi.
+
+    Ular har o'qishda hisoblanadi: ehtiyot qism qo'shilsa xarajat o'zi
+    o'zgaradi, tugagani yozilmagan turib qolish esa hozirgacha o'sib
+    boradi -- mashina hali ham turibdi degani.
+    """
+    result = TransportRepairRead.model_validate(repair)
+    parts = [
+        RepairPartRead.model_validate(part).model_copy(update={"line_total": transport_repairs.part_total(part)})
+        for part in repair.parts
+    ]
+    return result.model_copy(
+        update={
+            "parts": parts,
+            "downtime_hours": transport_repairs.downtime_hours(repair, now=datetime.now()),
+            "parts_amount": transport_repairs.parts_total(repair),
+            "total_amount": transport_repairs.repair_total(repair),
+            "transitions": repair_workflow.transitions_from(repair.status),
+        }
+    )
+
+
+def repair_filters(search, transport_id, category, severity, status_filter, open_only):
+    """Ro'yxat va xulosa aynan bir xil filtrlanadi."""
+    stmt = select(TransportRepair)
+    if transport_id:
+        stmt = stmt.where(TransportRepair.transport_id == transport_id)
+    if category:
+        stmt = stmt.where(TransportRepair.category == category)
+    if severity:
+        stmt = stmt.where(TransportRepair.severity == severity)
+    if status_filter:
+        stmt = stmt.where(TransportRepair.status == status_filter)
+    if open_only:
+        stmt = stmt.where(TransportRepair.status.in_(OPEN_REPAIR_STATUSES))
+    if search:
+        value = f"%{search}%"
+        stmt = stmt.join(Transport).where(
+            or_(
+                TransportRepair.repair_number.ilike(value),
+                TransportRepair.description.ilike(value),
+                TransportRepair.contractor.ilike(value),
+                TransportRepair.breakdown_location.ilike(value),
+                Transport.vehicle_number.ilike(value),
+            )
+        )
+    return stmt
+
+
+def replace_repair_parts(db: Session, repair: TransportRepair, parts: list) -> None:
+    for existing in list(repair.parts):
+        db.delete(existing)
+    db.flush()
+    for payload in parts:
+        db.add(TransportRepairPart(repair_id=repair.id, **payload.model_dump()))
+    db.flush()
+    db.expire(repair, ["parts"])
+
+
+def sync_transport_from_repairs(db: Session, transport_id: int) -> None:
+    """Yura olmaydigan ochiq ariza bo'lsa, mashina «ta'mirda» bo'ladi.
+
+    Ilgari holat qo'lda qo'yilardi: ariza ochilgan, mashina esa ro'yxatda
+    «bo'sh» bo'lib turaverardi va unga reys berilardi. Bu yerda faqat
+    ta'mir sababli qo'yilgan holat qaytariladi -- odam «parkda emas» yoki
+    «bekor turibdi» deb qo'ygan bo'lsa, unga tegilmaydi.
+    """
+    transport = db.get(Transport, transport_id)
+    if not transport:
+        return
+    blocked = db.scalars(
+        select(TransportRepair).where(
+            TransportRepair.transport_id == transport_id,
+            TransportRepair.status.in_(OPEN_REPAIR_STATUSES),
+            TransportRepair.can_move.is_(False),
+        )
+    ).first()
+    if blocked and transport.status == TransportStatus.free:
+        transport.status = TransportStatus.repair
+    elif not blocked and transport.status == TransportStatus.repair:
+        transport.status = TransportStatus.free
+
+
+def apply_service_completion(db: Session, repair: TransportRepair) -> None:
+    """Rejali TO yopilganda mashina kartochkasidagi oxirgi TO yangilanadi.
+
+    Keyingi TO shundan hisoblanadi, ya'ni u o'zi siljiydi. Buni qo'lda
+    yozish kerak bo'lsa, unutiladi -- va kartochkada «TO muddati keldi»
+    degan yozuv oylab turib qoladi.
+    """
+    if repair.category not in SERVICE_CATEGORIES:
+        return
+    transport = db.get(Transport, repair.transport_id)
+    if not transport:
+        return
+    done_on = (repair.downtime_finished_at or repair.opened_at).date()
+    if transport.last_service_date is None or done_on >= transport.last_service_date:
+        transport.last_service_date = done_on
+    if repair.odometer_km is not None and (
+        transport.last_service_km is None or Decimal(repair.odometer_km) >= Decimal(transport.last_service_km)
+    ):
+        transport.last_service_km = repair.odometer_km
+
+
+@router.get("/repairs", response_model=Page[TransportRepairRead])
+def list_repairs(
+    db: Session = Depends(get_db),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=1, le=200),
+    search: str | None = None,
+    transport_id: int | None = None,
+    category: str | None = None,
+    severity: str | None = None,
+    status_filter: str | None = Query(default=None, alias="status"),
+    open_only: bool = False,
+):
+    stmt = repair_filters(search, transport_id, category, severity, status_filter, open_only).options(
+        selectinload(TransportRepair.parts), selectinload(TransportRepair.transport)
+    )
+    total = db.scalar(select(func.count()).select_from(stmt.subquery())) or 0
+    rows = db.scalars(
+        stmt.order_by(TransportRepair.opened_at.desc(), TransportRepair.id.desc())
+        .offset((page - 1) * page_size)
+        .limit(page_size)
+    ).unique()
+    return Page(items=[repair_read(row) for row in rows], total=total, page=page, page_size=page_size)
+
+
+@router.get("/repairs/summary", response_model=TransportRepairSummary)
+def repairs_summary(
+    db: Session = Depends(get_db),
+    search: str | None = None,
+    transport_id: int | None = None,
+    category: str | None = None,
+    severity: str | None = None,
+    status_filter: str | None = Query(default=None, alias="status"),
+    open_only: bool = False,
+):
+    stmt = repair_filters(search, transport_id, category, severity, status_filter, open_only).options(
+        selectinload(TransportRepair.parts)
+    )
+    repairs = list(db.scalars(stmt).unique())
+    return TransportRepairSummary(**transport_repairs.build_summary(repairs, now=datetime.now()).__dict__)
+
+
+@router.post("/repairs", response_model=TransportRepairRead, status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_edit("yetkazib_berish"))])
+def create_repair(payload: TransportRepairCreate, db: Session = Depends(get_db)):
+    get_transport_or_404(db, payload.transport_id)
+    data = payload.model_dump(exclude={"parts"})
+    repair = TransportRepair(**data)
+    if not repair.repair_number:
+        day = repair.opened_at.date()
+        prefix = f"RM-{day.strftime('%Y%m%d')}"
+        taken = set(db.scalars(select(TransportRepair.repair_number).where(TransportRepair.repair_number.like(f"{prefix}%"))).all())
+        repair.repair_number = transport_repairs.next_repair_number(taken, day)
+    db.add(repair)
+    db.flush()
+    replace_repair_parts(db, repair, payload.parts)
+    sync_transport_from_repairs(db, repair.transport_id)
+    db.commit()
+    return repair_read(get_repair_or_404(db, repair.id))
+
+
+@router.get("/repairs/{repair_id}", response_model=TransportRepairRead)
+def get_repair(repair_id: int, db: Session = Depends(get_db)):
+    return repair_read(get_repair_or_404(db, repair_id))
+
+
+@router.patch("/repairs/{repair_id}", response_model=TransportRepairRead, dependencies=[Depends(require_edit("yetkazib_berish"))])
+def update_repair(repair_id: int, payload: TransportRepairUpdate, db: Session = Depends(get_db)):
+    repair = get_repair_or_404(db, repair_id)
+    data = payload.model_dump(exclude_unset=True, exclude={"parts"})
+    update_model(repair, data)
+    if payload.parts is not None:
+        replace_repair_parts(db, repair, payload.parts)
+    sync_transport_from_repairs(db, repair.transport_id)
+    db.commit()
+    return repair_read(get_repair_or_404(db, repair.id))
+
+
+@router.patch("/repairs/{repair_id}/status", response_model=TransportRepairRead, dependencies=[Depends(require_edit("yetkazib_berish"))])
+def update_repair_status(repair_id: int, payload: TransportRepairStatusUpdate, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    repair = get_repair_or_404(db, repair_id)
+    current = repair.status
+    if payload.status == current:
+        return repair_read(repair)
+    kind = repair_workflow.transition_kind(current, payload.status)
+    if kind is None:
+        raise HTTPException(status_code=422, detail=f"{repair_workflow.MSG_BAD_TRANSITION}: {REPAIR_STATUS_LABELS.get(current.value, current.value)}")
+    comment = (payload.comment or "").strip()
+    if kind in {"backward", "cancel"} and not comment:
+        raise HTTPException(status_code=422, detail=repair_workflow.MSG_COMMENT_REQUIRED)
+    # Yopishdan oldin natija yozilishi kerak: natijasiz yopilgan ariza
+    # keyin «nima qilingan edi» degan savolga javob bermaydi.
+    if payload.status == RepairStatus.closed and not (repair.result or "").strip():
+        raise HTTPException(status_code=422, detail=repair_workflow.MSG_RESULT_REQUIRED)
+
+    repair.status = payload.status
+    old_label = REPAIR_STATUS_LABELS.get(current.value, current.value)
+    new_label = REPAIR_STATUS_LABELS.get(payload.status.value, payload.status.value)
+    entry = f"{repair_workflow.MSG_STATUS_CHANGED}: {old_label} -> {new_label}"
+    if comment:
+        entry = f"{entry}. {comment}"
+    repair.note = f"{repair.note}\n{entry}" if repair.note else entry
+    # Ta'mir tugagach turib qolish ham tugaydi -- alohida eslash shart emas.
+    if payload.status in (RepairStatus.done, RepairStatus.closed) and repair.downtime_started_at and not repair.downtime_finished_at:
+        repair.downtime_finished_at = datetime.now()
+    if payload.status == RepairStatus.closed:
+        apply_service_completion(db, repair)
+    sync_transport_from_repairs(db, repair.transport_id)
+    db.commit()
+    return repair_read(get_repair_or_404(db, repair.id))
+
+
+@router.delete("/repairs/{repair_id}", status_code=status.HTTP_204_NO_CONTENT, dependencies=[Depends(require_edit("yetkazib_berish"))])
+def delete_repair(repair_id: int, db: Session = Depends(get_db)):
+    repair = get_repair_or_404(db, repair_id)
+    transport_id = repair.transport_id
+    db.delete(repair)
+    db.commit()
+    sync_transport_from_repairs(db, transport_id)
+    db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
 def get_event_or_404(db: Session, event_id: int) -> TransportEvent:
     event = db.get(TransportEvent, event_id)
     if not event:
@@ -458,8 +725,22 @@ def delete_event(event_id: int, db: Session = Depends(get_db)):
 def get_transport(transport_id: int, db: Session = Depends(get_db)):
     transport = get_transport_or_404(db, transport_id)
     trips = trips_of(db, transport.id)
+    repairs = list(
+        db.scalars(
+            select(TransportRepair)
+            .where(TransportRepair.transport_id == transport.id)
+            .options(selectinload(TransportRepair.parts))
+            .order_by(TransportRepair.opened_at.desc())
+        ).unique()
+    )
+    summary = transport_repairs.build_summary(repairs, now=datetime.now())
     return with_readiness(transport, current_odometer(db, transport.id)).model_copy(
-        update={"usage": usage_of(transport, trips), "trips": [trip_row(row) for row in trips]}
+        update={
+            "usage": usage_of(transport, trips),
+            "trips": [trip_row(row) for row in trips],
+            "repair_summary": TransportRepairSummary(**summary.__dict__),
+            "open_repairs": [repair_read(row) for row in repairs if row.status in OPEN_REPAIR_STATUSES],
+        }
     )
 
 

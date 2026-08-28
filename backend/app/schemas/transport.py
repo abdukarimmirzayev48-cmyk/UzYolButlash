@@ -4,6 +4,10 @@ from decimal import Decimal
 from pydantic import BaseModel, ConfigDict, Field
 
 from backend.app.models.transport import (
+    RepairCategory,
+    RepairSeverity,
+    RepairSource,
+    RepairStatus,
     TransportCheckInKind,
     TransportEventCheckResult,
     TransportEventStatus,
@@ -97,6 +101,124 @@ class TransportReadiness(BaseModel):
     warnings: list[str] = Field(default_factory=list)
 
 
+class TransportEventVehicle(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    vehicle_number: str
+    driver_name: str | None = None
+
+
+class RepairPartBase(BaseModel):
+    name: str = Field(min_length=1, max_length=255)
+    unit: str | None = None
+    quantity: Decimal = Field(default=Decimal("1"), gt=0)
+    unit_price: Decimal | None = Field(default=None, ge=0)
+    total_amount: Decimal | None = Field(default=None, ge=0)
+    note: str | None = None
+
+
+class RepairPartCreate(RepairPartBase):
+    pass
+
+
+class RepairPartRead(RepairPartBase):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    line_total: Decimal = Decimal("0")
+
+
+class TransportRepairBase(BaseModel):
+    transport_id: int
+    opened_at: datetime
+    breakdown_location: str | None = None
+    source: RepairSource = RepairSource.driver
+    category: RepairCategory = RepairCategory.other
+    description: str | None = None
+    severity: RepairSeverity = RepairSeverity.medium
+    can_move: bool = True
+    downtime_started_at: datetime | None = None
+    downtime_finished_at: datetime | None = None
+    repair_place: str | None = None
+    work_done: str | None = None
+    contractor: str | None = None
+    act_number: str | None = None
+    document_url: str | None = None
+    odometer_km: Decimal | None = Field(default=None, ge=0)
+    labour_cost: Decimal | None = Field(default=None, ge=0)
+    responsible_name: str | None = None
+    result: str | None = None
+    delay_reason: str | None = None
+    note: str | None = None
+    created_by: str | None = None
+
+
+class TransportRepairCreate(TransportRepairBase):
+    # Raqamni server beradi.
+    repair_number: str | None = None
+    parts: list[RepairPartCreate] = Field(default_factory=list)
+
+
+class TransportRepairUpdate(BaseModel):
+    opened_at: datetime | None = None
+    breakdown_location: str | None = None
+    source: RepairSource | None = None
+    category: RepairCategory | None = None
+    description: str | None = None
+    severity: RepairSeverity | None = None
+    can_move: bool | None = None
+    downtime_started_at: datetime | None = None
+    downtime_finished_at: datetime | None = None
+    repair_place: str | None = None
+    work_done: str | None = None
+    contractor: str | None = None
+    act_number: str | None = None
+    document_url: str | None = None
+    odometer_km: Decimal | None = Field(default=None, ge=0)
+    labour_cost: Decimal | None = Field(default=None, ge=0)
+    responsible_name: str | None = None
+    result: str | None = None
+    delay_reason: str | None = None
+    note: str | None = None
+    parts: list[RepairPartCreate] | None = None
+
+
+class TransportRepairStatusUpdate(BaseModel):
+    status: RepairStatus
+    comment: str | None = None
+
+
+class TransportRepairRead(TransportRepairBase):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    repair_number: str
+    status: RepairStatus
+    created_at: datetime
+    updated_at: datetime
+    parts: list[RepairPartRead] = Field(default_factory=list)
+    transport: TransportEventVehicle | None = None
+    # Saqlanmaydi, hisoblanadi.
+    downtime_hours: Decimal | None = None
+    parts_amount: Decimal = Decimal("0")
+    total_amount: Decimal = Decimal("0")
+    transitions: list[dict] = Field(default_factory=list)
+
+
+class TransportRepairSummary(BaseModel):
+    total: int = 0
+    open_count: int = 0
+    critical_open_count: int = 0
+    immobilised_count: int = 0
+    downtime_hours: Decimal = Decimal("0")
+    parts_amount: Decimal = Decimal("0")
+    labour_amount: Decimal = Decimal("0")
+    total_amount: Decimal = Decimal("0")
+    warnings: list[str] = Field(default_factory=list)
+
+
+
 class TransportUsage(BaseModel):
     trip_count: int = 0
     delivered_tons: Decimal = Decimal("0")
@@ -139,6 +261,8 @@ class TransportRead(TransportBase):
     # Reys mashinaga bog'langandan keyin hisoblanadigan xulosa.
     usage: TransportUsage | None = None
     trips: list[TransportTrip] = Field(default_factory=list)
+    repair_summary: TransportRepairSummary | None = None
+    open_repairs: list[TransportRepairRead] = Field(default_factory=list)
 
 
 class TransportEventBase(BaseModel):
@@ -205,14 +329,6 @@ class TransportEventUpdate(BaseModel):
     damage_amount: Decimal | None = Field(default=None, ge=0)
     status: TransportEventStatus | None = None
     note: str | None = None
-
-
-class TransportEventVehicle(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
-    id: int
-    vehicle_number: str
-    driver_name: str | None = None
 
 
 class TransportEventRead(TransportEventBase):

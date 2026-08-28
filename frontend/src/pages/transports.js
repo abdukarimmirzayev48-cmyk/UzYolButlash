@@ -64,6 +64,14 @@ const TRANSPORT_EVENT_TONES = {
   other: "muted",
 };
 
+const TRANSPORT_EVENT_STATUS_TONES = { open: "warning", in_review: "warning", closed: "muted", cancelled: "muted" };
+
+// Global yorliq qidiruvi boshqa modulning «closed» ini olib kelishi mumkin,
+// shuning uchun hodisa holati o'z ro'yxatidan olinadi.
+function transportEventStatusChip(status) {
+  return statusChip({ label: optionLabel(transportEventStatuses, status), tone: TRANSPORT_EVENT_STATUS_TONES[status] });
+}
+
 const TRANSPORT_CHECK_TONES = {
   not_checked: "warning",
   normal: "success",
@@ -82,6 +90,30 @@ const transportWorkStatusLabels = {
   moving_without_cargo: "Yuksiz harakatda",
   waiting: "Kutishda",
 };
+
+// Ochiq ta'mir arizalari kartochkada ko'rinib tursin: mashina holati
+// «ta'mirda» ekanini ko'rish yetmaydi, nima kutilayotganini bilish kerak.
+function transportRepairPanel(summary, openRepairs = [], transportId = null) {
+  if (!summary) return "";
+  const rows = openRepairs.map((repair) => `<tr>
+    <td><button class="ops-primary-link" data-nav="/transport-repairs/${repair.id}">${fmt(repair.repair_number)}</button></td>
+    <td>${fmtDate(repair.opened_at)}</td>
+    <td>${fmt(optionLabel(repairCategories, repair.category))}</td>
+    <td>${statusChip({ label: optionLabel(repairSeverities, repair.severity), tone: REPAIR_SEVERITY_TONES[repair.severity] })}</td>
+    <td>${fmt(repair.description)}</td>
+    <td>${repair.can_move ? "" : statusChip({ label: "Yura olmaydi", tone: "danger" })}</td>
+    <td>${repairStatusChip(repair.status)}</td>
+  </tr>`).join("");
+  const body = `${summaryCards([
+    ["Ochiq arizalar", `<span>${fmt(summary.open_count)}</span> <span>ta</span>`, summary.open_count ? "warning" : ""],
+    ["Turib qolish", summary.downtime_hours ? `<span data-noloc>${fmtQty(summary.downtime_hours)}</span> <span>soat</span>` : dash],
+    ["Jami xarajat", fmtMoney(summary.total_amount)],
+  ])}${workflowWarningsPanel(summary.warnings || [])}${openRepairs.length
+    ? `<table class="data-table"><thead><tr><th>Ariza</th><th>Ochilgan</th><th>Kategoriya</th><th>Kritiklik</th><th>Nosozlik</th><th></th><th>Holati</th></tr></thead><tbody>${rows}</tbody></table>`
+    : `<div class="empty">Ochiq ta'mir arizasi yo'q.</div>`}
+    <div class="toolbar"><button class="btn" type="button" data-nav="/transport-repairs?transport_id=${transportId}">Barcha arizalar</button>${canEdit("yetkazib_berish") ? `<button class="btn" type="button" data-nav="/transport-repairs/new?transport_id=${transportId}">Ariza ochish</button>` : ""}</div>`;
+  return section("TO va ta'mir", body);
+}
 
 // Mashina bo'yicha reyslar. Bu bo'lim ilgari mumkin emas edi: reys mashinaga
 // bog'lanmagan, davlat raqami esa matn bo'lgani uchun bitta raqamdagi uchta
@@ -150,6 +182,7 @@ function transportFormHtml(item = {}, employees = []) {
       </div>
     </div>
     ${item.id ? transportReadinessPanel(item.readiness) : ""}
+    ${item.id ? transportRepairPanel(item.repair_summary, item.open_repairs, item.id) : ""}
     ${item.id ? transportUsagePanel(item.usage, item.trips) : ""}
     <form id="transport-form">
       ${section("Transport ma'lumotlari", `<div class="grid">
@@ -243,7 +276,7 @@ async function renderTransportsList() {
   app.innerHTML = opsListPage({
     className: "transports-ops-page",
     title: "Transportlar",
-    tabs: [{ label: "Partiyalar", path: "/delivery-batches" }, { label: "Logistika", path: "/logistics" }, { label: "Transportlar", active: true }, { label: "Hodisalar", path: "/transport-events" }, { label: "Monitoring", path: "/transports/monitoring" }],
+    tabs: [{ label: "Partiyalar", path: "/delivery-batches" }, { label: "Logistika", path: "/logistics" }, { label: "Transportlar", active: true }, { label: "Hodisalar", path: "/transport-events" }, { label: "TO va ta'mir", path: "/transport-repairs" }, { label: "Monitoring", path: "/transports/monitoring" }],
     clearPath: "/transports",
     counter: `${fmt(data.total)} ta transport · ${fmt(freeCount)} ta bo'sh · ${fmt(riskCount)} tasida hujjat muddati`,
     formId: "transport-search-form",
@@ -417,7 +450,7 @@ function transportEventRow(event, { showVehicle = false, editable = false } = {}
     <td>${fmt(event.logistics_number)}</td>
     <td>${statusChip({ label: optionLabel(transportEventCheckResults, event.check_result), tone: TRANSPORT_CHECK_TONES[event.check_result] })}</td>
     <td class="ops-money">${event.damage_amount != null ? fmtMoney(event.damage_amount) : dash}</td>
-    <td>${statusBadge(event.status)}</td>
+    <td>${transportEventStatusChip(event.status)}</td>
     ${editable ? `<td><div class="ops-row-actions"><button class="link-btn" data-open-event="${event.id}">Ochish</button><button class="link-btn" data-delete-event="${event.id}">O'chirish</button></div></td>` : ""}
   </tr>`;
 }
@@ -546,6 +579,7 @@ async function renderTransportEvents() {
       { label: "Logistika", path: "/logistics" },
       { label: "Transportlar", path: "/transports" },
       { label: "Hodisalar", active: true },
+      { label: "TO va ta'mir", path: "/transport-repairs" },
       { label: "Monitoring", path: "/transports/monitoring" },
     ],
     clearPath: "/transport-events",
@@ -574,7 +608,7 @@ async function renderTransportMonitoring() {
   const s = data.summary;
   app.innerHTML = opsPageShell(
     "Transport monitoring",
-    [{ label: "Partiyalar", path: "/delivery-batches" }, { label: "Logistika", path: "/logistics" }, { label: "Transportlar", path: "/transports" }, { label: "Hodisalar", path: "/transport-events" }, { label: "Monitoring", active: true }],
+    [{ label: "Partiyalar", path: "/delivery-batches" }, { label: "Logistika", path: "/logistics" }, { label: "Transportlar", path: "/transports" }, { label: "Hodisalar", path: "/transport-events" }, { label: "TO va ta'mir", path: "/transport-repairs" }, { label: "Monitoring", active: true }],
     `${summaryCards([
       ["Jami avtomashina", `${fmt(s.total)}ta`],
       ["Ish holatida", `${fmt(s.working)}ta`],

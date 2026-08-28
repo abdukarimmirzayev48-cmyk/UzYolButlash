@@ -3255,13 +3255,17 @@ tr:last-child td {
 
 .status-badge.completed,
 .status-badge.inactive,
-.status-badge.idle {
+.status-badge.idle,
+.status-badge.closed {
   background: #eef2f6;
   color: #465563;
 }
 
 .status-badge.repair,
-.status-badge.service {
+.status-badge.service,
+.status-badge.in_repair,
+.status-badge.waiting_parts,
+.status-badge.diagnosis {
   background: #fdf3e3;
   color: #8a5b12;
 }

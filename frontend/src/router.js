@@ -141,6 +141,12 @@ async function render() {
       await renderTransportFuelLog(getTransportIdFromPath());
     } else if (location.pathname === "/transport-events") {
       await renderTransportEvents();
+    } else if (location.pathname === "/transport-repairs/new") {
+      await renderRepairForm();
+    } else if (/^\/transport-repairs\/\d+$/.test(location.pathname)) {
+      await renderRepairForm(Number(location.pathname.split("/")[2]));
+    } else if (location.pathname === "/transport-repairs") {
+      await renderRepairsList();
     } else if (location.pathname === "/transports") {
       await renderTransportsList();
     } else if (location.pathname === "/audit-log") {

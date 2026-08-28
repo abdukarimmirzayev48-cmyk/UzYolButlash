@@ -131,7 +131,60 @@ class Transport(Base, TimestampMixin):
 
     driver: Mapped[Employee | None] = relationship()
     events: Mapped[list["TransportEvent"]] = relationship(back_populates="transport", cascade="all, delete-orphan", order_by="TransportEvent.occurred_at.desc(), TransportEvent.id.desc()")
+    repairs: Mapped[list["TransportRepair"]] = relationship(back_populates="transport", cascade="all, delete-orphan", order_by="TransportRepair.opened_at.desc(), TransportRepair.id.desc()")
     check_ins: Mapped[list["TransportCheckIn"]] = relationship(back_populates="transport", cascade="all, delete-orphan", order_by="TransportCheckIn.created_at.desc()")
+
+
+class RepairCategory(str, Enum):
+    engine = "engine"
+    transmission = "transmission"
+    chassis = "chassis"
+    brakes = "brakes"
+    electrics = "electrics"
+    tyres = "tyres"
+    tank = "tank"
+    service = "service"
+    other = "other"
+
+
+# Rejali texnik xizmat. Bu turdagi ariza yopilganda mashina kartochkasidagi
+# «oxirgi TO» yangilanadi, ya'ni keyingi TO o'zi siljiydi.
+SERVICE_CATEGORIES = (RepairCategory.service,)
+
+
+class RepairSeverity(str, Enum):
+    low = "low"
+    medium = "medium"
+    critical = "critical"
+
+
+class RepairStatus(str, Enum):
+    new = "new"
+    diagnosis = "diagnosis"
+    waiting_parts = "waiting_parts"
+    in_repair = "in_repair"
+    done = "done"
+    closed = "closed"
+    cancelled = "cancelled"
+
+
+# Shu holatlarda ariza hali ochiq: mashina ustida ish tugamagan.
+CLOSED_REPAIR_STATUSES = (RepairStatus.closed, RepairStatus.cancelled)
+OPEN_REPAIR_STATUSES = (
+    RepairStatus.new,
+    RepairStatus.diagnosis,
+    RepairStatus.waiting_parts,
+    RepairStatus.in_repair,
+)
+
+
+class RepairSource(str, Enum):
+    driver = "driver"
+    inspection = "inspection"
+    dispatcher = "dispatcher"
+    scheduled = "scheduled"
+    other = "other"
+
 
 
 class TransportEvent(Base, TimestampMixin):
@@ -208,3 +261,77 @@ class TransportCheckIn(Base):
 
     transport: Mapped[Transport] = relationship(back_populates="check_ins")
     employee: Mapped[Employee] = relationship()
+
+
+class TransportRepair(Base, TimestampMixin):
+    """Nosozlik, texnik xizmat va turib qolish arizasi.
+
+    Bu bo'lim umuman yo'q edi: mashina ta'mirda ekanini faqat bitta bayroq
+    aytardi. Nima buzilgani, qancha turib qolgani, qancha pul ketgani va kim
+    tuzatgani hech qayerda yozilmasdi -- ya'ni bir xil nosozlik uchinchi
+    marta takrorlanayotganini ham, bitta mashina yiliga qancha yeyayotganini
+    ham bilib bo'lmasdi.
+
+    Turib qolish vaqti alohida yoziladi va arizaning ochiq turgan vaqtidan
+    farq qiladi: ariza ochiq bo'lishi, lekin mashina yurishi mumkin.
+    """
+
+    __tablename__ = "transport_repairs"
+
+    id: Mapped[int] = mapped_column(primary_key=True, index=True)
+    repair_number: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    transport_id: Mapped[int] = mapped_column(ForeignKey("transports.id", ondelete="CASCADE"), index=True)
+    opened_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.now, index=True)
+
+    breakdown_location: Mapped[str | None] = mapped_column(String(255))
+    source: Mapped[RepairSource] = mapped_column(SAEnum(RepairSource), default=RepairSource.driver, nullable=False)
+    category: Mapped[RepairCategory] = mapped_column(SAEnum(RepairCategory), default=RepairCategory.other, nullable=False, index=True)
+    description: Mapped[str | None] = mapped_column(Text)
+    severity: Mapped[RepairSeverity] = mapped_column(SAEnum(RepairSeverity), default=RepairSeverity.medium, nullable=False, index=True)
+    # Mashina yura oladimi. Yo'q bo'lsa, mashina holati «ta'mirda» ga o'tadi
+    # va unga reys berib bo'lmaydi.
+    can_move: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+
+    downtime_started_at: Mapped[datetime | None] = mapped_column(DateTime)
+    downtime_finished_at: Mapped[datetime | None] = mapped_column(DateTime)
+
+    repair_place: Mapped[str | None] = mapped_column(String(255))
+    work_done: Mapped[str | None] = mapped_column(Text)
+    contractor: Mapped[str | None] = mapped_column(String(255))
+    act_number: Mapped[str | None] = mapped_column(String(128))
+    document_url: Mapped[str | None] = mapped_column(String(500))
+    odometer_km: Mapped[Decimal | None] = mapped_column(Numeric(10, 1))
+    # Ish haqi va boshqa xarajat. Ehtiyot qismlar alohida qatorlarda.
+    labour_cost: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
+
+    responsible_name: Mapped[str | None] = mapped_column(String(255))
+    status: Mapped[RepairStatus] = mapped_column(SAEnum(RepairStatus), default=RepairStatus.new, nullable=False, index=True)
+    result: Mapped[str | None] = mapped_column(Text)
+    delay_reason: Mapped[str | None] = mapped_column(String(255))
+    note: Mapped[str | None] = mapped_column(Text)
+    created_by: Mapped[str | None] = mapped_column(String(255))
+
+    transport: Mapped[Transport] = relationship(back_populates="repairs")
+    parts: Mapped[list["TransportRepairPart"]] = relationship(back_populates="repair", cascade="all, delete-orphan", order_by="TransportRepairPart.id")
+
+
+class TransportRepairPart(Base):
+    """Ehtiyot qism yoki material.
+
+    Excelda bitta qator uchun bitta qism maydoni bor edi. Amalda bitta
+    ta'mirda bir nechta qism ketadi, va ularni bitta katakka yozib qo'yish
+    xarajatni hisoblab bo'lmaydigan qilib qo'yadi.
+    """
+
+    __tablename__ = "transport_repair_parts"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    repair_id: Mapped[int] = mapped_column(ForeignKey("transport_repairs.id", ondelete="CASCADE"), index=True)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    unit: Mapped[str | None] = mapped_column(String(32))
+    quantity: Mapped[Decimal] = mapped_column(Numeric(12, 3), nullable=False, default=Decimal("1"))
+    unit_price: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
+    total_amount: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
+    note: Mapped[str | None] = mapped_column(Text)
+
+    repair: Mapped[TransportRepair] = relationship(back_populates="parts")
