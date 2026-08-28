@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from backend.app.db.session import get_db
 from backend.app.models.contract import Contract
+from backend.app.models.client import Client
 from backend.app.models.customer_request import (
     CompanyRegistry,
     CustomerRequest,
@@ -33,14 +34,20 @@ from backend.app.schemas.customer_request import (
     CustomerRequestUpdate,
     ProductSummary,
     PublicProductRead,
+    RequestPrefillRead,
 )
 from backend.app.services import customer_request_workflow
 from backend.app.models.user import User
+from backend.app.services import request_prefill
 from backend.app.services.auth import get_current_user, require_edit
 
 
 router = APIRouter(prefix="/api/customer-requests", tags=["customer-requests"])
 public_router = APIRouter(prefix="/api/public", tags=["public"])
+
+
+MSG_COMPANY_REQUIRED = "Korxonani tanlang yoki nomini kiriting."
+MSG_PHONE_REQUIRED = "Telefon raqami majburiy."
 
 
 def enum_label(mapping: dict, value) -> str:
@@ -155,6 +162,7 @@ def serialize_list_item(request: CustomerRequest) -> CustomerRequestListItem:
 def serialize_detail(request: CustomerRequest) -> CustomerRequestDetail:
     base = serialize_list_item(request).model_dump()
     return CustomerRequestDetail(
+        client_id=request.client_id,
         **base,
         region=request.region,
         activity_type=request.activity_type,
@@ -222,6 +230,12 @@ def create_public_customer_request(payload: CustomerRequestCreate, db: Session =
     product = db.get(Product, payload.product_id)
     if not product:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Mahsulot majburiy.")
+    # Portalda mijoz ro'yxatimizda bo'lmasligi mumkin, shuning uchun nom va
+    # telefon qo'lda yoziladi va ular majburiy.
+    if not (payload.company_name or "").strip():
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=MSG_COMPANY_REQUIRED)
+    if not (payload.phone or payload.contact_phone or "").strip():
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=MSG_PHONE_REQUIRED)
     validate_schedule_total(payload.total_quantity, payload.schedule)
     data = payload.model_dump(exclude={"schedule"})
     data["phone"] = data.get("phone") or data.get("contact_phone") or ""
@@ -247,6 +261,53 @@ def create_public_customer_request(payload: CustomerRequestCreate, db: Session =
     }
 
 
+def load_client_or_422(db: Session, client_id: int) -> Client:
+    client = db.scalars(
+        select(Client).where(Client.id == client_id).options(
+            selectinload(Client.addresses), selectinload(Client.bank_accounts), selectinload(Client.contacts)
+        )
+    ).first()
+    if not client:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=request_prefill.MSG_CLIENT_NOT_FOUND)
+    return client
+
+
+def prefill_for(db: Session, client_id: int) -> request_prefill.RequestPrefill:
+    client = load_client_or_422(db, client_id)
+    registry = None
+    if client.inn:
+        registry = db.scalars(select(CompanyRegistry).where(CompanyRegistry.inn == client.inn)).first()
+    return request_prefill.build_prefill(client, registry)
+
+
+def apply_client_to_request(db: Session, request: CustomerRequest) -> None:
+    """Mijoz tanlangan bo'lsa, korxona maydonlari uning kartochkasidan.
+
+    To'ldirish brauzerda ham bajariladi, lekin bu yerda takrorlanadi:
+    saqlanadigan qiymat ekranda ko'rsatilgani bilan bir xil bo'lishi kerak
+    va u brauzer nima yuborganiga bog'liq bo'lmasligi kerak.
+    """
+    if not request.client_id:
+        return
+    prefill = prefill_for(db, request.client_id)
+    for name in (
+        "company_name", "inn", "region", "oked", "director_full_name", "legal_address",
+        "activity_type", "function_description", "privatization_project_name",
+        "bank_account", "bank_name", "mfo",
+    ):
+        value = getattr(prefill, name)
+        if value:
+            setattr(request, name, value)
+    if prefill.phone and not request.phone:
+        request.phone = prefill.phone
+
+
+@router.get("/prefill", response_model=RequestPrefillRead)
+def customer_request_prefill(client_id: int = Query(...), db: Session = Depends(get_db)):
+    """Tanlangan mijoz bo'yicha talabnoma maydonlari."""
+    return RequestPrefillRead(**prefill_for(db, client_id).__dict__)
+
+
 @router.post("", response_model=CustomerRequestDetail, status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_edit("sotuv"))])
 def create_customer_request(payload: CustomerRequestCreate, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     """Talabnomani ichkaridan kiritish.
@@ -263,10 +324,16 @@ def create_customer_request(payload: CustomerRequestCreate, db: Session = Depend
     product = db.get(Product, payload.product_id)
     if not product:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Mahsulot majburiy.")
+    if not payload.client_id and not (payload.company_name or "").strip():
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=MSG_COMPANY_REQUIRED)
     validate_schedule_total(payload.total_quantity, payload.schedule)
     data = payload.model_dump(exclude={"schedule"})
+    data["company_name"] = data.get("company_name") or ""
     data["phone"] = data.get("phone") or data.get("contact_phone") or ""
     request = CustomerRequest(request_number=next_request_number(db), **data)
+    apply_client_to_request(db, request)
+    if not (request.phone or "").strip():
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=MSG_PHONE_REQUIRED)
     db.add(request)
     db.flush()
     for item in payload.schedule:

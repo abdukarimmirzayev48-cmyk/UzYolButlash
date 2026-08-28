@@ -106,11 +106,44 @@ class CustomerRequestBase(BaseModel):
         return value
 
 
+class RequestPrefillRead(BaseModel):
+    client_id: int | None = None
+    company_name: str | None = None
+    inn: str | None = None
+    region: str | None = None
+    oked: str | None = None
+    director_full_name: str | None = None
+    legal_address: str | None = None
+    activity_type: str | None = None
+    function_description: str | None = None
+    privatization_project_name: str | None = None
+    bank_account: str | None = None
+    bank_name: str | None = None
+    mfo: str | None = None
+    phone: str | None = None
+    contact_full_name: str | None = None
+    contact_phone: str | None = None
+    warnings: list[str] = Field(default_factory=list)
+
+
 class CustomerRequestCreate(CustomerRequestBase):
+    # Ichkaridan kiritilganda korxona mijozlar ro'yxatidan tanlanadi.
+    # Portaldan kelganda mijoz hali ro'yxatda bo'lmasligi mumkin.
+    client_id: int | None = None
+    # Ichki formada mijoz turi so'ralmaydi: korxona bizning ro'yxatimizdan
+    # tanlanadi, ya'ni u har doim tizim tashkiloti. Portal esa turni o'zi
+    # yuboradi -- u yerda tashqi mijoz ham bo'ladi.
+    customer_type: CustomerType = CustomerType.internal_organization
+    # Mijoz tanlangan bo'lsa, nom va rekvizitlar uning kartochkasidan
+    # olinadi va bu yerda so'ralmaydi. Portaldan kelganda esa nom qo'lda
+    # yoziladi va u majburiy bo'lib qoladi -- tekshiruv endpointda.
+    company_name: str | None = Field(default=None, min_length=1, max_length=255)
+    phone: str | None = Field(default=None, min_length=1, max_length=64)
     schedule: list[CustomerRequestScheduleCreate] = Field(default_factory=list)
 
 
 class CustomerRequestUpdate(BaseModel):
+    client_id: int | None = None
     customer_type: CustomerType | None = None
     payment_source: PaymentSource | None = None
     company_name: str | None = Field(default=None, min_length=1, max_length=255)
@@ -190,6 +223,7 @@ class StatusTransition(BaseModel):
 
 
 class CustomerRequestDetail(CustomerRequestListItem):
+    client_id: int | None = None
     region: str | None = None
     activity_type: str | None = None
     function_description: str | None = None

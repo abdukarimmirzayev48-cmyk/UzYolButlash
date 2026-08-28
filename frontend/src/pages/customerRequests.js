@@ -276,22 +276,73 @@ async function renderEditCustomerRequest(id) {
     api(`/api/customer-requests/${id}`),
     customerRequestProductOptions(),
   ]);
-  app.innerHTML = customerRequestForm(request, products);
+  app.innerHTML = customerRequestForm(request, products, await customerRequestClientOptions(request.client_id));
   bindCustomerRequestForm(request);
 }
 
 // Bir forma ikkala holat uchun: yangi talabnoma ham, tahrirlash ham.
 // Ikkita nusxa bo'lsa, maydon qo'shilganda biri unutilib qoladi va portal
 // bilan ichki forma bir-biridan farq qila boshlaydi.
+// Mijozlar ro'yxati moliya formalaridagi bilan bir xil yordamchidan
+// olinadi: u sahifalarni bosib o'tadi va nom bo'yicha tartiblaydi. O'z
+// so'rovimni yozganimda `page_size=500` chegaradan oshib ketdi va ro'yxat
+// jimgina bo'sh qolgan edi.
+//
+// Taxallus qilib qo'yish mumkin emas: bu fayl customerFinance.js dan
+// oldin yuklanadi va yuklanish paytida u funksiya hali mavjud emas.
+async function customerRequestClientOptions(selectedId = null) {
+  return fetchClientsOptions(selectedId);
+}
+
+// Mijoz tanlangach maydonlar server bergan qiymatlar bilan to'ldiriladi.
+// Ularni brauzerda yig'ish ham mumkin edi, lekin unda saqlanadigan qiymat
+// bilan ekrandagi qiymat boshqa-boshqa joydan chiqardi.
+const REQUEST_PREFILL_FIELDS = [
+  "inn", "region", "oked", "director_full_name", "legal_address",
+  "bank_name", "mfo", "bank_account", "activity_type", "function_description",
+  "privatization_project_name", "contact_full_name", "contact_phone", "phone",
+];
+
+async function applyRequestClient(form) {
+  const clientId = field(form, "client_id");
+  const holder = document.querySelector("#request-client-warnings");
+  if (!clientId) {
+    REQUEST_PREFILL_FIELDS.forEach((name) => { if (form.elements[name]) form.elements[name].value = ""; });
+    if (holder) holder.innerHTML = "";
+    return;
+  }
+  try {
+    const prefill = await api(`/api/customer-requests/prefill?client_id=${clientId}`);
+    REQUEST_PREFILL_FIELDS.forEach((name) => {
+      const input = form.elements[name];
+      if (!input) return;
+      // Kontakt maydonlari qo'lda o'zgartirilishi mumkin: har talabnomada
+      // boshqa odam bo'lishi mumkin. Yozilgani ustidan yozilmaydi.
+      const keepTyped = ["contact_full_name", "contact_phone"].includes(name) && input.value.trim();
+      if (!keepTyped) input.value = prefill[name] ?? "";
+    });
+    if (holder) {
+      holder.innerHTML = workflowWarningsPanel(prefill.warnings || []);
+      localizeDom(holder);
+    }
+  } catch (error) {
+    showToast(error.message, true);
+  }
+}
+
 async function renderNewCustomerRequest() {
   app.innerHTML = `<div class="page"><div class="empty">Yuklanmoqda...</div></div>`;
   const products = await customerRequestProductOptions();
   const today = new Date();
-  app.innerHTML = customerRequestForm({ schedule: [{ year: today.getFullYear(), month: today.getMonth() + 1, quantity: "" }] }, products);
+  app.innerHTML = customerRequestForm(
+    { schedule: [{ year: today.getFullYear(), month: today.getMonth() + 1, quantity: "" }] },
+    products,
+    await customerRequestClientOptions(),
+  );
   bindCustomerRequestForm({});
 }
 
-function customerRequestForm(request, products) {
+function customerRequestForm(request, products, clients = "") {
   const isNew = !request.id;
   const backPath = isNew ? "/customer-requests" : `/customer-requests/${request.id}`;
   return `
@@ -304,9 +355,19 @@ function customerRequestForm(request, products) {
         <div class="actions"><button class="btn" data-nav="${backPath}">Orqaga</button></div>
       </div>
       <form id="customer-request-form">
-        ${section("Mijoz turi va to'lov manbasi", `<div class="grid">${selectField("customer_type", "Mijoz turi", customerTypes, request.customer_type || "legal_entity", { required: true })}${selectField("payment_source", "To'lov manbasi", paymentSources, request.payment_source || "own_funds", { required: true })}</div>`)}
-        ${section("Korxona ma'lumotlari", `<div class="grid">${textField("company_name", "Korxona nomi", request.company_name, "text", { required: true })}${textField("inn", "STIR", request.inn)}${textField("region", "Hudud", request.region)}${textField("oked", "OKED", request.oked)}${textField("director_full_name", "Direktor F.I.Sh.", request.director_full_name)}${textArea("legal_address", "Yuridik manzil", request.legal_address)}${textArea("activity_type", "Asosiy faoliyat turi", request.activity_type)}${textArea("function_description", "Funksiyasi va vazifalari", request.function_description)}${textField("privatization_project_name", "205 xususiylashtirish loyiha", request.privatization_project_name)}</div>`)}
-        ${section("Rekvizitlar", `<div class="grid">${textField("bank_account", "Hisob raqami", request.bank_account)}${textField("bank_name", "Bank nomi", request.bank_name)}${textField("mfo", "MFO", request.mfo)}</div>`)}
+        ${section("To'lov manbasi", `<div class="grid">${selectField("payment_source", "To'lov manbasi", paymentSources, request.payment_source || "treasury", { required: true })}</div>`)}
+        ${section("Korxona", `<div class="grid">
+          <label class="form-field"><span class="field-label-text">Korxona <span class="required-mark">*</span></span>${selectSearch("client_id", "Korxona nomi yoki STIR bo'yicha qidiring")}<select name="client_id" required><option value="">Mijozni tanlang</option>${clients}</select></label>
+          ${readonlyField("inn", "STIR", request.inn)}
+          ${readonlyField("region", "Hudud", request.region)}
+          ${readonlyField("oked", "OKED", request.oked)}
+          ${readonlyField("director_full_name", "Direktor F.I.Sh.", request.director_full_name)}
+          ${readonlyField("legal_address", "Yuridik manzil", request.legal_address)}
+          ${readonlyField("bank_name", "Bank nomi", request.bank_name)}
+          ${readonlyField("mfo", "MFO", request.mfo)}
+          ${readonlyField("bank_account", "Hisob raqami", request.bank_account)}
+        </div><div class="form-hint">Bu maydonlar mijoz kartochkasidan olinadi. O'zgartirish kerak bo'lsa, mijoz kartochkasida to'g'rilang.</div><div id="request-client-warnings"></div>`)}
+        ${section("Qo'shimcha ma'lumotlar", `<div class="grid">${textArea("activity_type", "Asosiy faoliyat turi", request.activity_type)}${textArea("function_description", "Funksiyasi va vazifalari", request.function_description)}${textField("privatization_project_name", "205 xususiylashtirish loyiha", request.privatization_project_name)}</div>`)}
         ${section("Kontakt ma'lumotlari", `<div class="grid">${textField("phone", "Telefon raqami", request.phone, "text", { required: true })}${textField("contact_full_name", "Kontakt shaxs F.I.Sh.", request.contact_full_name)}${textField("contact_phone", "Kontakt telefon raqami", request.contact_phone)}</div>`)}
         ${section("Mahsulot talabi", `<div class="grid">${selectField("product_id", "Mahsulot nomi", products, String(request.product?.id || request.product_id || ""), { required: true })}${textField("total_quantity", "Umumiy miqdor", request.total_quantity, "number", { required: true })}${textField("unit", "O'lchov birligi", request.unit || "t", "text", { required: true })}</div>`)}
         ${section("Kalendar grafik", customerRequestScheduleEditor(request.schedule || [], request.unit))}
@@ -338,7 +399,7 @@ function customerRequestScheduleEditor(schedule, unit) {
 function customerRequestScheduleRow(item = {}) {
   return `
     <div class="grid inline-edit request-schedule-row">
-      ${textField("schedule_year", "Yil", item.year || new Date().getFullYear(), "number", { required: true })}
+      ${textField("schedule_year", "Yil", item.year || new Date().getFullYear(), "text", { required: true, pattern: "(19|20)[0-9]{2}", maxlength: 4, inputmode: "numeric", title: "To'rt xonali yil kiriting" })}
       ${selectField("schedule_month", "Oy", monthLabels.map(([k, l]) => [String(k), l]), String(item.month || 1), { required: true })}
       ${textField("schedule_quantity", "Miqdor", item.quantity || "", "number", { required: true })}
       <button class="btn danger" type="button" data-remove-schedule-row>O'chirish</button>
@@ -369,6 +430,11 @@ function refreshRequestScheduleTotals() {
 function bindCustomerRequestForm(request) {
   setupFormattedNumberInputs(app);
   refreshRequestScheduleTotals();
+  const form = app.querySelector("#customer-request-form");
+  form?.elements.client_id?.addEventListener("change", () => applyRequestClient(form));
+  // Yangi talabnomada mijoz oldindan tanlanmagan; tahrirlashda esa
+  // maydonlar allaqachon to'ldirilgan va ularni qayta so'rash shart emas.
+  if (!request?.id && form?.elements.client_id?.value) applyRequestClient(form);
   app.querySelector("#add-request-schedule-row")?.addEventListener("click", () => {
     app.querySelector("#customer-request-schedule").insertAdjacentHTML("beforeend", customerRequestScheduleRow({ year: new Date().getFullYear(), month: 1 }));
     setupFormattedNumberInputs(app);
@@ -385,7 +451,7 @@ function bindCustomerRequestForm(request) {
     event.preventDefault();
     const form = event.currentTarget;
     const payload = {
-      customer_type: field(form, "customer_type"),
+      client_id: Number(field(form, "client_id")),
       payment_source: field(form, "payment_source"),
       company_name: field(form, "company_name"),
       inn: field(form, "inn"),

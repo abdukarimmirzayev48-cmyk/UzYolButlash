@@ -55,6 +55,11 @@ class CustomerRequest(Base, TimestampMixin):
     request_number: Mapped[str] = mapped_column(String(32), nullable=False, unique=True, index=True)
     customer_type: Mapped[CustomerType] = mapped_column(SAEnum(CustomerType), nullable=False, index=True)
     payment_source: Mapped[PaymentSource] = mapped_column(SAEnum(PaymentSource), nullable=False, index=True)
+    # Ichkaridan kiritilgan talabnomada korxona mijozlar ro'yxatidan
+    # tanlanadi va qolgan maydonlar uning kartochkasidan to'ldiriladi.
+    # Ochiq portaldan kelgan talabnomada mijoz hali ro'yxatda bo'lmasligi
+    # mumkin -- shuning uchun bog'lanish majburiy emas.
+    client_id: Mapped[int | None] = mapped_column(ForeignKey("clients.id", ondelete="SET NULL"), index=True)
     company_name: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
     inn: Mapped[str | None] = mapped_column(String(32), index=True)
     region: Mapped[str | None] = mapped_column(String(255), index=True)
