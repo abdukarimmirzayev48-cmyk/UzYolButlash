@@ -85,32 +85,54 @@ def sync_transport_driver_name(transport: Transport, db: Session, *, had_link: b
 
 
 def current_odometer(db: Session, transport_id: int) -> Decimal | None:
-    """Joriy odometr oxirgi qaydnomadan olinadi.
+    """Joriy odometr ikkita manbadan: haydovchi qaydnomasi va reys oxiri.
 
     Uni transport kartochkasida alohida maydonda saqlash mumkin edi, lekin
-    unda bot yuborgan qiymat bilan qo'lda yozilgani ikki xil bo'lib qolardi.
-    Manba bitta bo'lgani ma'qul.
+    unda har bir manba o'z qiymatini yozib, ular bir-biriga zid bo'lib
+    qolardi. Shuning uchun saqlanmaydi, o'qilganda hisoblanadi.
+
+    Ikkovidan kattasi olinadi: odometr orqaga yurmaydi, ya'ni kattasi --
+    keyingi o'lchov. Reysda odometr yozila boshlagach, faqat qaydnomaga
+    qarash kam bo'lib qoldi: qaydnoma har kuni kelmaydi, reys esa yoziladi.
     """
-    return db.scalar(
+    from backend.app.models.delivery import Logistics
+
+    checkin = db.scalar(
         select(TransportCheckIn.odometer_km)
         .where(TransportCheckIn.transport_id == transport_id, TransportCheckIn.odometer_km.isnot(None))
         .order_by(TransportCheckIn.created_at.desc())
         .limit(1)
     )
+    trip = db.scalar(
+        select(func.max(Logistics.odometer_end_km)).where(Logistics.transport_id == transport_id)
+    )
+    values = [Decimal(value) for value in (checkin, trip) if value is not None]
+    return max(values) if values else None
 
 
 def odometers_for(db: Session, transport_ids: list[int]) -> dict[int, Decimal]:
     """Ro'yxat uchun -- har bir mashinaga alohida so'rov yubormaslik uchun."""
+    from backend.app.models.delivery import Logistics
+
     if not transport_ids:
         return {}
+    latest: dict[int, Decimal] = {}
     rows = db.execute(
         select(TransportCheckIn.transport_id, TransportCheckIn.odometer_km, TransportCheckIn.created_at)
         .where(TransportCheckIn.transport_id.in_(transport_ids), TransportCheckIn.odometer_km.isnot(None))
         .order_by(TransportCheckIn.created_at.desc())
     ).all()
-    latest: dict[int, Decimal] = {}
     for transport_id, odometer, _ in rows:
-        latest.setdefault(transport_id, odometer)
+        latest.setdefault(transport_id, Decimal(odometer))
+    trips = db.execute(
+        select(Logistics.transport_id, func.max(Logistics.odometer_end_km))
+        .where(Logistics.transport_id.in_(transport_ids), Logistics.odometer_end_km.isnot(None))
+        .group_by(Logistics.transport_id)
+    ).all()
+    for transport_id, odometer in trips:
+        value = Decimal(odometer)
+        if transport_id not in latest or value > latest[transport_id]:
+            latest[transport_id] = value
     return latest
 
 
