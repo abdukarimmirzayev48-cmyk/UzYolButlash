@@ -6,6 +6,7 @@ from sqlalchemy import DateTime, Enum as SAEnum, ForeignKey, Numeric, String, Te
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from backend.app.db.session import Base
+from backend.app.models.delivery_point import DeliveryPoint
 from backend.app.models.client import TimestampMixin
 
 
@@ -60,6 +61,8 @@ class CustomerRequest(Base, TimestampMixin):
     # Ochiq portaldan kelgan talabnomada mijoz hali ro'yxatda bo'lmasligi
     # mumkin -- shuning uchun bog'lanish majburiy emas.
     client_id: Mapped[int | None] = mapped_column(ForeignKey("clients.id", ondelete="SET NULL"), index=True)
+    # Bitum qayerga yetkaziladi. Manzil talabnomada qayta yozilmaydi.
+    delivery_point_id: Mapped[int | None] = mapped_column(ForeignKey("delivery_points.id", ondelete="SET NULL"), index=True)
     company_name: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
     inn: Mapped[str | None] = mapped_column(String(32), index=True)
     region: Mapped[str | None] = mapped_column(String(255), index=True)
@@ -87,6 +90,7 @@ class CustomerRequest(Base, TimestampMixin):
     contract_signed_at: Mapped[datetime | None] = mapped_column(DateTime)
     converted_to_order_at: Mapped[datetime | None] = mapped_column(DateTime)
 
+    delivery_point: Mapped["DeliveryPoint | None"] = relationship(lazy="selectin")
     product: Mapped["Product"] = relationship()
     schedules: Mapped[list["CustomerRequestSchedule"]] = relationship(
         back_populates="request", cascade="all, delete-orphan", order_by="CustomerRequestSchedule.id"

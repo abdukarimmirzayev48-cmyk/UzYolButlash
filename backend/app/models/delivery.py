@@ -6,6 +6,7 @@ from sqlalchemy import Date, DateTime, Enum as SAEnum, ForeignKey, Numeric, Stri
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from backend.app.db.session import Base
+from backend.app.models.delivery_point import DeliveryPoint
 from backend.app.models.client import TimestampMixin
 from backend.app.models.transport import Transport
 
@@ -102,6 +103,9 @@ class DeliveryBatch(Base, TimestampMixin):
     fulfillment_type: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
     source_type: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
     delivery_method: Mapped[AutoDeliveryMethod] = mapped_column(SAEnum(AutoDeliveryMethod), default=AutoDeliveryMethod.auto, nullable=False)
+    # Bitum qayerga yetkaziladi. Nuqta ma'lumotnomasidan tanlanadi va
+    # manzil bu yerda qayta yozilmaydi.
+    delivery_point_id: Mapped[int | None] = mapped_column(ForeignKey("delivery_points.id", ondelete="SET NULL"), index=True)
     supplier_id: Mapped[int | None] = mapped_column(index=True)
     supplier_name: Mapped[str | None] = mapped_column(String(255), index=True)
     notes: Mapped[str | None] = mapped_column(Text)
@@ -113,6 +117,7 @@ class DeliveryBatch(Base, TimestampMixin):
     difference_resolved_at: Mapped[datetime | None] = mapped_column(DateTime)
     difference_resolved_by: Mapped[str | None] = mapped_column(String(255))
 
+    delivery_point: Mapped["DeliveryPoint | None"] = relationship(lazy="selectin")
     client: Mapped["Client"] = relationship(back_populates="delivery_batches")
     contract: Mapped["Contract"] = relationship(back_populates="delivery_batches")
     order: Mapped["Order"] = relationship(back_populates="delivery_batches")

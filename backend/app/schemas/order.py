@@ -4,6 +4,7 @@ from decimal import Decimal
 from pydantic import BaseModel, ConfigDict, Field
 
 from backend.app.models.order import FulfillmentType, OrderDocumentType, OrderStatus, SourceType, SupplierStatus
+from backend.app.schemas.delivery_point import DeliveryPointSummary
 from backend.app.schemas.client import ClientRead
 from backend.app.schemas.contract import ContractRead
 
@@ -142,6 +143,7 @@ class OrderNoteRead(OrderNoteBase):
 
 
 class OrderBase(BaseModel):
+    delivery_point_id: int | None = None
     contract_id: int
     order_number: str = Field(min_length=1, max_length=128)
     order_date: date
@@ -169,6 +171,7 @@ class OrderCreate(OrderBase):
 
 
 class OrderUpdate(BaseModel):
+    delivery_point_id: int | None = None
     contract_id: int | None = None
     order_number: str | None = Field(default=None, min_length=1, max_length=128)
     order_date: date | None = None
@@ -221,6 +224,8 @@ class OrderSummary(BaseModel):
 class OrderRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
+    delivery_point: DeliveryPointSummary | None = None
+    delivery_point_id: int | None = None
     id: int
     client_id: int
     contract_id: int

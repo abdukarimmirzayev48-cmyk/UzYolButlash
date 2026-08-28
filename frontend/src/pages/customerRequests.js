@@ -113,6 +113,7 @@ async function renderCustomerRequestDetail(id) {
       ${section("Mijoz turi va to'lov manbasi", detailList([["Mijoz turi", request.customer_type_label], ["To'lov manbasi", request.payment_source_label], ["Status", request.status_label]]))}
       ${section("Korxona ma'lumotlari", detailList([["Korxona nomi", request.company_name], ["STIR", request.inn], ["Hudud", request.region], ["Yuridik manzil", request.legal_address], ["Asosiy faoliyat turi", request.activity_type], ["Funksiyasi va vazifalari", request.function_description], ["OKED", request.oked], ["Direktor F.I.Sh.", request.director_full_name]]))}
       ${section("Rekvizitlar", detailList([["Hisob raqami", request.bank_account], ["Bank nomi", request.bank_name], ["MFO", request.mfo]]))}
+      ${section("Yetkazish nuqtasi", detailList([["ABZ nuqtasi", deliveryPointDetail(request.delivery_point)]]))}
       ${section("Kontakt ma'lumotlari", detailList([["Telefon raqami", request.phone], ["Kontakt shaxs F.I.Sh.", request.contact_full_name], ["Kontakt telefon raqami", request.contact_phone]]))}
       ${section("Mahsulot talabi", detailList([["Mahsulot nomi", request.product?.name], ["Marka", request.product?.brand], ["O'lchov birligi", request.unit], ["Umumiy miqdor", fmtQty(request.total_quantity, request.unit)]]))}
       ${section("Kalendar grafik", `
@@ -276,7 +277,7 @@ async function renderEditCustomerRequest(id) {
     api(`/api/customer-requests/${id}`),
     customerRequestProductOptions(),
   ]);
-  app.innerHTML = customerRequestForm(request, products, await customerRequestClientOptions(request.client_id));
+  app.innerHTML = customerRequestForm(request, products, await customerRequestClientOptions(request.client_id), await deliveryPointOptions(request.delivery_point_id));
   bindCustomerRequestForm(request);
 }
 
@@ -338,11 +339,12 @@ async function renderNewCustomerRequest() {
     { schedule: [{ year: today.getFullYear(), month: today.getMonth() + 1, quantity: "" }] },
     products,
     await customerRequestClientOptions(),
+    await deliveryPointOptions(),
   );
   bindCustomerRequestForm({});
 }
 
-function customerRequestForm(request, products, clients = "") {
+function customerRequestForm(request, products, clients = "", points = "") {
   const isNew = !request.id;
   const backPath = isNew ? "/customer-requests" : `/customer-requests/${request.id}`;
   return `
@@ -367,6 +369,7 @@ function customerRequestForm(request, products, clients = "") {
           ${readonlyField("mfo", "MFO", request.mfo)}
           ${readonlyField("bank_account", "Hisob raqami", request.bank_account)}
         </div><div class="form-hint">Bu maydonlar mijoz kartochkasidan olinadi. O'zgartirish kerak bo'lsa, mijoz kartochkasida to'g'rilang.</div><div id="request-client-warnings"></div>`)}
+        ${section("Yetkazish nuqtasi", `<div class="grid">${deliveryPointField("ABZ nuqtasi", request.delivery_point_id, points)}</div><div class="form-hint">Bitum qayerga yetkaziladi. Nuqta shartnoma va partiyalarga ham o'tadi.</div>`)}
         ${section("Qo'shimcha ma'lumotlar", `<div class="grid">${textArea("activity_type", "Asosiy faoliyat turi", request.activity_type)}${textArea("function_description", "Funksiyasi va vazifalari", request.function_description)}${textField("privatization_project_name", "205 xususiylashtirish loyiha", request.privatization_project_name)}</div>`)}
         ${section("Kontakt ma'lumotlari", `<div class="grid">${textField("phone", "Telefon raqami", request.phone, "text", { required: true })}${textField("contact_full_name", "Kontakt shaxs F.I.Sh.", request.contact_full_name)}${textField("contact_phone", "Kontakt telefon raqami", request.contact_phone)}</div>`)}
         ${section("Mahsulot talabi", `<div class="grid">${selectField("product_id", "Mahsulot nomi", products, String(request.product?.id || request.product_id || ""), { required: true })}${textField("total_quantity", "Umumiy miqdor", request.total_quantity, "number", { required: true })}${textField("unit", "O'lchov birligi", request.unit || "t", "text", { required: true })}</div>`)}
@@ -452,6 +455,7 @@ function bindCustomerRequestForm(request) {
     const form = event.currentTarget;
     const payload = {
       client_id: Number(field(form, "client_id")),
+      delivery_point_id: field(form, "delivery_point_id") ? Number(field(form, "delivery_point_id")) : null,
       payment_source: field(form, "payment_source"),
       company_name: field(form, "company_name"),
       inn: field(form, "inn"),

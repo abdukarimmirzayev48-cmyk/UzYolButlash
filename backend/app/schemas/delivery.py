@@ -12,6 +12,7 @@ from backend.app.models.delivery import (
     PaidBy,
     TripCheckResult,
 )
+from backend.app.schemas.delivery_point import DeliveryPointSummary
 from backend.app.schemas.client import ClientRead
 from backend.app.schemas.contract import ContractRead
 from backend.app.schemas.order import OrderRead
@@ -304,6 +305,7 @@ class LogisticsNoteRead(LogisticsNoteCreate):
 
 
 class DeliveryBatchBase(BaseModel):
+    delivery_point_id: int | None = None
     order_id: int
     batch_number: str = Field(min_length=1, max_length=128)
     batch_date: date
@@ -327,6 +329,7 @@ class DeliveryBatchCreate(DeliveryBatchBase):
 
 
 class DeliveryBatchUpdate(BaseModel):
+    delivery_point_id: int | None = None
     order_id: int | None = None
     batch_number: str | None = Field(default=None, min_length=1, max_length=128)
     batch_date: date | None = None
@@ -409,6 +412,8 @@ class DeliveryBatchSummary(BaseModel):
 class DeliveryBatchRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
+    delivery_point: DeliveryPointSummary | None = None
+    delivery_point_id: int | None = None
     id: int
     order_id: int
     contract_id: int

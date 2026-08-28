@@ -4,6 +4,7 @@ from decimal import Decimal
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from backend.app.models.customer_request import CustomerRequestStatus, CustomerType, PaymentSource
+from backend.app.schemas.delivery_point import DeliveryPointSummary
 from backend.app.schemas.client import Page
 
 
@@ -127,6 +128,7 @@ class RequestPrefillRead(BaseModel):
 
 
 class CustomerRequestCreate(CustomerRequestBase):
+    delivery_point_id: int | None = None
     # Ichkaridan kiritilganda korxona mijozlar ro'yxatidan tanlanadi.
     # Portaldan kelganda mijoz hali ro'yxatda bo'lmasligi mumkin.
     client_id: int | None = None
@@ -143,6 +145,7 @@ class CustomerRequestCreate(CustomerRequestBase):
 
 
 class CustomerRequestUpdate(BaseModel):
+    delivery_point_id: int | None = None
     client_id: int | None = None
     customer_type: CustomerType | None = None
     payment_source: PaymentSource | None = None
@@ -223,6 +226,8 @@ class StatusTransition(BaseModel):
 
 
 class CustomerRequestDetail(CustomerRequestListItem):
+    delivery_point_id: int | None = None
+    delivery_point: DeliveryPointSummary | None = None
     client_id: int | None = None
     region: str | None = None
     activity_type: str | None = None

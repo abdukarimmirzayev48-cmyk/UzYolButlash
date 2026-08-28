@@ -532,10 +532,20 @@ function updateContractWizardPaymentTotals(state) {
   set("[data-payment-remaining-percent]", `${totals.remainingPercent}%`);
 }
 
+// Tasdiqlash bosqichida nuqta nomini ko'rsatish uchun: sehrgar faqat
+// identifikatorni saqlaydi, nom esa ro'yxatda turadi.
+function contractWizardPointName(state) {
+  if (!state.deliveryPointId) return null;
+  const holder = document.createElement("select");
+  holder.innerHTML = state.deliveryPointOptions || "";
+  return [...holder.options].find((option) => option.value === String(state.deliveryPointId))?.textContent || null;
+}
+
 function contractWizardTransportPanel(state) {
   return `<div class="grid">
     ${selectField("transport_payment_type", "Transport to'lovi turi", transportPaymentTypes, state.transportPaymentType || "separate_invoice", { required: true })}
     ${selectField("delivery_method", "Yetkazib berish usuli", deliveryMethods, state.deliveryMethod || "auto", { required: true })}
+    ${deliveryPointField("ABZ nuqtasi", state.deliveryPointId, state.deliveryPointOptions || "")}
     ${textArea("transport_notes", "Izoh", state.transportNotes || "")}
   </div><div class="empty compact">Transport bo'yicha aniq tashuvchi, haydovchi va sana ma'lumotlari partiya yaratilgandan keyin kiritiladi.</div>`;
 }
@@ -564,7 +574,7 @@ function contractWizardConfirmPanel(state) {
     ${section("Asosiy ma'lumotlar", detailList([["Shartnoma raqami", state.contractNumber], ["Shartnoma sanasi", state.contractDate], ["Amal qilish muddati", state.validUntil], ["Sarlavha", state.title]]))}
     ${section("Mahsulotlar", `${detailList([["Jami miqdor", fmtQty(totals.quantity)], ["Mahsulot oraliq summasi", fmtMoney(totals.subtotal)], ["QQS", fmtMoney(totals.vat)], ["Jami summa", fmtMoney(totals.total)]])}<div class="empty compact">${products || dash}</div>`)}
     ${section("To'lov shartlari", detailList([["Avans foizi", `${fmt(totals.advancePercent)}%`], ["Avans summasi", fmtMoney(totals.advanceAmount)], ["Qoldiq foizi", `${fmt(totals.remainingPercent)}%`], ["Avans muddati, kun", state.advanceDueDays], ["Partiya to'lovi muddati, kun", state.batchPaymentDueDays], ["Qoldiq to'lov qoidasi", state.remainingPaymentRule]]))}
-    ${section("Transport shartlari", detailList([["Transport to'lovi turi", optionLabel(transportPaymentTypes, state.transportPaymentType)], ["Yetkazib berish usuli", optionLabel(deliveryMethods, state.deliveryMethod)], ["Izoh", state.transportNotes]]))}
+    ${section("Transport shartlari", detailList([["Transport to'lovi turi", optionLabel(transportPaymentTypes, state.transportPaymentType)], ["Yetkazib berish usuli", optionLabel(deliveryMethods, state.deliveryMethod)], ["ABZ nuqtasi", contractWizardPointName(state)], ["Izoh", state.transportNotes]]))}
     ${section("Hujjatlar", detailList([["Hujjatlar soni", fmt((state.documents || []).filter((doc) => doc.title).length)]]))}
   </div>`;
 }
@@ -610,6 +620,7 @@ function syncContractWizardInputs(state) {
   if (form.elements.payment_notes) state.paymentNotes = form.elements.payment_notes.value.trim();
   if (form.elements.transport_payment_type) state.transportPaymentType = form.elements.transport_payment_type.value;
   if (form.elements.delivery_method) state.deliveryMethod = form.elements.delivery_method.value;
+  if (form.elements.delivery_point_id) state.deliveryPointId = form.elements.delivery_point_id.value;
   if (form.elements.transport_notes) state.transportNotes = form.elements.transport_notes.value.trim();
   if (form.elements.price_includes_vat) state.priceIncludesVat = form.elements.price_includes_vat.checked;
 
@@ -697,6 +708,7 @@ function collectContractWizardPayload(state) {
       remaining_payment_rule: state.remainingPaymentRule || CONTRACT_REMAINING_RULE,
       notes: state.paymentNotes || null,
     },
+    delivery_point_id: state.deliveryPointId ? Number(state.deliveryPointId) : null,
     transport_terms: {
       transport_payment_type: state.transportPaymentType || "separate_invoice",
       delivery_method: state.deliveryMethod || "auto",
@@ -825,11 +837,13 @@ async function renderContractWizard() {
     paymentNotes: "",
     transportPaymentType: "separate_invoice",
     deliveryMethod: "auto",
+    deliveryPointId: "",
     transportNotes: "",
     documents: [],
   };
-  [state.clientOptions, state.products, state.contractNumber] = await Promise.all([
+  [state.clientOptions, state.deliveryPointOptions, state.products, state.contractNumber] = await Promise.all([
     contractWizardClientOptions(state.clientId),
+    deliveryPointOptions(),
     api("/api/products"),
     api("/api/contracts/next-number").then((data) => data.contract_number).catch(() => ""),
   ]);

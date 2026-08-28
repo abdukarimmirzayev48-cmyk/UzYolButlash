@@ -165,6 +165,39 @@ def unique_logistics_number(db: Session, batch: DeliveryBatch) -> str:
     return f"{base}-{counter}"
 
 
+def apply_delivery_point_address(db: Session, batch: DeliveryBatch, logistics: Logistics) -> None:
+    """Nuqta ko'rsatilgan bo'lsa, yetkazish manzili o'shandan.
+
+    Manzil avval mijoz kartochkasidan to'ldirilgan bo'lishi mumkin -- u
+    ko'pincha yuridik manzil, ya'ni haydovchi bormaydigan joy. Nuqta
+    tanlangach u ustun turadi va manzil qayta yoziladi.
+    """
+    address = delivery_point_address(db, batch.delivery_point_id)
+    if address:
+        logistics.delivery_address = address
+
+
+def delivery_point_address(db: Session, point_id: int | None) -> str | None:
+    """ABZ nuqtasining to'liq manzili -- mas'ul va telefoni bilan.
+
+    Haydovchiga «Buxoro viloyati» degan manzil yetmaydi: u yerga borgach
+    kimni topishini ham bilishi kerak.
+    """
+    if not point_id:
+        return None
+    from backend.app.api.delivery_points import full_address_of
+    from backend.app.models.delivery_point import DeliveryPoint
+
+    point = db.get(DeliveryPoint, point_id)
+    if not point:
+        return None
+    parts = [point.name, full_address_of(point)]
+    contact = ", ".join(part for part in (point.responsible_name, point.responsible_phone) if part)
+    if contact:
+        parts.append(contact)
+    return " · ".join(part for part in parts if part) or None
+
+
 def preferred_client_address(db: Session, client_id: int | None) -> str | None:
     if not client_id:
         return None
@@ -423,7 +456,7 @@ def logistics_defaults(db: Session, batch: DeliveryBatch) -> dict[str, Any]:
         "planned_pickup_date": batch.planned_loading_date,
         "planned_delivery_date": batch.planned_delivery_date,
         "loading_address": preferred_supplier_address(db, batch.supplier_id),
-        "delivery_address": preferred_client_address(db, batch.client_id),
+        "delivery_address": delivery_point_address(db, batch.delivery_point_id) or preferred_client_address(db, batch.client_id),
         "cost_amount": Decimal("0"),
         "customer_price": Decimal("0"),
         "paid_by": PaidBy.company,
@@ -452,7 +485,10 @@ def ensure_logistics(db: Session, batch: DeliveryBatch, payload: LogisticsCreate
     if blank(logistics.loading_address):
         logistics.loading_address = preferred_supplier_address(db, batch.supplier_id)
     if blank(logistics.delivery_address):
-        logistics.delivery_address = preferred_client_address(db, batch.client_id)
+        # Partiyada ABZ nuqtasi ko'rsatilgan bo'lsa, manzil o'shandan.
+        # Mijoz kartochkasidagi manzil -- yuridik manzil bo'lishi mumkin, ya'ni
+        # haydovchi bormaydigan joy. Nuqta esa aynan yuk tushiriladigan joy.
+        logistics.delivery_address = delivery_point_address(db, batch.delivery_point_id) or preferred_client_address(db, batch.client_id)
     if logistics.cost_amount is None:
         logistics.cost_amount = Decimal("0")
     if logistics.customer_price is None:
@@ -460,6 +496,7 @@ def ensure_logistics(db: Session, batch: DeliveryBatch, payload: LogisticsCreate
     if logistics.paid_by is None:
         logistics.paid_by = PaidBy.company
     apply_transport_to_logistics(db, logistics)
+    apply_delivery_point_address(db, batch, logistics)
     sync_actual_dates_from_timeline(logistics)
     sync_fuel_and_distance(logistics)
     open_siphoning_event(db, logistics)
@@ -733,6 +770,9 @@ def create_batch(payload: DeliveryBatchCreate, db: Session = Depends(get_db)):
     data["contract_id"] = order.contract_id
     data["fulfillment_type"] = order.fulfillment_type.value
     data["source_type"] = order.source_type.value
+    # Yetkazish nuqtasi buyurtmadan meros bo'ladi.
+    if not data.get("delivery_point_id"):
+        data["delivery_point_id"] = order.delivery_point_id
     if not data.get("supplier_id"):
         data["supplier_id"] = order.supplier_id
     if not data.get("supplier_name"):
@@ -1017,6 +1057,10 @@ def update_batch(batch_id: int, payload: DeliveryBatchUpdate, db: Session = Depe
         data["contract_id"] = order.contract_id
         data["fulfillment_type"] = order.fulfillment_type.value
         data["source_type"] = order.source_type.value
+        # Yetkazish nuqtasi buyurtmadan meros bo'ladi: u shartnomadan
+        # buyurtmaga, buyurtmadan partiyaga tushadi va yo'lda yo'qolmaydi.
+        if not data.get("delivery_point_id"):
+            data["delivery_point_id"] = order.delivery_point_id
     update_model(batch, data)
     if payload.items is not None:
         order_items = {item.id: item for item in order.items}

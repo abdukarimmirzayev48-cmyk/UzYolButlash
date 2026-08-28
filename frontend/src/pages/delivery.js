@@ -896,6 +896,7 @@ function collectBatchPayload(form) {
     notes: field(form, "notes"),
     created_by: field(form, "created_by"),
     items: collectBatchItems(form),
+    delivery_point_id: field(form, "delivery_point_id") ? Number(field(form, "delivery_point_id")) : null,
     logistics: {
       status: field(form, "logistics_status") || "not_assigned",
       carrier_id: field(form, "carrier_id") ? Number(field(form, "carrier_id")) : null,
@@ -984,6 +985,7 @@ async function batchForm(batch = null) {
   const rows = batch?.items?.length ? batch.items : batchRowsFromBalances(balances);
   const logistics = batch?.logistics || {};
   const transportOptions = await fetchTransportsForSelect(logistics.transport_id || logistics.carrier_id);
+  const deliveryPoints = await deliveryPointOptions(batch?.delivery_point_id ?? order?.delivery_point_id);
   const batchNumber = batch?.batch_number || generatedBatchNumber(order?.order_number);
   const summaryProduct = rows.map((item) => item.product_name || order?.items?.find((orderItem) => orderItem.id === Number(item.order_item_id))?.product_name).filter(Boolean).join(", ");
   const summaryQuantity = rows.reduce((sum, item) => sum + numberValue(item.planned_quantity), 0);
@@ -1041,6 +1043,9 @@ async function batchForm(batch = null) {
         ${detailCard({ icon: "list", title: "Logistika ma'lumotlari", body: `
           <h3>Logistika xulosasi</h3>
           ${logisticsSummary}
+          <h3>Yetkazish nuqtasi</h3>
+          <div class="grid">${deliveryPointField("ABZ nuqtasi", batch?.delivery_point_id ?? order?.delivery_point_id, deliveryPoints)}</div>
+          <p class="form-hint">Nuqta tanlansa, yetkazish manzili uning kartochkasidan olinadi.</p>
           <h3>Transport biriktirish</h3>
           <div class="grid">
           <label>Transport<select name="transport_id"><option value="">Transportni tanlang</option>${transportOptions}</select></label>
@@ -2144,6 +2149,7 @@ async function renderLogisticsDetail(id) {
       ${detailCard({
         icon: "truck", title: "Transport biriktirish",
         body: `<div class="detail-field-grid">
+          <div class="detail-field"><span>ABZ nuqtasi</span><strong>${fmt(deliveryPointDetail(row.batch?.delivery_point))}</strong></div>
           <div class="detail-field"><span>Parkdagi mashina</span><strong>${row.transport
             ? `<button class="ops-primary-link" data-nav="/transports/${row.transport.id}/edit" data-noloc>${esc(row.transport.vehicle_number)}</button>`
             : statusChip({ label: "Biriktirilmagan", tone: "warning" })}</strong></div>

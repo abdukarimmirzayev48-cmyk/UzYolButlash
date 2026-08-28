@@ -1,3 +1,4 @@
+from backend.app.models.delivery_point import DeliveryPoint, DeliveryPointType
 from backend.app.models.client import (
     Client,
     ClientAddress,
@@ -85,6 +86,8 @@ __all__ = [
     "Region",
     "District",
     "Client",
+    "DeliveryPoint",
+    "DeliveryPointType",
     "ClientAddress",
     "ClientBankAccount",
     "ClientContact",

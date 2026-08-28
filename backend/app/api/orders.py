@@ -615,6 +615,10 @@ def create_order(payload: OrderCreate, db: Session = Depends(get_db)):
     for protected_field in ("status", "supplier_id", "supplier_name", "supplier_status"):
         data.pop(protected_field, None)
     data["client_id"] = contract.client_id
+    # Yetkazish nuqtasi shartnomadan meros bo'ladi: shartnomada bir marta
+    # ko'rsatiladi va har buyurtmada qayta tanlanmaydi.
+    if not data.get("delivery_point_id"):
+        data["delivery_point_id"] = contract.delivery_point_id
     order = Order(**data)
     # Default markup for Russian direct supply, applied only when the caller
     # expressed no preference at all -- otherwise an explicit "no markup"

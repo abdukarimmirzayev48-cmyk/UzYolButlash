@@ -27,6 +27,7 @@ from backend.app.api.supplier_finance import finance_router as supplier_finance_
 from backend.app.api.supplier_finance import invoice_router as supplier_invoice_router
 from backend.app.api.supplier_finance import payment_router as supplier_payment_router
 from backend.app.api.task import router as tasks_router
+from backend.app.api.delivery_points import router as delivery_points_router
 from backend.app.api.transports import router as transports_router
 from backend.app.api.products import categories_router as product_categories_router
 from backend.app.api.products import products_router
@@ -80,6 +81,7 @@ app.include_router(orders_router, dependencies=authenticated)
 app.include_router(delivery_router, dependencies=authenticated)
 app.include_router(delivery_overview_router, dependencies=authenticated)
 app.include_router(logistics_router, dependencies=authenticated)
+app.include_router(delivery_points_router, dependencies=authenticated)
 app.include_router(transports_router, dependencies=authenticated)
 app.include_router(invoice_router, dependencies=authenticated)
 app.include_router(payment_router, dependencies=authenticated)

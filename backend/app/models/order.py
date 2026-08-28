@@ -6,6 +6,7 @@ from sqlalchemy import Boolean, Date, DateTime, Enum as SAEnum, ForeignKey, Nume
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from backend.app.db.session import Base
+from backend.app.models.delivery_point import DeliveryPoint
 from backend.app.models.client import TimestampMixin
 
 
@@ -69,6 +70,9 @@ class Order(Base, TimestampMixin):
         SAEnum(FulfillmentType), default=FulfillmentType.direct_supplier_to_customer, nullable=False, index=True
     )
     source_type: Mapped[SourceType] = mapped_column(SAEnum(SourceType), default=SourceType.other, nullable=False, index=True)
+    # Bitum qayerga yetkaziladi. Nuqta ma'lumotnomasidan tanlanadi va
+    # manzil bu yerda qayta yozilmaydi.
+    delivery_point_id: Mapped[int | None] = mapped_column(ForeignKey("delivery_points.id", ondelete="SET NULL"), index=True)
     supplier_id: Mapped[int | None] = mapped_column(index=True)
     supplier_name: Mapped[str | None] = mapped_column(String(255), index=True)
     supplier_status: Mapped[SupplierStatus] = mapped_column(
@@ -85,6 +89,7 @@ class Order(Base, TimestampMixin):
     notes: Mapped[str | None] = mapped_column(Text)
     created_by: Mapped[str | None] = mapped_column(String(255))
 
+    delivery_point: Mapped["DeliveryPoint | None"] = relationship(lazy="selectin")
     client: Mapped["Client"] = relationship(back_populates="orders")
     contract: Mapped["Contract"] = relationship(back_populates="orders")
     items: Mapped[list["OrderItem"]] = relationship(

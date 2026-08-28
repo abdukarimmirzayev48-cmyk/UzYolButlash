@@ -38,6 +38,7 @@ from backend.app.schemas.customer_request import (
 )
 from backend.app.services import customer_request_workflow
 from backend.app.models.user import User
+from backend.app.api.delivery_points import point_summary
 from backend.app.services import request_prefill
 from backend.app.services.auth import get_current_user, require_edit
 
@@ -163,6 +164,8 @@ def serialize_detail(request: CustomerRequest) -> CustomerRequestDetail:
     base = serialize_list_item(request).model_dump()
     return CustomerRequestDetail(
         client_id=request.client_id,
+        delivery_point_id=request.delivery_point_id,
+        delivery_point=point_summary(request.delivery_point),
         **base,
         region=request.region,
         activity_type=request.activity_type,

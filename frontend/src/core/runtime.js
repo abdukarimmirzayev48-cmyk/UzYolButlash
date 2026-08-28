@@ -396,6 +396,20 @@ const PYDANTIC_ERROR_MESSAGES = {
   value_error: null,
 };
 
+// Maydon nomini ekrandagi yorlig'i bilan almashtiradi.
+//
+// Ilgari xabar «latitude: ...» ko'rinishida chiqardi va u toast matnining
+// bir qismi bo'lgani uchun transliteratsiyaga tushib «латитуде» bo'lib
+// qolardi. Texnik nom foydalanuvchiga baribir hech narsa demaydi:
+// formadagi yorliq esa aynan u ko'rib turgan so'z.
+function fieldLabelFor(name) {
+  if (!name) return "";
+  const input = document.querySelector(`[name="${CSS.escape(name)}"]`);
+  const label = input?.closest("label")?.querySelector(".field-label-text")?.textContent
+    || input?.closest("label")?.firstChild?.textContent;
+  return (label || "").replace(/\s*\*\s*$/, "").trim();
+}
+
 function translateApiErrorDetail(detail) {
   if (!Array.isArray(detail)) return detail;
   return detail.map((item) => {
@@ -403,7 +417,11 @@ function translateApiErrorDetail(detail) {
     let msg = PYDANTIC_ERROR_MESSAGES[item.type];
     if (msg === undefined) msg = item.msg;
     else if (msg === null) msg = String(item.msg || "").replace(/^Value error,\s*/, "");
-    return field ? `${field}: ${msg}` : msg;
+    const label = fieldLabelFor(field);
+    if (label) return `${label}: ${msg}`;
+    // Yorliq topilmasa, texnik nom ko'rsatilmaydi: u tarjimada buziladi
+    // va foydalanuvchiga hech narsa bermaydi.
+    return msg;
   }).join("; ");
 }
 

@@ -106,6 +106,7 @@ function collectOrderPayload(form) {
     order_number: field(form, "order_number"),
     order_date: field(form, "order_date"),
     required_date: field(form, "required_date"),
+    delivery_point_id: field(form, "delivery_point_id") ? Number(field(form, "delivery_point_id")) : null,
     fulfillment_type: field(form, "fulfillment_type") || "direct_supplier_to_customer",
     source_type: field(form, "source_type") || "other",
     supplier_id: field(form, "supplier_id") ? Number(field(form, "supplier_id")) : null,
@@ -136,6 +137,9 @@ function generatedOrderNumber() {
 }
 
 async function orderForm(order = null) {
+  // Nuqta shartnomadan meros bo'ladi: yangi buyurtmada shartnomadagi
+  // nuqta oldindan tanlangan bo'lib turadi.
+  const points = await deliveryPointOptions(order?.delivery_point_id);
   const contracts = await fetchContractsForSelect(order?.contract_id);
   const contract = order ? await api(`/api/contracts/${order.contract_id}`) : null;
   const stockLots = await api("/api/stock-lots?available_only=true&page_size=100").catch(() => ({ items: [] }));
@@ -162,6 +166,7 @@ async function orderForm(order = null) {
             ${readonlyField("order_number", "Buyurtma raqami", order?.order_number || generatedOrderNumber())}
             ${textField("order_date", "Buyurtma sanasi", order?.order_date || today, "date")}
             ${textField("required_date", "Talab qilingan sana", order?.required_date || "", "date")}
+            ${deliveryPointField("ABZ nuqtasi", order?.delivery_point_id ?? contract?.delivery_point_id, points)}
             ${readonlyField("status_label", "Status", optionLabel(orderStatuses, order?.status || "created"))}
             ${textField("created_by", "Yaratgan", order?.created_by)}
             ${textArea("notes", "Izoh", order?.notes)}
@@ -373,6 +378,12 @@ async function enrichOrderWizardContract(state, contractId) {
   // Left blank on purpose: defaulting to the contract's last day made every
   // order look like it was due at the end of the contract.
   state.requiredDate = "";
+  // Nuqta esa aksincha: shartnomada ko'rsatilgan bo'lsa, buyurtmada ham
+  // o'sha bo'ladi va uni qayta tanlash shart emas.
+  if (state.contract?.delivery_point_id) {
+    state.deliveryPointId = String(state.contract.delivery_point_id);
+    state.deliveryPointOptions = await deliveryPointOptions(state.contract.delivery_point_id);
+  }
   state.stockLotId = "";
   state.stockAllocatedQuantity = "";
 }
@@ -613,7 +624,7 @@ function orderRequiredDateField(state) {
 
 function orderWizardBody(state) {
   if (state.step === 1) return section("Shartnoma tanlash", `${selectField("contract_id", "Shartnoma", [["", "Shartnomani tanlang"]], "", { required: true }).replace("</select>", `${state.contractOptions || ""}</select>`)}${orderWizardContractSummary(state)}`);
-  if (state.step === 2) return section("Mahsulot va miqdor", `${orderRequiredDateField(state)}${orderWizardProductsTable(state)}`);
+  if (state.step === 2) return section("Mahsulot va miqdor", `${orderRequiredDateField(state)}<div class="grid">${deliveryPointField("ABZ nuqtasi", state.deliveryPointId, state.deliveryPointOptions || "")}</div><p class="form-hint">Bitum qayerga yetkaziladi. Shartnomada ko'rsatilgan bo'lsa, oldindan tanlangan turadi.</p>${orderWizardProductsTable(state)}`);
   if (state.step === 3) return section("Manba va yetkazib berish modeli", orderWizardSourcePanel(state));
   if (state.step === 4) return section("Zaxira / Xarid", orderWizardStockPanel(state));
   if (state.step === 5) return section("Narx va logistika", orderWizardPricePanel(state));
@@ -659,6 +670,7 @@ function collectOrderWizardPayload(state) {
     order_number: generatedOrderNumber(),
     order_date: state.orderDate,
     required_date: state.requiredDate,
+    delivery_point_id: state.deliveryPointId ? Number(state.deliveryPointId) : null,
     fulfillment_type: state.fulfillmentType,
     source_type: state.sourceType,
     markup_amount: normalizeNumberInputValue(state.markupAmount || "0"),
@@ -686,8 +698,10 @@ async function renderOrderWizard() {
     stockLots: [],
     preselectedStockLotId: params.get("stock_lot_id") || "",
     stockLotWarning: "",
+    deliveryPointId: "",
   };
   state.contractOptions = await orderWizardContractOptions(preselectedContractId);
+  state.deliveryPointOptions = await deliveryPointOptions();
   if (preselectedContractId) {
     await enrichOrderWizardContract(state, preselectedContractId);
   }
@@ -729,6 +743,7 @@ async function renderOrderWizard() {
     bindRuDateFields(document);
     form.elements.required_date?.addEventListener("input", () => {
       state.requiredDate = form.elements.required_date.value;
+      if (form.elements.delivery_point_id) state.deliveryPointId = form.elements.delivery_point_id.value;
       refreshOrderRequiredDateNote(state);
     });
 

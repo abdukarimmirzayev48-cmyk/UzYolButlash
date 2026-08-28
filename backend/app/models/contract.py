@@ -7,6 +7,7 @@ from sqlalchemy import Boolean, Date, DateTime, Enum as SAEnum, ForeignKey, Nume
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from backend.app.db.session import Base
+from backend.app.models.delivery_point import DeliveryPoint
 from backend.app.models.client import TimestampMixin
 
 
@@ -110,6 +111,9 @@ class Contract(Base, TimestampMixin):
     status: Mapped[ContractStatus] = mapped_column(
         SAEnum(ContractStatus), default=ContractStatus.draft, nullable=False, index=True
     )
+    # Bitum qayerga yetkaziladi. Nuqta ma'lumotnomasidan tanlanadi va
+    # manzil bu yerda qayta yozilmaydi.
+    delivery_point_id: Mapped[int | None] = mapped_column(ForeignKey("delivery_points.id", ondelete="SET NULL"), index=True)
     currency: Mapped[str] = mapped_column(String(8), default="UZS", nullable=False)
     subtotal_amount: Mapped[Decimal] = mapped_column(Numeric(18, 2), default=0, nullable=False)
     vat_amount: Mapped[Decimal] = mapped_column(Numeric(18, 2), default=0, nullable=False)
@@ -150,6 +154,7 @@ class Contract(Base, TimestampMixin):
     parse_confidence: Mapped[Decimal | None] = mapped_column(Numeric(5, 2))
     parse_warnings: Mapped[str | None] = mapped_column(Text)
 
+    delivery_point: Mapped["DeliveryPoint | None"] = relationship(lazy="selectin")
     client: Mapped["Client"] = relationship(back_populates="contracts")
     schedules: Mapped[list["ContractSchedule"]] = relationship(
         back_populates="contract", cascade="all, delete-orphan",

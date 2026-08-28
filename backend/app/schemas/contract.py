@@ -10,6 +10,7 @@ from backend.app.models.contract import (
     DeliveryMethod,
     TransportPaymentType,
 )
+from backend.app.schemas.delivery_point import DeliveryPointSummary
 from backend.app.schemas.client import ClientRead
 
 
@@ -183,6 +184,7 @@ class ContractDateRules(BaseModel):
 
 
 class ContractBase(BaseModel):
+    delivery_point_id: int | None = None
     client_id: int | None = None
     contract_number: str = Field(min_length=1, max_length=128)
     contract_date: date
@@ -225,6 +227,7 @@ class ContractCreate(ContractBase, ContractDateRules):
 
 
 class ContractUpdate(ContractDateRules):
+    delivery_point_id: int | None = None
     """Everything on a contract except its status.
 
     Status moves through POST /contracts/{id}/status, which checks the move is
@@ -387,6 +390,7 @@ class ContractSummary(BaseModel):
 class ContractRead(ContractBase):
     model_config = ConfigDict(from_attributes=True)
 
+    delivery_point: DeliveryPointSummary | None = None
     id: int
     subtotal_amount: Decimal
     vat_amount: Decimal

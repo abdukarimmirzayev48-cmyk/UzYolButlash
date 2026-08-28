@@ -75,6 +75,12 @@ async function render() {
       await renderSupplierPaymentDetail(getSupplierPaymentIdFromPath());
     } else if (location.pathname === "/supplier-payments") {
       await renderSupplierPaymentsList();
+    } else if (location.pathname === "/delivery-points/new") {
+      await renderDeliveryPointForm();
+    } else if (/^\/delivery-points\/\d+$/.test(location.pathname)) {
+      await renderDeliveryPointForm(Number(location.pathname.split("/")[2]));
+    } else if (location.pathname === "/delivery-points") {
+      await renderDeliveryPointsList();
     } else if (location.pathname === "/customer-requests/new") {
       await renderNewCustomerRequest();
     } else if (/^\/customer-requests\/\d+\/edit$/.test(location.pathname)) {

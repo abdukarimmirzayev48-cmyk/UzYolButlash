@@ -7545,3 +7545,8 @@ body.public-layout.sidebar-collapsed .app-shell {
 .ops-row-flagged td {
   background: #fdf3e3;
 }
+
+/* Faol emas nuqta ro'yxatda ko'rinadi, lekin ko'zga tashlanmaydi. */
+.ops-row-muted td {
+  opacity: 0.55;
+}
