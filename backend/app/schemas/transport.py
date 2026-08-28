@@ -355,6 +355,56 @@ class TransportEventSummary(BaseModel):
     warnings: list[str] = Field(default_factory=list)
 
 
+class FleetVehicleRow(BaseModel):
+    transport_id: int
+    vehicle_number: str
+    driver_name: str | None = None
+    status: str
+    trip_count: int = 0
+    delivered_tons: Decimal = Decimal("0")
+    distance_km: Decimal = Decimal("0")
+    fuel_liters: Decimal = Decimal("0")
+    norm_liters: Decimal = Decimal("0")
+    difference_liters: Decimal = Decimal("0")
+    difference_percent: Decimal | None = None
+    suspected_liters: Decimal = Decimal("0")
+    event_count: int = 0
+    unchecked_event_count: int = 0
+    damage_amount: Decimal = Decimal("0")
+    repair_downtime_hours: Decimal = Decimal("0")
+    repair_amount: Decimal = Decimal("0")
+    open_repair_count: int = 0
+    remaining_to_service_km: Decimal | None = None
+    document_level: str = "unknown"
+    warnings: list[str] = Field(default_factory=list)
+
+
+class FleetTotals(BaseModel):
+    vehicle_count: int = 0
+    trip_count: int = 0
+    delivered_tons: Decimal = Decimal("0")
+    distance_km: Decimal = Decimal("0")
+    fuel_liters: Decimal = Decimal("0")
+    norm_liters: Decimal = Decimal("0")
+    difference_liters: Decimal = Decimal("0")
+    suspected_liters: Decimal = Decimal("0")
+    event_count: int = 0
+    unchecked_event_count: int = 0
+    damage_amount: Decimal = Decimal("0")
+    repair_downtime_hours: Decimal = Decimal("0")
+    repair_amount: Decimal = Decimal("0")
+    unavailable_count: int = 0
+    document_risk_count: int = 0
+
+
+class FleetSummaryRead(BaseModel):
+    date_from: date | None = None
+    date_to: date | None = None
+    totals: FleetTotals
+    rows: list[FleetVehicleRow] = Field(default_factory=list)
+
+
+
 class TransportCheckInEmployeeSummary(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

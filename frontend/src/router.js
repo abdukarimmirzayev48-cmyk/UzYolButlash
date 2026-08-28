@@ -147,6 +147,8 @@ async function render() {
       await renderRepairForm(Number(location.pathname.split("/")[2]));
     } else if (location.pathname === "/transport-repairs") {
       await renderRepairsList();
+    } else if (location.pathname === "/fleet-summary") {
+      await renderFleetSummary();
     } else if (location.pathname === "/transports") {
       await renderTransportsList();
     } else if (location.pathname === "/audit-log") {

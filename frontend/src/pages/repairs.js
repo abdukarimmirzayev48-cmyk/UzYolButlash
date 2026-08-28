@@ -113,6 +113,7 @@ async function renderRepairsList() {
       { label: "Transportlar", path: "/transports" },
       { label: "Hodisalar", path: "/transport-events" },
       { label: "TO va ta'mir", active: true },
+      { label: "Xulosa", path: "/fleet-summary" },
     ],
     createPath: editable ? "/transport-repairs/new" : undefined,
     createLabel: "Ariza ochish",
@@ -332,4 +333,83 @@ async function renderRepairForm(id = null) {
       showToast(error.message, true);
     }
   });
+}
+
+// ---- Park bo'yicha davr xulosasi ----
+//
+// Bitumovozlarni nazorat qiladigan jadvalning bosh varag'i shu edi: davrni
+// tanlaysiz va har bir mashina bo'yicha reyslar, tonna, kilometr, yoqilg'i,
+// normadan chetlanish, slivga shubha, ta'mir turib qolishi va TO gacha
+// qolgan masofa bitta jadvalda chiqadi.
+
+const FLEET_DOCUMENT_TONES = { ok: "success", soon: "warning", expired: "danger", unknown: "muted" };
+
+function fleetLiters(value) {
+  return value === null || value === undefined ? dash : fmtQty(value, "litr");
+}
+
+function fleetSummaryRow(row) {
+  const risky = numberValue(row.suspected_liters) > 0 || row.document_level === "expired";
+  return `<tr class="${risky ? "ops-row-flagged" : ""}">
+    <td><button class="ops-primary-link" data-nav="/transports/${row.transport_id}/edit">${fmt(row.vehicle_number)}</button></td>
+    <td>${fmt(row.driver_name)}</td>
+    <td>${statusBadge(row.status)}</td>
+    <td class="ops-money">${fmt(row.trip_count)}</td>
+    <td class="ops-money">${fmtQty(row.delivered_tons, "t")}</td>
+    <td class="ops-money">${fmtQty(row.distance_km, "km")}</td>
+    <td class="ops-money">${fleetLiters(row.fuel_liters)}</td>
+    <td class="ops-money">${fleetLiters(row.norm_liters)}</td>
+    <td class="ops-money ${numberValue(row.difference_liters) > 0 ? "ops-warning" : ""}">${fleetLiters(row.difference_liters)}</td>
+    <td class="ops-money">${row.difference_percent === null || row.difference_percent === undefined ? dash : `<span data-noloc>${fmtQty(row.difference_percent)}%</span>`}</td>
+    <td class="ops-money ${numberValue(row.suspected_liters) > 0 ? "ops-warning" : ""}">${numberValue(row.suspected_liters) > 0 ? fleetLiters(row.suspected_liters) : dash}</td>
+    <td class="ops-money">${row.unchecked_event_count ? `${fmt(row.event_count)} / ${fmt(row.unchecked_event_count)}` : fmt(row.event_count)}</td>
+    <td class="ops-money">${row.repair_downtime_hours ? `<span data-noloc>${fmtQty(row.repair_downtime_hours)}</span> <span>soat</span>` : dash}</td>
+    <td class="ops-money">${fmtMoney(row.repair_amount)}</td>
+    <td class="ops-money">${row.remaining_to_service_km === null || row.remaining_to_service_km === undefined ? dash : fmtQty(row.remaining_to_service_km, "km")}</td>
+    <td>${statusChip({ label: optionLabel(transportRiskLevels, row.document_level), tone: FLEET_DOCUMENT_TONES[row.document_level] })}</td>
+  </tr>`;
+}
+
+async function renderFleetSummary() {
+  const params = new URLSearchParams(location.search);
+  const data = await api(`/api/transports/fleet-summary?${params.toString()}`);
+  const totals = data.totals;
+  const exportQuery = params.toString();
+
+  app.innerHTML = opsListPage({
+    className: "fleet-summary-ops-page",
+    title: "Park xulosasi",
+    tabs: [
+      { label: "Transportlar", path: "/transports" },
+      { label: "Hodisalar", path: "/transport-events" },
+      { label: "TO va ta'mir", path: "/transport-repairs" },
+      { label: "Xulosa", active: true },
+      { label: "Monitoring", path: "/transports/monitoring" },
+    ],
+    clearPath: "/fleet-summary",
+    counter: `${fmt(totals.vehicle_count)} ta mashina · ${fmt(totals.trip_count)} ta reys`,
+    formId: "fleet-summary-form",
+    filters: `${opsFilterField("Sanadan", `<input name="date_from" type="date" value="${esc(params.get("date_from") || "")}" />`)}${
+      opsFilterField("Sanagacha", `<input name="date_to" type="date" value="${esc(params.get("date_to") || "")}" />`)}`,
+    headers: ["Mashina", "Haydovchi", "Holati", "Reyslar", "Tashilgan", "Masofa", "Yoqilg'i", "Norma", "Chetlanish", "%", "Slivga shubha", "Hodisalar", "Turib qolish", "Ta'mir xarajati", "TO gacha", "Hujjatlar"],
+    rows: data.rows.map(fleetSummaryRow).join(""),
+    emptyText: "Mashinalar topilmadi.",
+    colspan: 16,
+  });
+  app.querySelector(".page")?.insertAdjacentHTML("afterbegin", `${summaryCards([
+    ["Reyslar", `<span>${fmt(totals.trip_count)}</span> <span>ta</span>`],
+    ["Tashilgan", fmtQty(totals.delivered_tons, "t")],
+    ["Masofa", fmtQty(totals.distance_km, "km")],
+    ["Yoqilg'i", fleetLiters(totals.fuel_liters)],
+    ["Normadan ortiq", fleetLiters(totals.difference_liters), numberValue(totals.difference_liters) > 0 ? "warning" : ""],
+    ["Slivga shubha", fleetLiters(totals.suspected_liters), numberValue(totals.suspected_liters) > 0 ? "danger" : ""],
+  ])}${summaryCards([
+    ["Hodisalar", `<span>${fmt(totals.event_count)}</span> <span>ta</span>`],
+    ["Tekshirilmagan", `<span>${fmt(totals.unchecked_event_count)}</span> <span>ta</span>`, totals.unchecked_event_count ? "warning" : ""],
+    ["Undirilgan zarar", fmtMoney(totals.damage_amount)],
+    ["Ta'mir turib qolishi", totals.repair_downtime_hours ? `<span data-noloc>${fmtQty(totals.repair_downtime_hours)}</span> <span>soat</span>` : dash],
+    ["Ta'mir xarajati", fmtMoney(totals.repair_amount)],
+    ["Hujjat muddati", `<span>${fmt(totals.document_risk_count)}</span> <span>ta mashinada</span>`, totals.document_risk_count ? "warning" : ""],
+  ])}<div class="toolbar"><a class="btn" href="/api/transports/fleet-summary.xlsx?${esc(exportQuery)}${exportQuery ? "&" : ""}lang=${esc(currentLang())}">Excel eksport</a></div>`);
+  bindOpsSearch("fleet-summary-form", "/fleet-summary", ["date_from", "date_to"]);
 }

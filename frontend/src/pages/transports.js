@@ -276,7 +276,7 @@ async function renderTransportsList() {
   app.innerHTML = opsListPage({
     className: "transports-ops-page",
     title: "Transportlar",
-    tabs: [{ label: "Partiyalar", path: "/delivery-batches" }, { label: "Logistika", path: "/logistics" }, { label: "Transportlar", active: true }, { label: "Hodisalar", path: "/transport-events" }, { label: "TO va ta'mir", path: "/transport-repairs" }, { label: "Monitoring", path: "/transports/monitoring" }],
+    tabs: [{ label: "Partiyalar", path: "/delivery-batches" }, { label: "Logistika", path: "/logistics" }, { label: "Transportlar", active: true }, { label: "Hodisalar", path: "/transport-events" }, { label: "TO va ta'mir", path: "/transport-repairs" }, { label: "Xulosa", path: "/fleet-summary" }, { label: "Monitoring", path: "/transports/monitoring" }],
     clearPath: "/transports",
     counter: `${fmt(data.total)} ta transport · ${fmt(freeCount)} ta bo'sh · ${fmt(riskCount)} tasida hujjat muddati`,
     formId: "transport-search-form",
@@ -608,7 +608,7 @@ async function renderTransportMonitoring() {
   const s = data.summary;
   app.innerHTML = opsPageShell(
     "Transport monitoring",
-    [{ label: "Partiyalar", path: "/delivery-batches" }, { label: "Logistika", path: "/logistics" }, { label: "Transportlar", path: "/transports" }, { label: "Hodisalar", path: "/transport-events" }, { label: "TO va ta'mir", path: "/transport-repairs" }, { label: "Monitoring", active: true }],
+    [{ label: "Partiyalar", path: "/delivery-batches" }, { label: "Logistika", path: "/logistics" }, { label: "Transportlar", path: "/transports" }, { label: "Hodisalar", path: "/transport-events" }, { label: "TO va ta'mir", path: "/transport-repairs" }, { label: "Xulosa", path: "/fleet-summary" }, { label: "Monitoring", active: true }],
     `${summaryCards([
       ["Jami avtomashina", `${fmt(s.total)}ta`],
       ["Ish holatida", `${fmt(s.working)}ta`],

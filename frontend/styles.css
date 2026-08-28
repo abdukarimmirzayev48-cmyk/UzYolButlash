@@ -7539,3 +7539,9 @@ body.public-layout.sidebar-collapsed .app-shell {
   border-top: 1px solid var(--line);
   padding-top: 12px;
 }
+
+/* Xulosadagi e'tibor talab qiladigan qator: slivga shubha yoki muddati
+   o'tgan hujjat. Ranglar jadval ichida ham ko'rinib tursin. */
+.ops-row-flagged td {
+  background: #fdf3e3;
+}

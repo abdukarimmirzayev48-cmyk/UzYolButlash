@@ -3,6 +3,7 @@ from decimal import Decimal
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from fastapi.responses import StreamingResponse
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session, object_session, selectinload
 
@@ -22,11 +23,14 @@ from backend.app.models.transport import (
     TransportStatus,
 )
 from backend.app.schemas.client import Page
-from backend.app.services import logistics_timeline, repair_workflow, transport_events, transport_readiness, transport_repairs, transport_usage
+from backend.app.services import fleet_export, fleet_summary, logistics_timeline, repair_workflow, transport_events, transport_readiness, transport_repairs, transport_usage
 from backend.app.models.user import User
 from backend.app.services.auth import get_current_user, require_edit
 from backend.app.services.telegram_bot import request_checkin
 from backend.app.schemas.transport import (
+    FleetSummaryRead,
+    FleetTotals,
+    FleetVehicleRow,
     RepairPartRead,
     TransportRepairCreate,
     TransportRepairRead,
@@ -355,6 +359,133 @@ def create_transport(payload: TransportCreate, db: Session = Depends(get_db)):
 
 # Izohga yoziladigan yorliqlar. Interfeysdagi ro'yxat bilan bir xil
 # bo'lishi kerak, aks holda tarixda boshqa nom paydo bo'ladi.
+def build_fleet_summary(db: Session, date_from: date | None, date_to: date | None):
+    """Park bo'yicha davr xulosasi.
+
+    Har bir raqam o'z modulidan olinadi -- reys hisobi logistics_fuel.py
+    dan, ta'mir transport_repairs.py dan, hujjat holati
+    transport_readiness.py dan. Bu yerda ular davr bo'yicha yig'iladi,
+    xolos: aks holda bir sahifadagi raqam boshqa sahifadagidan farq qilib
+    qolardi.
+    """
+    from backend.app.api.delivery import logistics_fuel_position
+
+    transports = list(db.scalars(select(Transport).order_by(Transport.vehicle_number)).unique())
+    if not transports:
+        return FleetSummaryRead(date_from=date_from, date_to=date_to, totals=FleetTotals())
+
+    ids = [transport.id for transport in transports]
+    readings = odometer_readings(db, ids)
+
+    trips_stmt = select(Logistics).where(Logistics.transport_id.in_(ids)).options(
+        selectinload(Logistics.batch).selectinload(DeliveryBatch.items),
+        selectinload(Logistics.transport),
+    )
+    trips_by_vehicle: dict[int, list[Logistics]] = {transport_id: [] for transport_id in ids}
+    for trip in db.scalars(trips_stmt).unique():
+        when = trip.actual_pickup_date or trip.planned_pickup_date
+        if date_from and (when is None or when < date_from):
+            continue
+        if date_to and (when is None or when > date_to):
+            continue
+        trips_by_vehicle[trip.transport_id].append(trip)
+
+    events_stmt = select(TransportEvent).where(TransportEvent.transport_id.in_(ids))
+    events_by_vehicle: dict[int, list[TransportEvent]] = {transport_id: [] for transport_id in ids}
+    for event in db.scalars(events_stmt).unique():
+        when = event.occurred_at.date()
+        if date_from and when < date_from:
+            continue
+        if date_to and when > date_to:
+            continue
+        events_by_vehicle[event.transport_id].append(event)
+
+    repairs_stmt = select(TransportRepair).where(TransportRepair.transport_id.in_(ids)).options(
+        selectinload(TransportRepair.parts)
+    )
+    repairs_by_vehicle: dict[int, list[TransportRepair]] = {transport_id: [] for transport_id in ids}
+    for repair in db.scalars(repairs_stmt).unique():
+        when = repair.opened_at.date()
+        if date_from and when < date_from:
+            continue
+        if date_to and when > date_to:
+            continue
+        repairs_by_vehicle[repair.transport_id].append(repair)
+
+    now = datetime.now()
+    today = date.today()
+    vehicles = []
+    for transport in transports:
+        current_km, conflict = odometer_state(readings.get(transport.id, {}))
+        readiness = transport_readiness.build_readiness(
+            transport, today=today, current_km=current_km, odometer_conflict=conflict
+        )
+        repair_summary = transport_repairs.build_summary(repairs_by_vehicle[transport.id], now=now)
+        event_summary = transport_events.build_summary(events_by_vehicle[transport.id])
+        trip_rows = []
+        for trip in trips_by_vehicle[transport.id]:
+            position = logistics_fuel_position(trip)
+            trip_rows.append(
+                {
+                    "tons": _batch_tonnage(trip.batch),
+                    "distance_km": position.distance_km or trip.distance_km,
+                    "fuel_liters": position.actual_liters,
+                    "norm_liters": position.norm_liters,
+                    "suspected_liters": position.suspected_liters,
+                }
+            )
+        vehicles.append(
+            {
+                "transport_id": transport.id,
+                "vehicle_number": transport.vehicle_number,
+                "driver_name": transport.driver_name,
+                "status": transport.status.value,
+                "trips": trip_rows,
+                "event_count": event_summary.total,
+                "unchecked_event_count": event_summary.not_checked_count,
+                "damage_amount": event_summary.damage_amount,
+                "repair_downtime_hours": repair_summary.downtime_hours,
+                "repair_amount": repair_summary.total_amount,
+                "open_repair_count": repair_summary.open_count,
+                "remaining_to_service_km": readiness.service.remaining_km,
+                "document_level": readiness.level,
+                "warnings": readiness.warnings + repair_summary.warnings,
+            }
+        )
+
+    return fleet_summary.build_summary(vehicles=vehicles, date_from=date_from, date_to=date_to)
+
+
+@router.get("/fleet-summary", response_model=FleetSummaryRead)
+def fleet_summary_report(db: Session = Depends(get_db), date_from: date | None = None, date_to: date | None = None):
+    report = build_fleet_summary(db, date_from, date_to)
+    return FleetSummaryRead(
+        date_from=report.date_from,
+        date_to=report.date_to,
+        totals=FleetTotals(**report.totals.__dict__),
+        rows=[FleetVehicleRow(**row.__dict__) for row in report.rows],
+    )
+
+
+@router.get("/fleet-summary.xlsx")
+def fleet_summary_export(
+    db: Session = Depends(get_db),
+    date_from: date | None = None,
+    date_to: date | None = None,
+    lang: str = "cyr",
+):
+    """Ekranda nima ko'rinsa, o'sha eksport qilinadi -- xulosa bir marta
+    yig'iladi va ikkala javob ham shundan chiqadi."""
+    report = build_fleet_summary(db, date_from, date_to)
+    stream = fleet_export.build_workbook(report, lang)
+    suffix = f"{date_from or 'boshidan'}_{date_to or 'oxirigacha'}"
+    return StreamingResponse(
+        stream,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="park-xulosa-{suffix}.xlsx"'},
+    )
+
+
 REPAIR_STATUS_LABELS = {
     "new": "Yangi ariza",
     "diagnosis": "Diagnostika",
