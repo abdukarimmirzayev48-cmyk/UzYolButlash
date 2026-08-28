@@ -1167,7 +1167,14 @@ function bindContractStatusActions(contract) {
     button.addEventListener("click", async () => {
       const direction = button.dataset.contractDirection;
       const cfg = CONTRACT_STATUS_DIALOGS[direction] || CONTRACT_STATUS_DIALOGS.forward;
-      const target = (button.querySelector("span:last-child") || button).textContent.trim();
+      // Nishon holat nomi ma'lumotdan olinadi, tugma matnidan emas:
+      // «keyingi qadam» tugmasida matn boshqacha («Faollashtirish»), lekin
+      // oynada nima bo'lishini aytish kerak.
+      // Oynadagi nishon `data-noloc` ichida turadi -- u odatda hujjat raqami,
+      // ya'ni ma'lumot. Bu yerda esa holat nomi, shuning uchun u lug'atdan
+      // shu joyda o'tkaziladi.
+      const target = localizeText(optionLabel(contractStatuses, button.dataset.contractStatus))
+        || (button.querySelector("span:last-child") || button).textContent.trim();
       const { confirmed, comment } = await appDialog({
         title: cfg.title,
         intro: cfg.intro,

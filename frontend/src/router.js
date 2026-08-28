@@ -205,6 +205,7 @@ async function render() {
     setupFieldValidationMessages(app);
     bindSelectSearch(app);
     bindRuDateFields(app);
+    scrollToHashTarget();
     document.querySelectorAll("[data-nav]").forEach((element) => {
       element.addEventListener("click", (event) => {
         // Rows link to their record with a real <a href> so the address can be

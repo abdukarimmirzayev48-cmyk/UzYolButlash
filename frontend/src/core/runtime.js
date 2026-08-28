@@ -735,6 +735,17 @@ function navigate(path) {
   render();
 }
 
+// Manzildagi `#bo'lim` brauzerning o'zi olib tushadigan joy edi, lekin bu
+// yerda har bir manzil o'zgarishi sahifani qaytadan chizadi va aylanish
+// nolga qaytadi -- ya'ni havola bosiladi, lekin hech narsa ko'chmaydi.
+// Chizilgandan keyin o'zimiz olib tushamiz.
+function scrollToHashTarget() {
+  const hash = location.hash;
+  if (!hash || hash.length < 2) return;
+  const target = document.getElementById(hash.slice(1));
+  if (target) target.scrollIntoView({ block: "start" });
+}
+
 function initSidebar() {
   const saved = localStorage.getItem("bitum.sidebarCollapsed");
   if (saved === "1" || (saved === null && window.matchMedia("(max-width: 980px)").matches)) {
@@ -1728,8 +1739,17 @@ function workflowWarningsPanel(messages, title = "E'tibor kerak") {
 // kerakligi, nega kerakligi va tugmasi bir joyda.
 function nextActionHero(action = {}) {
   if (!action.title) return "";
-  const button = action.anchor
-    ? `<a class="btn white" href="${esc(action.anchor)}">${fmt(action.button || "Ochish")}</a>`
+  // `attrs` -- tugmaga sahifaning o'z bog'lovchisi ushlaydigan belgilarni
+  // qo'yish uchun. Ilgari bu yerda `#bo'lim` havolasi turardi: u sahifani
+  // o'sha panelgacha aylantirishi kerak edi, lekin manzildagi `#` router
+  // uchun yangi manzil bo'lib, sahifa qaytadan chiziladi va aylanish nolga
+  // qaytadi -- ya'ni tugma bosiladi, lekin hech narsa bo'lmaydi. Endi
+  // «keyingi qadam» tugmasi o'zi amalni bajaradi.
+  const attrs = Object.entries(action.attrs || {})
+    .map(([name, value]) => `${esc(name)}="${esc(value)}"`)
+    .join(" ");
+  const button = attrs
+    ? `<button class="btn white" type="button" ${attrs}>${fmt(action.button || "Ochish")}</button>`
     : action.modal
       ? `<button class="btn white" data-${esc(action.modal)}>${fmt(action.button || "Ochish")}</button>`
       : action.path
@@ -1748,13 +1768,10 @@ function nextActionHero(action = {}) {
 
 function workflowNextActionPanel(action = {}) {
   if (!action.title) return "";
-  // Ba'zi bosqichlarning amali shu sahifaning pastida turadi. Boshqa
-  // sahifaga o'tkazish o'rniga o'sha joyga olib tushamiz: sahifani
-  // almashtirmaydigan tugma bosilganda hech narsa qilmagandek ko'rinadi.
-  if (action.anchor) {
-    return `<section class="next-action-panel ${action.done ? "done" : ""}"><div><span>Keyingi amal</span><strong>${fmt(action.title)}</strong></div><a class="btn primary" href="${esc(action.anchor)}">${fmt(action.button || "Ochish")}</a></section>`;
-  }
-  const attrs = action.modal ? `data-${esc(action.modal)}` : action.path ? `data-nav="${esc(action.path)}"` : "";
+  const own = Object.entries(action.attrs || {})
+    .map(([name, value]) => `${esc(name)}="${esc(value)}"`)
+    .join(" ");
+  const attrs = own || (action.modal ? `data-${esc(action.modal)}` : action.path ? `data-nav="${esc(action.path)}"` : "");
   const button = attrs ? `<button class="btn primary" ${attrs}>${fmt(action.button || "Ochish")}</button>` : "";
   return `<section class="next-action-panel ${action.done ? "done" : ""}"><div><span>Keyingi amal</span><strong>${fmt(action.title)}</strong></div>${button}</section>`;
 }
@@ -2288,8 +2305,8 @@ function contractNextAction(contract = {}) {
   const advanceExpected = numberValue(summary.advance_amount) > 0;
   if (!contract.client_id) return { title: "Shartnomani mijozga bog'lang", hint: "Buyurtma va hisob-faktura yaratish uchun shartnoma mijozga bog'langan bo'lishi kerak.", button: "Mijozni bog'lash", modal: "contract-link-client" };
   if (contract.status === "cancelled") return { title: "Shartnoma bekor qilingan", button: "Tarixni ko'rish", path: `/contracts/${id}?tab=notes`, done: true };
-  if (contract.status === "draft") return { title: "Shartnomani imzolangan deb belgilang", hint: "Shartnoma hozir qoralama. Imzolangandan keyin avans hisobini qo'yish mumkin bo'ladi.", button: "Status o'zgartirish", anchor: "#contract-status" };
-  if (contract.status === "signed") return { title: "Shartnomani faollashtiring", hint: "Shartnoma imzolangan. Faol holatga o'tkazilgandan keyin ish boshlanadi.", button: "Status o'zgartirish", anchor: "#contract-status" };
+  if (contract.status === "draft") return { title: "Shartnomani imzolangan deb belgilang", hint: "Shartnoma hozir qoralama. Imzolangandan keyin avans hisobini qo'yish mumkin bo'ladi.", button: "Imzolangan deb belgilash", attrs: { "data-contract-status": "signed", "data-contract-direction": "forward" } };
+  if (contract.status === "signed") return { title: "Shartnomani faollashtiring", hint: "Shartnoma imzolangan. Faol holatga o'tkazilgandan keyin ish boshlanadi.", button: "Faollashtirish", attrs: { "data-contract-status": "active", "data-contract-direction": "forward" } };
   if (advanceExpected && numberValue(billing.advance_invoiced) <= 0) {
     return { title: "Avans hisob-fakturasini yarating", hint: "Shartnoma bo'yicha avans hali hisob qilinmagan.", button: "Hisob yaratish", modal: "contract-invoice-modal" };
   }
@@ -2308,7 +2325,7 @@ function contractNextAction(contract = {}) {
   if (numberValue(summary.paid_amount) < numberValue(summary.total_amount)) {
     return { title: "Qolgan to'lovni undiring", hint: "Mahsulot to'liq yetkazilgan, shartnoma summasi esa to'liq undirilmagan.", button: "Moliyani ko'rish", path: `/contracts/${id}?tab=payment` };
   }
-  if (contract.status !== "completed") return { title: "Shartnomani yakunlang", hint: "Barcha majburiyatlar bajarilgan -- shartnomani yakunlangan deb belgilang.", button: "Status o'zgartirish", anchor: "#contract-status" };
+  if (contract.status !== "completed") return { title: "Shartnomani yakunlang", hint: "Barcha majburiyatlar bajarilgan -- shartnomani yakunlangan deb belgilang.", button: "Yakunlash", attrs: { "data-contract-status": "completed", "data-contract-direction": "forward" } };
   return { title: "Shartnoma bo'yicha barcha bosqichlar yakunlangan", button: "Tarixni ko'rish", path: `/contracts/${id}?tab=notes`, done: true };
 }
 
