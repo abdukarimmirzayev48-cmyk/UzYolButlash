@@ -25,6 +25,26 @@ from backend.app.db.session import Base
 from backend.app.models.client import Client, TimestampMixin
 
 
+class DeliveryPointStatus(str, Enum):
+    """Nuqtaning ish holati.
+
+    Ilgari bu `is_active` -- ha yoki yo'q edi. Amalda oraliq holatlar bor:
+    ABZ ishlayapti, lekin e'tibor talab qiladi (masalan hujjati yoki
+    mas'uli yo'q), yoki hali ochilmagan va rejada turibdi. Ikkalasini ham
+    «faol emas» deb belgilash ularni ro'yxatdan yashirib yuboradi.
+    """
+
+    active = "active"
+    attention = "attention"
+    inactive = "inactive"
+    planned = "planned"
+
+
+# Yangi yetkazishga tanlash mumkin bo'lgan holatlar. Rejadagi nuqta hali
+# ochilmagan, faol emasi esa yopilgan -- ikkalasiga ham yuk yuborilmaydi.
+SELECTABLE_STATUSES = (DeliveryPointStatus.active, DeliveryPointStatus.attention)
+
+
 class DeliveryPointType(str, Enum):
     abz = "abz"
     warehouse = "warehouse"
@@ -57,10 +77,16 @@ class DeliveryPoint(Base, TimestampMixin):
     responsible_email: Mapped[str | None] = mapped_column(String(255))
 
     working_hours: Mapped[str | None] = mapped_column(String(255))
+    # Kunlik quvvat -- bir kunda qancha bitum qabul qila oladi. Sisterna
+    # hajmi bilan aralashtirmaslik kerak: u bir marta qancha sig'ishini
+    # aytadi, bu esa kuniga qancha o'tishini.
+    daily_capacity_tons: Mapped[Decimal | None] = mapped_column(Numeric(18, 3))
     # Sisternani qabul qila oladigan hajm -- reja tuzishda kerak bo'ladi.
     tank_capacity_tons: Mapped[Decimal | None] = mapped_column(Numeric(18, 3))
     notes: Mapped[str | None] = mapped_column(Text)
-    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False, index=True)
+    status: Mapped[DeliveryPointStatus] = mapped_column(
+        SAEnum(DeliveryPointStatus), default=DeliveryPointStatus.active, nullable=False, index=True
+    )
 
     client: Mapped[Client | None] = relationship()
 
@@ -72,6 +98,11 @@ class DeliveryPoint(Base, TimestampMixin):
     def full_address(self) -> str | None:
         parts = [self.region, self.district, self.address]
         return ", ".join(part.strip() for part in parts if part and part.strip()) or None
+
+    @property
+    def is_active(self) -> bool:
+        """Eski nom: interfeys va API filtrlarida hali ishlatiladi."""
+        return self.status in SELECTABLE_STATUSES
 
     @property
     def map_url(self) -> str | None:

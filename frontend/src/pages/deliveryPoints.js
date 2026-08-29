@@ -4,6 +4,22 @@
 // bir xil, talabnomada boshqacha, partiyada uchinchi xil. Endi u bitta
 // joyda turadi va boshqa bo'limlar shu nuqtaga ishora qiladi.
 
+// Mockupdagi to'rtta holat. Ilgari bu «faol / faol emas» edi: ishlayotgan,
+// lekin e'tibor talab qiladigan ABZ ni ham, hali ochilmaganini ham «faol
+// emas» deb belgilash ularni ro'yxatdan yashirib yuborardi.
+const deliveryPointStatuses = [
+  ["active", "Faol"],
+  ["attention", "E'tibor talab qiladi"],
+  ["inactive", "Faol emas"],
+  ["planned", "Rejalashtirilgan"],
+];
+
+const DELIVERY_POINT_STATUS_TONES = { active: "success", attention: "warning", inactive: "danger", planned: "muted" };
+
+function deliveryPointStatusChip(status) {
+  return statusChip({ label: optionLabel(deliveryPointStatuses, status), tone: DELIVERY_POINT_STATUS_TONES[status] });
+}
+
 const deliveryPointTypes = [
   ["abz", "ABZ"],
   ["warehouse", "Ombor"],
@@ -18,10 +34,11 @@ function deliveryPointRow(point, editable) {
     <td>${fmt(optionLabel(deliveryPointTypes, point.point_type))}</td>
     <td>${fmt(point.client?.name)}</td>
     <td>${fmt(point.full_address)}</td>
+    <td class="ops-money">${point.daily_capacity_tons ? `${fmtQty(point.daily_capacity_tons)} <span>t/kun</span>` : dash}</td>
     <td>${fmt(point.responsible_name)}</td>
     <td>${fmt(point.responsible_phone)}</td>
     <td>${point.map_url ? `<a class="link-btn" target="_blank" rel="noopener" href="${esc(point.map_url)}">Xaritada</a>` : dash}</td>
-    <td>${statusChip(point.is_active ? { label: "Faol", tone: "success" } : { label: "Faol emas", tone: "muted" })}</td>
+    <td>${deliveryPointStatusChip(point.status)}</td>
     ${editable ? `<td><div class="ops-row-actions"><button class="link-btn" data-nav="/delivery-points/${point.id}">Ochish</button><button class="link-btn" data-delete-point="${point.id}">O'chirish</button></div></td>` : ""}
   </tr>`;
 }
@@ -53,14 +70,15 @@ async function renderDeliveryPointsList() {
     formId: "delivery-point-search-form",
     filters: `${opsFilterField("Qidirish", `<input name="search" placeholder="Nomi, kodi, manzili, mas'ul" value="${esc(params.get("search") || "")}" />`)}${
       opsFilterField("Mijoz", `<select name="client_id"><option value="">Barchasi</option>${clientOptions}</select>`)}${
-      opsFilterField("Turi", `<select name="point_type"><option value="">Barchasi</option>${deliveryPointTypes.map(([key, label]) => `<option value="${key}" ${params.get("point_type") === key ? "selected" : ""}>${label}</option>`).join("")}</select>`)}`,
-    headers: ["Nomi", "Kodi", "Turi", "Mijoz", "Manzil", "Mas'ul", "Telefon", "Xarita", "Holati", editable ? "Amallar" : ""],
+      opsFilterField("Turi", `<select name="point_type"><option value="">Barchasi</option>${deliveryPointTypes.map(([key, label]) => `<option value="${key}" ${params.get("point_type") === key ? "selected" : ""}>${label}</option>`).join("")}</select>`)}${
+      opsFilterField("Holati", `<select name="status"><option value="">Barchasi</option>${deliveryPointStatuses.map(([key, label]) => `<option value="${key}" ${params.get("status") === key ? "selected" : ""}>${label}</option>`).join("")}</select>`)}`,
+    headers: ["Nomi", "Kodi", "Turi", "Mijoz", "Manzil", "Quvvati", "Mas'ul", "Telefon", "Xarita", "Holati", editable ? "Amallar" : ""],
     rows: data.items.map((point) => deliveryPointRow(point, editable)).join(""),
     emptyText: "Nuqtalar topilmadi.",
-    colspan: editable ? 10 : 9,
+    colspan: editable ? 11 : 10,
     footer: opsFooter(data, "deliverypoint"),
   });
-  bindOpsSearch("delivery-point-search-form", "/delivery-points", ["search", "client_id", "point_type"]);
+  bindOpsSearch("delivery-point-search-form", "/delivery-points", ["search", "client_id", "point_type", "status"]);
   bindOpsPagination("deliverypoint", "/delivery-points");
   document.querySelectorAll("[data-delete-point]").forEach((button) => button.addEventListener("click", async () => {
     if (!confirmMsg("Ushbu nuqtani o'chirishni tasdiqlaysizmi?")) return;
@@ -91,6 +109,7 @@ async function renderDeliveryPointForm(id = null) {
       title: id ? point.name : "Yangi nuqta",
       subtitle: subtitleLine([
         { value: optionLabel(deliveryPointTypes, point.point_type || "abz") },
+        { value: optionLabel(deliveryPointStatuses, point.status || "active") },
         { value: point.full_address, raw: true },
       ]),
       backPath: "/delivery-points",
@@ -102,7 +121,8 @@ async function renderDeliveryPointForm(id = null) {
         ${textField("code", "Kodi", point.code || "", "text", { maxlength: 64 })}
         ${selectField("point_type", "Turi", deliveryPointTypes, point.point_type || "abz")}
         <label class="form-field"><span class="field-label-text">Mijoz</span>${selectSearch("client_id", "Mijoz nomi yoki STIR bo'yicha qidiring")}<select name="client_id"><option value="">Bog'lanmagan</option>${clientOptions}</select></label>
-        ${selectField("is_active", "Holati", [["1", "Faol"], ["0", "Faol emas"]], point.id && point.is_active === false ? "0" : "1")}
+        ${selectField("status", "Holati", deliveryPointStatuses, point.status || "active")}
+        ${textField("daily_capacity_tons", "Kunlik quvvati, t/kun", point.daily_capacity_tons ?? "", "number")}
         ${textField("tank_capacity_tons", "Sisterna sig'imi, t", point.tank_capacity_tons ?? "", "number")}
       </div>`)}
       ${section("Manzil", `<div class="grid">
@@ -140,7 +160,8 @@ async function renderDeliveryPointForm(id = null) {
       code: field(form, "code"),
       point_type: field(form, "point_type"),
       client_id: clientId ? Number(clientId) : null,
-      is_active: field(form, "is_active") !== "0",
+      status: field(form, "status") || "active",
+      daily_capacity_tons: field(form, "daily_capacity_tons"),
       tank_capacity_tons: field(form, "tank_capacity_tons"),
       region: field(form, "region"),
       district: field(form, "district"),

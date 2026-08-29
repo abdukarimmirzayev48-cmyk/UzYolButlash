@@ -3,7 +3,7 @@ from decimal import Decimal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from backend.app.models.delivery_point import DeliveryPointType
+from backend.app.models.delivery_point import DeliveryPointStatus, DeliveryPointType
 
 # Koordinata matn bo'lib saqlanadi, lekin u haqiqatan koordinata ekanini
 # tekshirib qo'yish kerak: xatosi yo'lda, haydovchi qidirayotganda bilinadi.
@@ -29,8 +29,9 @@ class DeliveryPointBase(BaseModel):
     responsible_email: str | None = None
     working_hours: str | None = Field(default=None, max_length=255)
     tank_capacity_tons: Decimal | None = Field(default=None, ge=0)
+    daily_capacity_tons: Decimal | None = Field(default=None, ge=0)
     notes: str | None = None
-    is_active: bool = True
+    status: DeliveryPointStatus = DeliveryPointStatus.active
 
     @field_validator("latitude")
     @classmethod
@@ -78,8 +79,9 @@ class DeliveryPointUpdate(BaseModel):
     responsible_email: str | None = None
     working_hours: str | None = Field(default=None, max_length=255)
     tank_capacity_tons: Decimal | None = Field(default=None, ge=0)
+    daily_capacity_tons: Decimal | None = Field(default=None, ge=0)
     notes: str | None = None
-    is_active: bool | None = None
+    status: DeliveryPointStatus | None = None
 
     @field_validator("latitude")
     @classmethod
@@ -106,6 +108,8 @@ class DeliveryPointRead(DeliveryPointBase):
     created_at: datetime
     updated_at: datetime
     client: DeliveryPointClient | None = None
+    # Eski nom: nuqta tanlash mumkinligini bildiradi.
+    is_active: bool = True
     # Saqlanmaydi: viloyat, tuman va manzildan yig'iladi. Ekranda va
     # yetkazish hujjatida bir xil ko'rinishi uchun bir joyda yig'iladi.
     full_address: str | None = None

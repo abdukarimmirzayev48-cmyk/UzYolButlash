@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from backend.app.db.session import get_db
 from backend.app.models.client import Client
-from backend.app.models.delivery_point import DeliveryPoint
+from backend.app.models.delivery_point import SELECTABLE_STATUSES, DeliveryPoint
 from backend.app.schemas.client import Page
 from backend.app.schemas.delivery_point import (
     DeliveryPointCreate,
@@ -65,6 +65,7 @@ def list_delivery_points(
     client_id: int | None = None,
     region: str | None = None,
     point_type: str | None = None,
+    status_filter: str | None = Query(default=None, alias="status"),
     active_only: bool = False,
 ):
     stmt = select(DeliveryPoint).options(selectinload(DeliveryPoint.client))
@@ -75,7 +76,9 @@ def list_delivery_points(
     if point_type:
         stmt = stmt.where(DeliveryPoint.point_type == point_type)
     if active_only:
-        stmt = stmt.where(DeliveryPoint.is_active.is_(True))
+        stmt = stmt.where(DeliveryPoint.status.in_(SELECTABLE_STATUSES))
+    if status_filter:
+        stmt = stmt.where(DeliveryPoint.status == status_filter)
     if search:
         value = f"%{search}%"
         stmt = stmt.where(
@@ -90,7 +93,7 @@ def list_delivery_points(
         )
     total = db.scalar(select(func.count()).select_from(stmt.subquery())) or 0
     rows = db.scalars(
-        stmt.order_by(DeliveryPoint.is_active.desc(), DeliveryPoint.name)
+        stmt.order_by(DeliveryPoint.status, DeliveryPoint.name)
         .offset((page - 1) * page_size)
         .limit(page_size)
     ).unique()
