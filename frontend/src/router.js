@@ -88,14 +88,7 @@ async function render() {
     } else if (/^\/customer-requests\/\d+$/.test(location.pathname)) {
       await renderCustomerRequestDetail(getCustomerRequestIdFromPath());
     } else if (location.pathname === "/customer-requests") {
-      // `return` ishlatilmaydi: undan keyin turgan umumiy bog'lovchilar --
-      // `data-nav`, maydon formatlash, `#bo'lim` ga o'tish -- o'tkazib
-      // yuborilardi va paneldagi havolalar ishlamay qolardi.
-      if (new URLSearchParams(location.search).get("view") === "dashboard") {
-        await renderCustomerRequestsDashboard();
-      } else {
-        await renderCustomerRequestsList();
-      }
+      await renderCustomerRequestsList();
     } else if (location.pathname === "/exchange-tickets/new") {
       await renderNewExchangeTicket();
     } else if (/^\/exchange-tickets\/\d+$/.test(location.pathname)) {

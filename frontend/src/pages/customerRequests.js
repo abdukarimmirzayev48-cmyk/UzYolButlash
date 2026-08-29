@@ -51,32 +51,34 @@ async function customerRequestProductOptions() {
 async function renderCustomerRequestsList() {
   const params = new URLSearchParams(location.search);
   app.innerHTML = `<div class="page ops-page"><div class="empty">Talabnomalar yuklanmoqda...</div></div>`;
-  const products = await customerRequestProductOptions();
-  const data = await api(`/api/customer-requests?${params.toString()}`);
+  // Panel va ro'yxat bir xil so'rov bilan olinadi: filtr bitta, ya'ni
+  // yuqoridagi raqam bilan pastdagi qatorlar bir-biriga zid bo'la olmaydi.
+  const [products, data, board] = await Promise.all([
+    customerRequestProductOptions(),
+    api(`/api/customer-requests?${params.toString()}`),
+    api(`/api/customer-requests/dashboard?${params.toString()}`),
+  ]);
+  const editable = canEdit("sotuv");
+
   app.innerHTML = opsListPage({
     className: "customer-requests-ops-page",
     title: "Talabnomalar",
-    tabs: [
-      { label: "Ro'yxat", active: true },
-      { label: "Panel", path: "/customer-requests?view=dashboard" },
-    ],
-    createPath: canEdit("sotuv") ? "/customer-requests/new" : undefined,
+    createPath: editable ? "/customer-requests/new" : undefined,
     createLabel: "Talabnoma yaratish",
     clearPath: "/customer-requests",
-    counter: `${fmt(data.total)} ta talabnoma`,
+    counter: `${fmt(data.total)} ta talabnoma · ${fmt(board.stale_count)} tasi javobsiz`,
     formId: "customer-request-search-form",
-    filters: `
-      <input name="search" placeholder="Qidiruv" value="${esc(params.get("search") || "")}" />
-      <select name="status"><option value="">Status</option>${customerRequestStatuses.map(([k, l]) => `<option value="${k}" ${params.get("status") === k ? "selected" : ""}>${l}</option>`).join("")}</select>
-      <select name="customer_type"><option value="">Mijoz turi</option>${customerTypes.map(([k, l]) => `<option value="${k}" ${params.get("customer_type") === k ? "selected" : ""}>${l}</option>`).join("")}</select>
-      <select name="payment_source"><option value="">To'lov manbasi</option>${paymentSources.map(([k, l]) => `<option value="${k}" ${params.get("payment_source") === k ? "selected" : ""}>${l}</option>`).join("")}</select>
-      <select name="product_id"><option value="">Mahsulot</option>${products.map(([k, l]) => `<option value="${k}" ${params.get("product_id") === k ? "selected" : ""}>${esc(l)}</option>`).join("")}</select>
-    `,
-    headers: ["Talabnoma raqami", "Mijoz turi", "Korxona nomi", "STIR", "Mahsulot", "Umumiy miqdor", "To'lov manbasi", "Status", "Yuborilgan sana", "Amallar"],
+    filters: `${opsFilterField("Qidirish", `<input name="search" placeholder="Raqam, korxona, STIR, telefon" value="${esc(params.get("search") || "")}" />`)}${
+      opsFilterField("Sanadan", ruDateField("date_from", params.get("date_from") || ""))}${
+      opsFilterField("Sanagacha", ruDateField("date_to", params.get("date_to") || ""))}${
+      opsFilterField("Status", `<select name="status"><option value="">Barchasi</option>${customerRequestStatuses.map(([k, l]) => `<option value="${k}" ${params.get("status") === k ? "selected" : ""}>${l}</option>`).join("")}</select>`)}${
+      opsFilterField("Mahsulot", `<select name="product_id"><option value="">Barchasi</option>${products.map(([k, l]) => `<option value="${k}" ${params.get("product_id") === k ? "selected" : ""}>${esc(l)}</option>`).join("")}</select>`)}${
+      opsFilterField("To'lov manbasi", `<select name="payment_source"><option value="">Barchasi</option>${paymentSources.map(([k, l]) => `<option value="${k}" ${params.get("payment_source") === k ? "selected" : ""}>${l}</option>`).join("")}</select>`)}`,
+    beforeTable: requestDashboardBlocks(board),
+    headers: ["Talabnoma raqami", "Korxona nomi", "STIR", "Mahsulot", "Umumiy miqdor", "To'lov manbasi", "Status", "Yuborilgan sana", "Amallar"],
     rows: data.items.map((item) => `
       <tr>
         <td><button class="ops-primary-link" data-nav="/customer-requests/${item.id}">${fmt(item.request_number)}</button></td>
-        <td>${fmt(item.customer_type_label)}</td>
         <td>${fmt(item.company_name)}</td>
         <td>${fmt(item.inn)}</td>
         <td>${fmt(item.product?.name)}</td>
@@ -84,16 +86,16 @@ async function renderCustomerRequestsList() {
         <td>${fmt(item.payment_source_label)}</td>
         <td>${requestStatusBadge(item)}</td>
         <td>${fmtDate(item.created_at)}</td>
-        <td><div class="ops-row-actions"><button class="link-btn" data-nav="/customer-requests/${item.id}">Ko'rish</button>${canEdit("sotuv") ? `<button class="link-btn" data-nav="/customer-requests/${item.id}/edit">Tahrirlash</button><button class="link-btn" style="color:var(--danger)" data-delete-request="${item.id}" data-request-number="${esc(item.request_number || "")}">O'chirish</button>` : ""}</div></td>
+        <td><div class="ops-row-actions"><button class="link-btn" data-nav="/customer-requests/${item.id}">Ko'rish</button>${editable ? `<button class="link-btn" data-nav="/customer-requests/${item.id}/edit">Tahrirlash</button><button class="link-btn" style="color:var(--danger)" data-delete-request="${item.id}" data-request-number="${esc(item.request_number || "")}">O'chirish</button>` : ""}</div></td>
       </tr>
     `).join(""),
     emptyText: "Talabnomalar topilmadi.",
-    colspan: 10,
+    colspan: 9,
     footer: opsFooter(data, "customerrequest"),
   });
-  bindOpsSearch("customer-request-search-form", "/customer-requests", ["search", "status", "customer_type", "payment_source", "product_id"]);
+  bindOpsSearch("customer-request-search-form", "/customer-requests", ["search", "date_from", "date_to", "status", "product_id", "payment_source"]);
   bindOpsPagination("customerrequest", "/customer-requests");
-  bindCustomerRequestDelete(() => renderCustomerRequestsList());
+  bindCustomerRequestDelete(renderCustomerRequestsList);
 }
 
 async function renderCustomerRequestDetail(id) {
@@ -561,43 +563,12 @@ function requestShareRows(rows, total, unit = "") {
   }).join("")}</div>`;
 }
 
-async function renderCustomerRequestsDashboard() {
-  const params = new URLSearchParams(location.search);
-  params.delete("view");
-  const [board, products] = await Promise.all([
-    api(`/api/customer-requests/dashboard?${params.toString()}`),
-    customerRequestProductOptions(),
-  ]);
-  const query = new URLSearchParams(location.search);
-
-  app.innerHTML = opsListPage({
-    className: "request-dashboard-ops-page",
-    title: "Talabnomalar paneli",
-    tabs: [
-      { label: "Ro'yxat", path: "/customer-requests" },
-      { label: "Panel", active: true },
-    ],
-    clearPath: "/customer-requests?view=dashboard",
-    counter: `${fmt(board.total)} ta talabnoma · ${fmt(board.stale_count)} tasi javobsiz`,
-    formId: "request-dashboard-form",
-    filters: `<input type="hidden" name="view" value="dashboard" />${
-      opsFilterField("Sanadan", ruDateField("date_from", query.get("date_from") || ""))}${
-      opsFilterField("Sanagacha", ruDateField("date_to", query.get("date_to") || ""))}${
-      opsFilterField("Status", `<select name="status"><option value="">Barchasi</option>${customerRequestStatuses.map(([key, label]) => `<option value="${key}" ${query.get("status") === key ? "selected" : ""}>${label}</option>`).join("")}</select>`)}${
-      opsFilterField("Mahsulot", `<select name="product_id"><option value="">Barchasi</option>${products}</select>`)}${
-      opsFilterField("To'lov manbasi", `<select name="payment_source"><option value="">Barchasi</option>${paymentSources.map(([key, label]) => `<option value="${key}" ${query.get("payment_source") === key ? "selected" : ""}>${label}</option>`).join("")}</select>`)}`,
-    headers: [],
-    rows: "",
-    emptyText: "",
-    colspan: 1,
-  });
-
-  // `opsListPage` sarlavha, tab va filtr chizig'ini beradi -- ular boshqa
-  // sahifalar bilan bir xil bo'lishi kerak. Jadvali esa bu yerda kerak
-  // emas: panel kartochka va diagrammalardan iborat.
-  app.querySelector(".ops-table-card")?.remove();
-
-  app.querySelector(".page")?.insertAdjacentHTML("beforeend", `
+// Panel bo'laklari. Ular ro'yxat bilan bitta sahifada turadi: yuqorida
+// umumiy manzara, pastda uni tashkil qilgan qatorlar. Ikkita alohida ekran
+// bo'lsa, filtrni ikki marta qo'yish kerak bo'lardi va ular bir-biriga zid
+// bo'lib qolishi mumkin edi.
+function requestDashboardBlocks(board) {
+  return `
     ${summaryCards([
       ["Jami talabnoma", `<span data-noloc>${fmt(board.total)}</span> <span>ta</span>`],
       ["Ochiq", `<span data-noloc>${fmt(board.open_count)}</span> <span>ta</span>`, board.open_count ? "warning" : ""],
@@ -621,7 +592,7 @@ async function renderCustomerRequestsDashboard() {
       ${section("Hudud bo'yicha", requestShareRows(board.by_region || [], board.total, "t"))}
       ${section("Eng ko'p so'ragan mijozlar", requestShareRows(board.top_clients || [], board.total, "t"))}
     </div>
-    ${section("Javobsiz turgan talabnomalar", opsTableOrEmpty(
+    ${section("Javobsiz turgan talabnomalar", tableOrEmpty(
       board.stale || [],
       ["Talabnoma", "Korxona", "Status", "Necha kun", "Miqdor"],
       (row) => `<tr>
@@ -632,8 +603,5 @@ async function renderCustomerRequestsDashboard() {
         <td class="ops-money">${fmtQty(row.quantity, "t")}</td>
       </tr>`,
       "Javobsiz turgan talabnoma yo'q."
-    ))}
-  `);
-  localizeDom(app);
-  bindOpsSearch("request-dashboard-form", "/customer-requests", ["view", "date_from", "date_to", "status", "product_id", "payment_source"]);
+    ))}`;
 }
