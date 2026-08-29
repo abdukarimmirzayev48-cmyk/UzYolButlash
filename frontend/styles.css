@@ -7550,3 +7550,74 @@ body.public-layout.sidebar-collapsed .app-shell {
 .ops-row-muted td {
   opacity: 0.55;
 }
+
+/* ---- talabnomalar paneli ---- */
+
+.chart-bar.rejected {
+  fill: #d9534f;
+}
+
+.chart-legend i.rejected {
+  background: #d9534f;
+}
+
+/* Ulushli qator: raqam bilan birga uning umumiy ulushi ham ko'rinadi --
+   «Andijon 5 ta» bilan «Andijon 45%» boshqa-boshqa xulosaga olib keladi. */
+.share-list {
+  display: grid;
+  gap: 12px;
+}
+
+.share-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 13px;
+  margin-bottom: 5px;
+}
+
+.share-head strong {
+  white-space: nowrap;
+}
+
+.share-track {
+  height: 7px;
+  border-radius: 4px;
+  background: var(--surface-soft, #eef2f6);
+  overflow: hidden;
+}
+
+.share-fill {
+  height: 100%;
+  border-radius: 4px;
+  background: var(--accent-dark, #176b5b);
+}
+
+/* Diagramma butun kenglikka cho'zilsa, uning balandligi ham shuncha
+   o'sadi -- 1400px li ekranda u yarim sahifani egallaydi. */
+.chart-holder {
+  max-width: 720px;
+}
+
+.dashboard-columns {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 16px;
+}
+
+.dashboard-columns > * {
+  min-width: 0;
+}
+
+/* Filtr chizig'idagi umumiy `input` qoidasi дд.мм.гггг maydonining ikkala
+   qismini ham kengaytirib yuborardi: matn katakchasi ham, kalendar tugmasi
+   ham 150px dan keng bo'lib, yonma-yon ikkita bo'sh quti bo'lib ko'rinardi. */
+.ops-search .ru-date-text {
+  width: 118px;
+  min-width: 0;
+}
+
+.ops-search .ru-date-picker {
+  width: 34px;
+  min-width: 0;
+}

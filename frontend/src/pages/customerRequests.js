@@ -56,6 +56,10 @@ async function renderCustomerRequestsList() {
   app.innerHTML = opsListPage({
     className: "customer-requests-ops-page",
     title: "Talabnomalar",
+    tabs: [
+      { label: "Ro'yxat", active: true },
+      { label: "Panel", path: "/customer-requests?view=dashboard" },
+    ],
     createPath: canEdit("sotuv") ? "/customer-requests/new" : undefined,
     createLabel: "Talabnoma yaratish",
     clearPath: "/customer-requests",
@@ -492,4 +496,144 @@ function bindCustomerRequestForm(request) {
       showToast(error.message, true);
     }
   });
+}
+
+// ---- Talabnomalar boshqaruv paneli ----
+//
+// Ro'yxat «shu talabnomada nima bo'lgan» degan savolga javob beradi. Panel
+// boshqasiga: umuman qanday ketyapti, nechtasi shartnomaga aylandi, qaysi
+// mahsulot ko'p so'ralmoqda va — eng muhimi — qaysilari javobsiz turibdi.
+
+const REQUEST_TREND_SERIES = [
+  ["created", "Kelgan", "created"],
+  ["converted", "Shartnomaga aylangan", "delivered"],
+];
+
+// Uch qatorli ustunli diagramma. Kutubxona yo'q: ilovada qurilish bosqichi
+// ham yo'q, shuning uchun SVG qo'lda chiziladi -- yetkazib berish
+// sahifasidagi diagramma bilan bir xil uslubda.
+function requestTrendChart(months) {
+  const width = 620;
+  const height = 210;
+  const padLeft = 34;
+  const padBottom = 26;
+  const padTop = 10;
+  const peak = Math.max(1, ...months.map((m) => Math.max(m.created, m.converted, m.rejected)));
+  const ticks = Math.min(4, peak);
+  const step = Math.ceil(peak / ticks);
+  const max = step * ticks;
+  const plotH = height - padBottom - padTop;
+  const plotW = width - padLeft - 8;
+  const slot = plotW / Math.max(1, months.length);
+  const barW = Math.min(14, slot / 4);
+  const y = (value) => padTop + plotH - (value / max) * plotH;
+
+  const grid = Array.from({ length: ticks + 1 }, (_, index) => {
+    const value = step * index;
+    return `<line x1="${padLeft}" y1="${y(value)}" x2="${width - 8}" y2="${y(value)}" class="chart-grid" />
+      <text x="${padLeft - 8}" y="${y(value) + 4}" class="chart-tick" text-anchor="end">${Math.round(value)}</text>`;
+  }).join("");
+
+  const bars = months.map((month, index) => {
+    const center = padLeft + slot * index + slot / 2;
+    const column = (value, offset, cls) => `<rect x="${center + offset}" y="${y(value)}" width="${barW}" height="${Math.max(1, plotH + padTop - y(value))}" class="chart-bar ${cls}" rx="2"><title>${value}</title></rect>`;
+    return `${column(month.created, -barW * 1.6, "created")}${column(month.converted, -barW * 0.5, "delivered")}${column(month.rejected, barW * 0.6, "rejected")}
+      <text x="${center}" y="${height - 8}" class="chart-tick" text-anchor="middle">${esc(month.month.slice(5))}.${esc(month.month.slice(2, 4))}</text>`;
+  }).join("");
+
+  return `<div class="chart-block">
+    <div class="chart-legend"><span><i class="created"></i>Kelgan</span><span><i class="delivered"></i>Shartnomaga aylangan</span><span><i class="rejected"></i>Rad etilgan</span></div>
+    <div class="chart-axis-title">Talabnomalar soni</div>
+    <svg viewBox="0 0 ${width} ${height}" class="chart-svg" role="img" aria-label="Talabnomalar dinamikasi">${grid}${bars}</svg>
+  </div>`;
+}
+
+// Ulushli qator: raqamning yonida uning umumiy ulushi ham ko'rinadi --
+// «Andijon 5 ta» bilan «Andijon 45%» boshqa-boshqa xulosaga olib keladi.
+function requestShareRows(rows, total, unit = "") {
+  if (!rows.length) return `<div class="empty">Ma'lumot yo'q.</div>`;
+  return `<div class="share-list">${rows.map((row) => {
+    const percent = total ? Math.round((row.count / total) * 100) : 0;
+    return `<div class="share-row">
+      <div class="share-head"><span>${fmt(row.label)}</span><strong><span data-noloc>${fmt(row.count)}</span> <span>ta</span>${row.quantity ? ` · <span data-noloc>${fmtQty(row.quantity, unit)}</span>` : ""}</strong></div>
+      <div class="share-track"><div class="share-fill" style="width:${percent}%"></div></div>
+    </div>`;
+  }).join("")}</div>`;
+}
+
+async function renderCustomerRequestsDashboard() {
+  const params = new URLSearchParams(location.search);
+  params.delete("view");
+  const [board, products] = await Promise.all([
+    api(`/api/customer-requests/dashboard?${params.toString()}`),
+    customerRequestProductOptions(),
+  ]);
+  const query = new URLSearchParams(location.search);
+
+  app.innerHTML = opsListPage({
+    className: "request-dashboard-ops-page",
+    title: "Talabnomalar paneli",
+    tabs: [
+      { label: "Ro'yxat", path: "/customer-requests" },
+      { label: "Panel", active: true },
+    ],
+    clearPath: "/customer-requests?view=dashboard",
+    counter: `${fmt(board.total)} ta talabnoma · ${fmt(board.stale_count)} tasi javobsiz`,
+    formId: "request-dashboard-form",
+    filters: `<input type="hidden" name="view" value="dashboard" />${
+      opsFilterField("Sanadan", ruDateField("date_from", query.get("date_from") || ""))}${
+      opsFilterField("Sanagacha", ruDateField("date_to", query.get("date_to") || ""))}${
+      opsFilterField("Status", `<select name="status"><option value="">Barchasi</option>${customerRequestStatuses.map(([key, label]) => `<option value="${key}" ${query.get("status") === key ? "selected" : ""}>${label}</option>`).join("")}</select>`)}${
+      opsFilterField("Mahsulot", `<select name="product_id"><option value="">Barchasi</option>${products}</select>`)}${
+      opsFilterField("To'lov manbasi", `<select name="payment_source"><option value="">Barchasi</option>${paymentSources.map(([key, label]) => `<option value="${key}" ${query.get("payment_source") === key ? "selected" : ""}>${label}</option>`).join("")}</select>`)}`,
+    headers: [],
+    rows: "",
+    emptyText: "",
+    colspan: 1,
+  });
+
+  // `opsListPage` sarlavha, tab va filtr chizig'ini beradi -- ular boshqa
+  // sahifalar bilan bir xil bo'lishi kerak. Jadvali esa bu yerda kerak
+  // emas: panel kartochka va diagrammalardan iborat.
+  app.querySelector(".ops-table-card")?.remove();
+
+  app.querySelector(".page")?.insertAdjacentHTML("beforeend", `
+    ${summaryCards([
+      ["Jami talabnoma", `<span data-noloc>${fmt(board.total)}</span> <span>ta</span>`],
+      ["Ochiq", `<span data-noloc>${fmt(board.open_count)}</span> <span>ta</span>`, board.open_count ? "warning" : ""],
+      ["Javobsiz turgan", `<span data-noloc>${fmt(board.stale_count)}</span> <span>ta</span>`, board.stale_count ? "danger" : ""],
+      ["Shartnomaga aylangan", `<span data-noloc>${fmt(board.converted_count)}</span> <span>ta</span>`, "success"],
+      ["Rad etilgan", `<span data-noloc>${fmt(board.rejected_count)}</span> <span>ta</span>`],
+      ["So'ralgan miqdor", fmtQty(board.total_quantity, "t")],
+    ])}
+    ${summaryCards([
+      ["Konversiya", board.conversion_percent === null || board.conversion_percent === undefined ? dash : `<span data-noloc>${fmtQty(board.conversion_percent)}%</span>`],
+      ["Aylangan miqdor", fmtQty(board.converted_quantity, "t")],
+      ["O'rtacha aylanish", board.average_days_to_convert === null || board.average_days_to_convert === undefined
+        ? dash
+        : `<span data-noloc>${fmtQty(board.average_days_to_convert)}</span> <span>kun</span>`],
+    ])}
+    ${workflowWarningsPanel(board.warnings || [])}
+    ${section("Dinamika", `<div class="chart-holder">${requestTrendChart(board.by_month || [])}</div>`)}
+    <div class="dashboard-columns">
+      ${section("Holatlar bo'yicha", requestShareRows(board.by_status || [], board.total, "t"))}
+      ${section("Mahsulot bo'yicha", requestShareRows(board.by_product || [], board.total, "t"))}
+      ${section("Hudud bo'yicha", requestShareRows(board.by_region || [], board.total, "t"))}
+      ${section("Eng ko'p so'ragan mijozlar", requestShareRows(board.top_clients || [], board.total, "t"))}
+    </div>
+    ${section("Javobsiz turgan talabnomalar", opsTableOrEmpty(
+      board.stale || [],
+      ["Talabnoma", "Korxona", "Status", "Necha kun", "Miqdor"],
+      (row) => `<tr>
+        <td><button class="ops-primary-link" data-nav="/customer-requests/${row.id}">${fmt(row.request_number)}</button></td>
+        <td>${fmt(row.company_name)}</td>
+        <td>${statusChip({ label: row.status_label, tone: row.status === "new" ? "warning" : "muted" })}</td>
+        <td class="ops-money"><span data-noloc>${fmt(row.days_open)}</span> <span>kun</span></td>
+        <td class="ops-money">${fmtQty(row.quantity, "t")}</td>
+      </tr>`,
+      "Javobsiz turgan talabnoma yo'q."
+    ))}
+  `);
+  localizeDom(app);
+  bindOpsSearch("request-dashboard-form", "/customer-requests", ["view", "date_from", "date_to", "status", "product_id", "payment_source"]);
 }

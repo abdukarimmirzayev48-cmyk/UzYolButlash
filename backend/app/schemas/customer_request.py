@@ -107,6 +107,50 @@ class CustomerRequestBase(BaseModel):
         return value
 
 
+class RequestNamedCount(BaseModel):
+    key: str
+    label: str
+    count: int = 0
+    quantity: Decimal = Decimal("0")
+
+
+class RequestMonthPoint(BaseModel):
+    month: str
+    created: int = 0
+    converted: int = 0
+    rejected: int = 0
+
+
+class RequestStaleRow(BaseModel):
+    id: int
+    request_number: str
+    company_name: str
+    status: str
+    status_label: str
+    days_open: int
+    quantity: Decimal
+
+
+class RequestDashboardRead(BaseModel):
+    total: int = 0
+    open_count: int = 0
+    converted_count: int = 0
+    rejected_count: int = 0
+    stale_count: int = 0
+    total_quantity: Decimal = Decimal("0")
+    converted_quantity: Decimal = Decimal("0")
+    conversion_percent: Decimal | None = None
+    average_days_to_convert: Decimal | None = None
+    by_status: list[RequestNamedCount] = Field(default_factory=list)
+    by_product: list[RequestNamedCount] = Field(default_factory=list)
+    by_region: list[RequestNamedCount] = Field(default_factory=list)
+    by_month: list[RequestMonthPoint] = Field(default_factory=list)
+    top_clients: list[RequestNamedCount] = Field(default_factory=list)
+    stale: list[RequestStaleRow] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+
+
+
 class RequestPrefillRead(BaseModel):
     client_id: int | None = None
     company_name: str | None = None

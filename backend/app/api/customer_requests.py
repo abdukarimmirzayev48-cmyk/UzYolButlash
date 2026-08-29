@@ -1,3 +1,4 @@
+from dataclasses import asdict
 from datetime import datetime
 from decimal import Decimal
 
@@ -35,11 +36,12 @@ from backend.app.schemas.customer_request import (
     ProductSummary,
     PublicProductRead,
     RequestPrefillRead,
+    RequestDashboardRead,
 )
 from backend.app.services import customer_request_workflow
 from backend.app.models.user import User
 from backend.app.api.delivery_points import point_summary
-from backend.app.services import request_prefill
+from backend.app.services import request_prefill, request_stats
 from backend.app.services.auth import get_current_user, require_edit
 
 
@@ -346,23 +348,14 @@ def create_customer_request(payload: CustomerRequestCreate, db: Session = Depend
     return serialize_detail(get_request_or_404(db, request.id))
 
 
-@router.get("", response_model=Page[CustomerRequestListItem])
-def list_customer_requests(
-    db: Session = Depends(get_db),
-    page: int = Query(1, ge=1),
-    page_size: int = Query(20, ge=1, le=100),
-    search: str | None = None,
-    status_filter: CustomerRequestStatus | None = Query(default=None, alias="status"),
-    customer_type: CustomerType | None = None,
-    payment_source: PaymentSource | None = None,
-    product_id: int | None = None,
-    date_from: str | None = None,
-    date_to: str | None = None,
+def request_filters(
+    search, status_filter, customer_type, payment_source, product_id, date_from, date_to, region, client_id
 ):
-    stmt = select(CustomerRequest).options(
-        selectinload(CustomerRequest.product).selectinload(Product.category),
-        selectinload(CustomerRequest.schedules),
-    )
+    """Ro'yxat va panel aynan bir xil filtrlangan bo'lishi kerak.
+
+    Aks holda ekranda «12 ta talabnoma» yozilib turadi, panelda esa boshqa
+    raqam -- va qaysi biri to'g'ri ekanini aytib bo'lmaydi.
+    """
     filters = []
     if search:
         value = f"%{search}%"
@@ -383,10 +376,74 @@ def list_customer_requests(
         filters.append(CustomerRequest.payment_source == payment_source)
     if product_id:
         filters.append(CustomerRequest.product_id == product_id)
+    if region:
+        filters.append(CustomerRequest.region == region)
+    if client_id:
+        filters.append(CustomerRequest.client_id == client_id)
     if date_from:
         filters.append(CustomerRequest.created_at >= datetime.fromisoformat(date_from))
     if date_to:
         filters.append(CustomerRequest.created_at <= datetime.fromisoformat(date_to))
+    return filters
+
+
+@router.get("/dashboard", response_model=RequestDashboardRead)
+def customer_requests_dashboard(
+    db: Session = Depends(get_db),
+    search: str | None = None,
+    status_filter: CustomerRequestStatus | None = Query(default=None, alias="status"),
+    customer_type: CustomerType | None = None,
+    payment_source: PaymentSource | None = None,
+    product_id: int | None = None,
+    date_from: str | None = None,
+    date_to: str | None = None,
+    region: str | None = None,
+    client_id: int | None = None,
+):
+    """Talabnomalar bo'yicha boshqaruv paneli.
+
+    Filtrlar ro'yxatdagi bilan bir xil: bir ekrandan ikkinchisiga o'tganda
+    tanlangan davr va holat saqlanib qoladi.
+    """
+    stmt = select(CustomerRequest).options(
+        selectinload(CustomerRequest.product),
+        selectinload(CustomerRequest.status_history),
+    )
+    filters = request_filters(
+        search, status_filter, customer_type, payment_source, product_id, date_from, date_to, region, client_id
+    )
+    if filters:
+        stmt = stmt.where(*filters)
+    requests = list(db.scalars(stmt).unique())
+    board = request_stats.build_dashboard(requests, status_labels=REQUEST_STATUS_LABELS)
+    # `asdict` ichma-ich dataclasslarni ham lug'atga aylantiradi: `__dict__`
+    # esa faqat tashqi qatlamni ochadi va ichkarisi Pydantic uchun begona
+    # obyekt bo'lib qoladi.
+    return RequestDashboardRead(**asdict(board))
+
+
+@router.get("", response_model=Page[CustomerRequestListItem])
+def list_customer_requests(
+    db: Session = Depends(get_db),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+    search: str | None = None,
+    status_filter: CustomerRequestStatus | None = Query(default=None, alias="status"),
+    customer_type: CustomerType | None = None,
+    payment_source: PaymentSource | None = None,
+    product_id: int | None = None,
+    date_from: str | None = None,
+    date_to: str | None = None,
+    region: str | None = None,
+    client_id: int | None = None,
+):
+    stmt = select(CustomerRequest).options(
+        selectinload(CustomerRequest.product).selectinload(Product.category),
+        selectinload(CustomerRequest.schedules),
+    )
+    filters = request_filters(
+        search, status_filter, customer_type, payment_source, product_id, date_from, date_to, region, client_id
+    )
     if filters:
         stmt = stmt.where(*filters)
 
