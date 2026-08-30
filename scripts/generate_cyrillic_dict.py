@@ -171,6 +171,11 @@ def is_css_class_list(s: str) -> bool:
 
 # Must contain a letter, and must look like a word rather than a token soup.
 _HAS_LETTER = re.compile(r"[A-Za-z]")
+# O'lchov birliklari. «t/kun» MIME turi qoidasiga tushib qolardi
+# (`matn/matn` ko'rinishi) va lug'atga umuman kirmasdi -- ekranda u lotin
+# alifbosida qolib ketardi. Ular tekshiruvlardan o'tkazilmaydi.
+ALWAYS_INCLUDE = {"t/kun", "l/100 km", "km/soat", "m3/soat"}
+
 _UZ_HINT = re.compile(r"[A-Z]|\s|'")
 
 # Keys of the legacy English->Latin dictionary. English is translated to Latin
@@ -193,6 +198,8 @@ def load_english_keys() -> None:
 
 def is_ui_text(s: str) -> bool:
     s = s.strip()
+    if s in ALWAYS_INCLUDE:
+        return True
     # Single characters are never safe to translate: the A-E grade badges, unit
     # letters and initials would all get rewritten. (Cost: the collapsed
     # sidebar's one-letter shortcuts stay Latin.)

@@ -27,36 +27,137 @@ const deliveryPointTypes = [
   ["other", "Boshqa"],
 ];
 
-function deliveryPointRow(point, editable) {
-  return `<tr class="${point.is_active ? "" : "ops-row-muted"}">
-    <td><button class="ops-primary-link" data-nav="/delivery-points/${point.id}">${fmt(point.name)}</button></td>
-    <td>${fmt(point.code)}</td>
-    <td>${fmt(optionLabel(deliveryPointTypes, point.point_type))}</td>
-    <td>${fmt(point.client?.name)}</td>
-    <td>${fmt(point.full_address)}</td>
-    <td class="ops-money">${point.daily_capacity_tons ? `${fmtQty(point.daily_capacity_tons)} <span>t/kun</span>` : dash}</td>
-    <td>${fmt(point.responsible_name)}</td>
-    <td>${fmt(point.responsible_phone)}</td>
-    <td>${point.map_url ? `<a class="link-btn" target="_blank" rel="noopener" href="${esc(point.map_url)}">Xaritada</a>` : dash}</td>
-    <td>${deliveryPointStatusChip(point.status)}</td>
-    ${editable ? `<td><div class="ops-row-actions"><button class="link-btn" data-nav="/delivery-points/${point.id}">Ochish</button><button class="link-btn" data-delete-point="${point.id}">O'chirish</button></div></td>` : ""}
-  </tr>`;
+// KPI kartochkasi: ikonka, yorliq, qiymat va o'tgan oyga nisbatan farq.
+// Umumiy `summaryCards` faqat yorliq va qiymatni biladi, shuning uchun bu
+// yerda alohida ko'rinish -- boshqa sahifalarga tegmasdan.
+const KPI_ICONS = {
+  plant: '<path d="M3 21h18"/><path d="M5 21V8l6 4V8l6 4V21"/><path d="M17 12V5h3v7"/>',
+  check: '<circle cx="12" cy="12" r="9"/><path d="m8.5 12.5 2.5 2.5 4.5-5"/>',
+  gauge: '<path d="M12 14 8.5 9.5"/><circle cx="12" cy="14" r="8"/><path d="M12 6V4"/><path d="m19 8 1.5-1.5"/><path d="M5 8 3.5 6.5"/>',
+  alert: '<path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/><path d="M12 9v4"/><path d="M12 17h.01"/>',
+};
+
+function kpiIcon(name) {
+  return `<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${KPI_ICONS[name] || ""}</svg>`;
+}
+
+// Farq belgisi: musbat yuqoriga, manfiy pastga. Nol bo'lsa umuman
+// ko'rsatilmaydi -- «+0» hech narsa demaydi va shovqin qiladi.
+function kpiDelta(value, unit = "") {
+  const number = Number(value || 0);
+  if (!number) return "";
+  const tone = number > 0 ? "up" : "down";
+  const sign = number > 0 ? "+" : "";
+  // Birlik `data-noloc` dan tashqarida turadi: raqam -- ma'lumot, birlik esa
+  // tarjima qilinadigan so'z. Ichkarida qolsa «t/kun» lotin alifbosida
+  // qolib ketardi.
+  return `<span class="kpi-delta ${tone}"><span>O'tgan oyga nisbatan</span> <span data-noloc>${sign}${fmtQty(number)}</span>${unit ? ` <span>${esc(unit)}</span>` : ""}<span data-noloc>${number > 0 ? " ↑" : " ↓"}</span></span>`;
+}
+
+function kpiCard({ icon, tone, label, value, delta }) {
+  return `<article class="kpi-card">
+    <span class="kpi-icon ${tone}">${kpiIcon(icon)}</span>
+    <div class="kpi-body">
+      <span class="kpi-label">${label}</span>
+      <strong class="kpi-value">${value}</strong>
+      ${delta || ""}
+    </div>
+  </article>`;
+}
+
+function deliveryPointKpis(board) {
+  return `<div class="kpi-grid">
+    ${kpiCard({ icon: "plant", tone: "info", label: "Jami ABZ", value: `<span data-noloc>${fmt(board.total)}</span>`, delta: kpiDelta(board.total_delta) })}
+    ${kpiCard({ icon: "check", tone: "success", label: "Faol ABZ", value: `<span data-noloc>${fmt(board.active)}</span>`, delta: kpiDelta(board.active_delta) })}
+    ${kpiCard({ icon: "gauge", tone: "info", label: "Umumiy quvvat", value: `<span data-noloc>${fmtQty(board.daily_capacity)}</span> <span>t/kun</span>`, delta: kpiDelta(board.capacity_added, "t/kun") })}
+    ${kpiCard({ icon: "alert", tone: "warning", label: "E'tibor talab qiladi", value: `<span data-noloc>${fmt(board.attention)}</span>`, delta: kpiDelta(board.attention_delta) })}
+  </div>`;
+}
+
+// Holat bo'yicha taqsimot -- mockupdagi o'ng ustun.
+function deliveryPointStatusPanel(board) {
+  const rows = (board.by_status || []).map((row) => `<div class="status-share-row">
+    <span class="status-share-icon ${row.key}">${kpiIcon(row.key === "active" ? "check" : row.key === "attention" ? "alert" : "plant")}</span>
+    <span class="status-share-label">${fmt(row.label)}</span>
+    <strong data-noloc>${fmt(row.count)}</strong>
+    <span class="status-share-percent ${row.key}" data-noloc>${fmtQty(row.percent)}%</span>
+  </div>`).join("");
+  return section("Holat bo'yicha taqsimot", `<div class="status-share">${rows}
+    <div class="status-share-total"><span>Jami ABZ</span><strong data-noloc>${fmt(board.total)}</strong></div>
+  </div>`);
+}
+
+// Saralanadigan ustun sarlavhasi. Mijozlar sahifasidagi bilan bir xil
+// shakl: kalit manzilda saqlanadi, ya'ni havolani yuborsangiz hamkasbingiz
+// aynan shu tartibni ko'radi.
+function pointSortHead(label, key, params) {
+  const active = (params.get("sort") || "") === key;
+  const order = params.get("order") === "desc" ? "desc" : "asc";
+  const nextOrder = active && order === "asc" ? "desc" : "asc";
+  const arrow = active ? (order === "asc" ? "\u2191" : "\u2193") : "\u21c5";
+  return `<button type="button" class="ops-sort${active ? " active" : ""}" data-point-sort="${key}" data-point-order="${nextOrder}">
+    <span>${label}</span><span class="ops-sort-arrow" data-noloc>${arrow}</span>
+  </button>`;
+}
+
+function bindPointSort() {
+  document.querySelectorAll("[data-point-sort]").forEach((button) => button.addEventListener("click", () => {
+    const next = new URLSearchParams(location.search);
+    next.set("sort", button.dataset.pointSort);
+    next.set("order", button.dataset.pointOrder);
+    next.delete("page");
+    navigate(`/delivery-points?${next}`);
+  }));
+}
+
+// Qatordagi amallar menyusi. Uchta havolani yonma-yon qo'yish jadvalni
+// kengaytirib yuboradi va ular ma'lumotdan ko'ra ko'proq joy egallaydi.
+function pointRowMenu(id, editable) {
+  if (!editable) return `<button class="link-btn" data-nav="/delivery-points/${id}">Ochish</button>`;
+  return `<div class="row-menu">
+    <button class="row-menu-trigger" type="button" data-row-menu aria-label="Amallar" data-noloc>\u22ef</button>
+    <div class="row-menu-panel" hidden>
+      <button type="button" data-nav="/delivery-points/${id}">Ochish</button>
+      <button type="button" data-point-map="${id}">Xaritada ochish</button>
+      <button type="button" class="danger" data-delete-point="${id}">O'chirish</button>
+    </div>
+  </div>`;
+}
+
+function bindRowMenus() {
+  document.querySelectorAll("[data-row-menu]").forEach((trigger) => {
+    const panel = trigger.nextElementSibling;
+    trigger.addEventListener("click", (event) => {
+      event.stopPropagation();
+      const wasHidden = panel.hidden;
+      document.querySelectorAll(".row-menu-panel").forEach((item) => { item.hidden = true; });
+      panel.hidden = !wasHidden;
+    });
+  });
+  // Boshqa joyga bosilsa yopiladi -- ochiq menyu keyingi bosishni yutib
+  // yuboradi va foydalanuvchi ikki marta bosishga majbur bo'ladi.
+  document.addEventListener("click", () => {
+    document.querySelectorAll(".row-menu-panel").forEach((item) => { item.hidden = true; });
+  }, { once: true });
 }
 
 async function renderDeliveryPointsList() {
   const params = new URLSearchParams(location.search);
-  const [data, clients] = await Promise.all([
+  const [data, board, clients] = await Promise.all([
     api(`/api/delivery-points?${params.toString()}`),
+    api(`/api/delivery-points/dashboard?${params.toString()}`),
     fetchAllClients(),
   ]);
   const editable = canEdit("sotuv");
   const clientOptions = clients
     .map((client) => `<option value="${client.id}" ${params.get("client_id") === String(client.id) ? "selected" : ""}>${esc(client.name)}</option>`)
     .join("");
+  const regions = [...new Set(data.items.map((item) => item.region).filter(Boolean))].sort();
+  const exportQuery = params.toString();
 
   app.innerHTML = opsListPage({
     className: "delivery-points-ops-page",
-    title: "ABZ nuqtalari",
+    title: "ABZ boshqaruvi",
     tabs: [
       { label: "Mijozlar", path: "/clients" },
       { label: "Talabnomalar", path: "/customer-requests" },
@@ -64,22 +165,49 @@ async function renderDeliveryPointsList() {
       { label: "ABZ nuqtalari", active: true },
     ],
     createPath: editable ? "/delivery-points/new" : undefined,
-    createLabel: "Nuqta qo'shish",
+    createLabel: "Yangi ABZ",
     clearPath: "/delivery-points",
     counter: `${fmt(data.total)} ta nuqta`,
+    extraActions: `<a class="btn" href="/api/delivery-points/export.xlsx?${esc(exportQuery)}${exportQuery ? "&" : ""}lang=${esc(currentLang())}">Eksport</a>`,
     formId: "delivery-point-search-form",
     filters: `${opsFilterField("Qidirish", `<input name="search" placeholder="Nomi, kodi, manzili, mas'ul" value="${esc(params.get("search") || "")}" />`)}${
-      opsFilterField("Mijoz", `<select name="client_id"><option value="">Barchasi</option>${clientOptions}</select>`)}${
-      opsFilterField("Turi", `<select name="point_type"><option value="">Barchasi</option>${deliveryPointTypes.map(([key, label]) => `<option value="${key}" ${params.get("point_type") === key ? "selected" : ""}>${label}</option>`).join("")}</select>`)}${
-      opsFilterField("Holati", `<select name="status"><option value="">Barchasi</option>${deliveryPointStatuses.map(([key, label]) => `<option value="${key}" ${params.get("status") === key ? "selected" : ""}>${label}</option>`).join("")}</select>`)}`,
-    headers: ["Nomi", "Kodi", "Turi", "Mijoz", "Manzil", "Quvvati", "Mas'ul", "Telefon", "Xarita", "Holati", editable ? "Amallar" : ""],
-    rows: data.items.map((point) => deliveryPointRow(point, editable)).join(""),
+      opsFilterField("Viloyat", `<select name="region"><option value="">Barchasi</option>${regions.map((region) => `<option value="${esc(region)}" ${params.get("region") === region ? "selected" : ""}>${esc(region)}</option>`).join("")}</select>`)}${
+      opsFilterField("Holati", `<select name="status"><option value="">Barchasi</option>${deliveryPointStatuses.map(([key, label]) => `<option value="${key}" ${params.get("status") === key ? "selected" : ""}>${label}</option>`).join("")}</select>`)}${
+      opsFilterField("Mijoz", `<select name="client_id"><option value="">Barchasi</option>${clientOptions}</select>`)}`,
+    beforeTable: `${deliveryPointKpis(board)}${workflowWarningsPanel(board.warnings || [])}${deliveryPointStatusPanel(board)}`,
+    headers: [
+      pointSortHead("ABZ", "name", params),
+      pointSortHead("Joylashuv", "region", params),
+      "Mijoz",
+      pointSortHead("Quvvati", "capacity", params),
+      pointSortHead("Mas'ul shaxs", "responsible", params),
+      pointSortHead("Holati", "status", params),
+      pointSortHead("Yangilangan", "updated", params),
+      "Amallar",
+    ],
+    rows: data.items.map((point) => `<tr class="${point.is_active ? "" : "ops-row-muted"}">
+      <td><button class="ops-primary-link" data-nav="/delivery-points/${point.id}">${fmt(point.name)}</button></td>
+      <td>${fmt(point.full_address)}</td>
+      <td>${fmt(point.client?.name)}</td>
+      <td class="ops-money">${point.daily_capacity_tons ? `<span data-noloc>${fmtQty(point.daily_capacity_tons)}</span> <span>t/kun</span>` : dash}</td>
+      <td>${fmt(point.responsible_name)}${point.responsible_phone ? `<br /><span class="muted-line" data-noloc>${esc(point.responsible_phone)}</span>` : ""}</td>
+      <td>${deliveryPointStatusChip(point.status)}</td>
+      <td>${fmtDate(point.updated_at)}</td>
+      <td>${pointRowMenu(point.id, editable)}</td>
+    </tr>`).join(""),
     emptyText: "Nuqtalar topilmadi.",
-    colspan: editable ? 11 : 10,
+    colspan: 8,
     footer: opsFooter(data, "deliverypoint"),
   });
-  bindOpsSearch("delivery-point-search-form", "/delivery-points", ["search", "client_id", "point_type", "status"]);
+  bindOpsSearch("delivery-point-search-form", "/delivery-points", ["search", "client_id", "region", "status"]);
   bindOpsPagination("deliverypoint", "/delivery-points");
+  bindPointSort();
+  bindRowMenus();
+  document.querySelectorAll("[data-point-map]").forEach((button) => button.addEventListener("click", () => {
+    const point = data.items.find((item) => item.id === Number(button.dataset.pointMap));
+    if (point?.map_url) window.open(point.map_url, "_blank", "noopener");
+    else showToast("Bu nuqtaning koordinatasi kiritilmagan.", true);
+  }));
   document.querySelectorAll("[data-delete-point]").forEach((button) => button.addEventListener("click", async () => {
     if (!confirmMsg("Ushbu nuqtani o'chirishni tasdiqlaysizmi?")) return;
     try {

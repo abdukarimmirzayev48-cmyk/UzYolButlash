@@ -132,3 +132,40 @@ class DeliveryPointSummary(BaseModel):
     latitude: str | None = None
     longitude: str | None = None
     map_url: str | None = None
+
+
+class DeliveryPointStatusShare(BaseModel):
+    key: str
+    label: str
+    count: int = 0
+    percent: Decimal = Decimal("0")
+
+
+class DeliveryPointDashboard(BaseModel):
+    total: int = 0
+    total_delta: int = 0
+    active: int = 0
+    active_delta: int = 0
+    attention: int = 0
+    attention_delta: int = 0
+    daily_capacity: Decimal = Decimal("0")
+    capacity_added: Decimal = Decimal("0")
+    by_status: list[DeliveryPointStatusShare] = Field(default_factory=list)
+    with_coordinates: int = 0
+    warnings: list[str] = Field(default_factory=list)
+
+
+class DeliveryPointStatusUpdate(BaseModel):
+    status: DeliveryPointStatus
+    comment: str | None = None
+
+
+class DeliveryPointHistoryRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    old_status: DeliveryPointStatus | None = None
+    new_status: DeliveryPointStatus
+    comment: str | None = None
+    changed_by: str | None = None
+    created_at: datetime

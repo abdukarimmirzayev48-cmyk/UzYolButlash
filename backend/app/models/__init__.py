@@ -1,4 +1,4 @@
-from backend.app.models.delivery_point import DeliveryPoint, DeliveryPointType
+from backend.app.models.delivery_point import DeliveryPoint, DeliveryPointStatus, DeliveryPointStatusHistory, DeliveryPointType
 from backend.app.models.client import (
     Client,
     ClientAddress,
@@ -88,6 +88,8 @@ __all__ = [
     "Client",
     "DeliveryPoint",
     "DeliveryPointType",
+    "DeliveryPointStatus",
+    "DeliveryPointStatusHistory",
     "ClientAddress",
     "ClientBankAccount",
     "ClientContact",

@@ -15,10 +15,11 @@ haydovchi uni telefoniga ko'chirib qo'yadi va uning aniqligi bizning
 hisob-kitobimizga kirmaydi.
 """
 
+from datetime import datetime
 from decimal import Decimal
 from enum import Enum
 
-from sqlalchemy import Boolean, Enum as SAEnum, ForeignKey, Numeric, String, Text
+from sqlalchemy import DateTime, Enum as SAEnum, ForeignKey, Numeric, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from backend.app.db.session import Base
@@ -89,6 +90,9 @@ class DeliveryPoint(Base, TimestampMixin):
     )
 
     client: Mapped[Client | None] = relationship()
+    status_history: Mapped[list["DeliveryPointStatusHistory"]] = relationship(
+        back_populates="point", cascade="all, delete-orphan", order_by="DeliveryPointStatusHistory.created_at.desc()"
+    )
 
     # Hisoblanadigan maydonlar modelda turadi, API qatlamida emas: nuqta
     # to'rtta boshqa bo'limda ko'rsatiladi va har birida alohida yig'ilsa,
@@ -111,3 +115,26 @@ class DeliveryPoint(Base, TimestampMixin):
         if not self.latitude or not self.longitude:
             return None
         return f"https://maps.google.com/?q={self.latitude},{self.longitude}"
+
+
+class DeliveryPointStatusHistory(Base):
+    """Nuqta holati qachon va nima uchun o'zgargani.
+
+    Panel «o'tgan oyga nisbatan +3» deb yozadi. Buni faqat hozirgi holatdan
+    hisoblab bo'lmaydi: o'tgan oy oxirida nuqta qaysi holatda bo'lganini
+    bilish kerak. Yozuvsiz bu raqam to'qib chiqarilgan bo'lardi.
+
+    Yon foydasi: kim o'zgartirgani ham qoladi.
+    """
+
+    __tablename__ = "delivery_point_status_history"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    point_id: Mapped[int] = mapped_column(ForeignKey("delivery_points.id", ondelete="CASCADE"), index=True)
+    old_status: Mapped[DeliveryPointStatus | None] = mapped_column(SAEnum(DeliveryPointStatus))
+    new_status: Mapped[DeliveryPointStatus] = mapped_column(SAEnum(DeliveryPointStatus), nullable=False)
+    comment: Mapped[str | None] = mapped_column(Text)
+    changed_by: Mapped[str | None] = mapped_column(String(255))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now, nullable=False, index=True)
+
+    point: Mapped[DeliveryPoint] = relationship(back_populates="status_history")
