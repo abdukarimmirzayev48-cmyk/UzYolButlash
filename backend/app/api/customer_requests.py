@@ -27,6 +27,7 @@ from backend.app.schemas.customer_request import (
     StatusTransition,
     CompanyRegistryRead,
     CustomerRequestCreate,
+    CustomerRequestInternalCreate,
     CustomerRequestDetail,
     CustomerRequestListItem,
     CustomerRequestScheduleRead,
@@ -314,7 +315,7 @@ def customer_request_prefill(client_id: int = Query(...), db: Session = Depends(
 
 
 @router.post("", response_model=CustomerRequestDetail, status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_edit("sotuv"))])
-def create_customer_request(payload: CustomerRequestCreate, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+def create_customer_request(payload: CustomerRequestInternalCreate, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     """Talabnomani ichkaridan kiritish.
 
     Ilgari talabnoma faqat ochiq portal orqali kelardi. Amalda esa mijoz

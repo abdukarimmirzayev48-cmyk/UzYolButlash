@@ -210,9 +210,15 @@ _HTML_TAGS = {
 }
 
 
+def _selector_token(part: str) -> bool:
+    # Teg nomi yoki sinf/id/atribut belgisi. O'zbekcha so'z nuqta yoki
+    # panjara bilan boshlanmaydi, shuning uchun chalkashish yo'q.
+    return part in _HTML_TAGS or part[:1] in {".", "#", "["}
+
+
 def is_selector_list(s: str) -> bool:
     parts = [part for part in re.split(r"[,\s]+", s.strip()) if part]
-    if len(parts) > 1 and all(part in _HTML_TAGS for part in parts):
+    if len(parts) > 1 and all(_selector_token(part) for part in parts):
         return True
     # Yolg'iz katta harfli teg nomi -- `field.tagName === "SELECT"` kabi
     # solishtiruv, ekranda ko'rinmaydi. Kichik harflisi allaqachon

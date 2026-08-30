@@ -316,6 +316,7 @@ async function applyRequestClient(form) {
   if (!clientId) {
     REQUEST_PREFILL_FIELDS.forEach((name) => { if (form.elements[name]) form.elements[name].value = ""; });
     if (holder) holder.innerHTML = "";
+    markWizardFields(form);
     return;
   }
   try {
@@ -332,6 +333,7 @@ async function applyRequestClient(form) {
       holder.innerHTML = workflowWarningsPanel(prefill.warnings || []);
       localizeDom(holder);
     }
+    markWizardFields(form);
   } catch (error) {
     showToast(error.message, true);
   }
@@ -350,44 +352,92 @@ async function renderNewCustomerRequest() {
   bindCustomerRequestForm({});
 }
 
+// Talabnoma to'rt qadamda to'ldiriladi. Qadamlarning bari bir vaqtda
+// chiziladi va joriysidan boshqasi yashiriladi -- shu sabab grafik jamisi
+// kabi hisob-kitoblar va mijoz kartochkasini to'ldirish qaysi qadamda
+// turganidan qat'i nazar ishlayveradi.
+//
+// Sarlavhalar va ilgaklar shu yerda: formani chizishda ham, hodisalarni
+// bog'lashda ham aynan shu ro'yxat ishlatiladi, ikki joyda takrorlanmaydi.
+const REQUEST_WIZARD_STEPS = [
+  { title: "Korxona" },
+  { title: "Yetkazish va kontakt" },
+  { title: "Mahsulot va grafik" },
+  { title: "Tekshirish", onEnter: (form) => renderRequestSummary(form) },
+];
+
 function customerRequestForm(request, products, clients = "", points = "") {
   const isNew = !request.id;
   const backPath = isNew ? "/customer-requests" : `/customer-requests/${request.id}`;
-  return `
-    <div class="page">
-      <div class="page-header">
-        <div class="page-title">
-          <h1>${isNew ? "Yangi talabnoma" : "Talabnomani tahrirlash"}</h1>
-          <p>${isNew ? "Telefon yoki xat orqali kelgan talabnomani kiriting." : `${fmt(request.request_number)} · ${fmt(request.company_name)}`}</p>
-        </div>
-        <div class="actions"><button class="btn" data-nav="${backPath}">Orqaga</button></div>
-      </div>
-      <form id="customer-request-form">
-        ${section("To'lov manbasi", `<div class="grid">${selectField("payment_source", "To'lov manbasi", paymentSources, request.payment_source || "treasury", { required: true })}</div>`)}
-        ${section("Korxona", `<div class="grid">
-          <label class="form-field"><span class="field-label-text">Korxona <span class="required-mark">*</span></span>${selectSearch("client_id", "Korxona nomi yoki STIR bo'yicha qidiring")}<select name="client_id" required><option value="">Mijozni tanlang</option>${clients}</select></label>
-          ${readonlyField("inn", "STIR", request.inn)}
-          ${readonlyField("region", "Hudud", request.region)}
-          ${readonlyField("oked", "OKED", request.oked)}
-          ${readonlyField("director_full_name", "Direktor F.I.Sh.", request.director_full_name)}
-          ${readonlyField("legal_address", "Yuridik manzil", request.legal_address)}
-          ${readonlyField("bank_name", "Bank nomi", request.bank_name)}
-          ${readonlyField("mfo", "MFO", request.mfo)}
-          ${readonlyField("bank_account", "Hisob raqami", request.bank_account)}
-        </div><div class="form-hint">Bu maydonlar mijoz kartochkasidan olinadi. O'zgartirish kerak bo'lsa, mijoz kartochkasida to'g'rilang.</div><div id="request-client-warnings"></div>`)}
-        ${section("Yetkazish nuqtasi", `<div class="grid">${deliveryPointField("ABZ nuqtasi", request.delivery_point_id, points)}</div><div class="form-hint">Bitum qayerga yetkaziladi. Nuqta shartnoma va partiyalarga ham o'tadi.</div>`)}
-        ${section("Qo'shimcha ma'lumotlar", `<div class="grid">${textArea("activity_type", "Asosiy faoliyat turi", request.activity_type)}${textArea("function_description", "Funksiyasi va vazifalari", request.function_description)}${textField("privatization_project_name", "205 xususiylashtirish loyiha", request.privatization_project_name)}</div>`)}
-        ${section("Kontakt ma'lumotlari", `<div class="grid">${textField("phone", "Telefon raqami", request.phone, "text", { required: true })}${textField("contact_full_name", "Kontakt shaxs F.I.Sh.", request.contact_full_name)}${textField("contact_phone", "Kontakt telefon raqami", request.contact_phone)}</div>`)}
-        ${section("Mahsulot talabi", `<div class="grid">${selectField("product_id", "Mahsulot nomi", products, String(request.product?.id || request.product_id || ""), { required: true })}${textField("total_quantity", "Umumiy miqdor", request.total_quantity, "number", { required: true })}${textField("unit", "O'lchov birligi", request.unit || "t", "text", { required: true })}</div>`)}
-        ${section("Kalendar grafik", customerRequestScheduleEditor(request.schedule || [], request.unit))}
-        ${section("Ichki izoh", `<div class="grid">${textArea("internal_comment", "Izoh", request.internal_comment)}</div>`)}
-        <div class="form-footer">
-          <button type="button" class="btn" data-nav="${backPath}">Bekor qilish</button>
-          <button class="btn primary">${isNew ? "Talabnoma yaratish" : "Saqlash"}</button>
-        </div>
-      </form>
+  const bodies = [
+    `${section("To'lov manbasi", `<div class="grid">${selectField("payment_source", "To'lov manbasi", paymentSources, request.payment_source || "treasury", { required: true })}</div>`)}
+     ${section("Korxona", `<div class="grid">
+        <label class="form-field"><span class="field-label-text">Korxona <span class="required-mark">*</span></span>${selectSearch("client_id", "Korxona nomi yoki STIR bo'yicha qidiring")}<select name="client_id" required><option value="">Mijozni tanlang</option>${clients}</select></label>
+        ${readonlyField("inn", "STIR", request.inn)}
+        ${readonlyField("region", "Hudud", request.region)}
+        ${readonlyField("oked", "OKED", request.oked)}
+        ${readonlyField("director_full_name", "Direktor F.I.Sh.", request.director_full_name)}
+        ${readonlyField("legal_address", "Yuridik manzil", request.legal_address)}
+        ${readonlyField("bank_name", "Bank nomi", request.bank_name)}
+        ${readonlyField("mfo", "MFO", request.mfo)}
+        ${readonlyField("bank_account", "Hisob raqami", request.bank_account)}
+      </div><div class="form-hint">Bu maydonlar mijoz kartochkasidan olinadi. O'zgartirish kerak bo'lsa, mijoz kartochkasida to'g'rilang.</div><div id="request-client-warnings"></div>`)}
+     ${section("Qo'shimcha ma'lumotlar", `<div class="grid">${textArea("activity_type", "Asosiy faoliyat turi", request.activity_type)}${textArea("function_description", "Funksiyasi va vazifalari", request.function_description)}${textField("privatization_project_name", "205 xususiylashtirish loyiha", request.privatization_project_name)}</div>`)}`,
+
+    `${section("Yetkazish nuqtasi", `<div class="grid">${deliveryPointField("ABZ nuqtasi", request.delivery_point_id, points)}</div><div class="form-hint">Bitum qayerga yetkaziladi. Nuqta shartnoma va partiyalarga ham o'tadi.</div>`)}
+     ${section("Kontakt ma'lumotlari", `<div class="grid">${textField("phone", "Telefon raqami", request.phone, "text", { required: true })}${textField("contact_full_name", "Kontakt shaxs F.I.Sh.", request.contact_full_name)}${textField("contact_phone", "Kontakt telefon raqami", request.contact_phone)}</div>`)}`,
+
+    `${section("Mahsulot talabi", `<div class="grid">${selectField("product_id", "Mahsulot nomi", products, String(request.product?.id || request.product_id || ""), { required: true })}${textField("total_quantity", "Umumiy miqdor", request.total_quantity, "number", { required: true })}${textField("unit", "O'lchov birligi", request.unit || "t", "text", { required: true })}</div>`)}
+     ${section("Kalendar grafik", customerRequestScheduleEditor(request.schedule || [], request.unit))}`,
+
+    `${section("Talabnoma xulosasi", `<div data-request-summary></div>`)}
+     ${section("Ichki izoh", `<div class="grid">${textArea("internal_comment", "Izoh", request.internal_comment)}</div>`)}`,
+  ];
+
+  return wizardPage({
+    formId: "customer-request-form",
+    title: isNew ? "Yangi talabnoma" : "Talabnomani tahrirlash",
+    subtitle: isNew
+      ? "Telefon yoki xat orqali kelgan talabnomani kiriting."
+      : [request.request_number, request.company_name].filter(Boolean).join(" · "),
+    breadcrumb: [["Talabnomalar", "/customer-requests"], [isNew ? "Yangi talabnoma" : "Tahrirlash", ""]],
+    closePath: backPath,
+    steps: REQUEST_WIZARD_STEPS.map((step, index) => ({ ...step, body: bodies[index] })),
+    submitLabel: isNew ? "Talabnoma yaratish" : "Saqlash",
+    // Qoralama faqat yangi talabnomada: mavjudini tahrirlashda saqlanmagan
+    // o'zgarish keyingi safar jimgina qaytib kelsa, chalkashlik chiqadi.
+    withDraft: isNew,
+  });
+}
+
+// Oxirgi qadamda xodim yaratishdan oldin hammasini bir ekranda ko'radi.
+// Qiymatlar formadagi ko'rinishidan olinadi, shuning uchun ular allaqachon
+// tarjima qilingan -- `data-noloc` ularni ikkinchi marta o'girilishdan saqlaydi.
+function renderRequestSummary(form) {
+  const holder = form.querySelector("[data-request-summary]");
+  if (!holder) return;
+  const text = (name) => (form.elements[name]?.value || "").trim();
+  const choice = (name) => (form.elements[name]?.selectedOptions?.[0]?.textContent || "").trim();
+  const unit = text("unit");
+  const withUnit = (value) => (unit ? `${formatNumberInputValue(value)} ${unit}` : formatNumberInputValue(value));
+  const total = numberValue(text("total_quantity"));
+  const schedule = collectRequestSchedule();
+  const scheduleTotal = schedule.reduce((sum, item) => sum + numberValue(item.quantity), 0);
+  const row = (label, value) => `<div class="detail-item"><span>${label}</span><strong data-noloc>${esc(value || dash)}</strong></div>`;
+  holder.innerHTML = `<div class="detail-list">
+      ${row("To'lov manbasi", choice("payment_source"))}
+      ${row("Korxona", choice("client_id"))}
+      ${row("STIR", text("inn"))}
+      ${row("Direktor F.I.Sh.", text("director_full_name"))}
+      ${row("ABZ nuqtasi", choice("delivery_point_id"))}
+      ${row("Telefon raqami", text("phone"))}
+      ${row("Kontakt shaxs F.I.Sh.", text("contact_full_name"))}
+      ${row("Mahsulot nomi", choice("product_id"))}
+      ${row("Umumiy miqdor", withUnit(total))}
+      ${row("Kalendar grafik jami", withUnit(scheduleTotal))}
     </div>
-  `;
+    ${scheduleTotal && scheduleTotal !== total ? `<div class="empty warning">Kalendar grafikdagi jami miqdor umumiy miqdorga teng bo'lishi kerak.</div>` : ""}`;
+  localizeDom(holder);
 }
 
 function customerRequestScheduleEditor(schedule, unit) {
@@ -440,10 +490,11 @@ function bindCustomerRequestForm(request) {
   setupFormattedNumberInputs(app);
   refreshRequestScheduleTotals();
   const form = app.querySelector("#customer-request-form");
-  form?.elements.client_id?.addEventListener("change", () => applyRequestClient(form));
+  if (!form) return;
+  form.elements.client_id?.addEventListener("change", () => applyRequestClient(form));
   // Yangi talabnomada mijoz oldindan tanlanmagan; tahrirlashda esa
   // maydonlar allaqachon to'ldirilgan va ularni qayta so'rash shart emas.
-  if (!request?.id && form?.elements.client_id?.value) applyRequestClient(form);
+  if (!request?.id && form.elements.client_id?.value) applyRequestClient(form);
   app.querySelector("#add-request-schedule-row")?.addEventListener("click", () => {
     app.querySelector("#customer-request-schedule").insertAdjacentHTML("beforeend", customerRequestScheduleRow({ year: new Date().getFullYear(), month: 1 }));
     setupFormattedNumberInputs(app);
@@ -455,49 +506,73 @@ function bindCustomerRequestForm(request) {
     button.closest(".request-schedule-row")?.remove();
     refreshRequestScheduleTotals();
   });
-  app.querySelector("#customer-request-form")?.addEventListener("input", refreshRequestScheduleTotals);
-  app.querySelector("#customer-request-form")?.addEventListener("submit", async (event) => {
-    event.preventDefault();
-    const form = event.currentTarget;
-    const payload = {
-      client_id: Number(field(form, "client_id")),
-      delivery_point_id: field(form, "delivery_point_id") ? Number(field(form, "delivery_point_id")) : null,
-      payment_source: field(form, "payment_source"),
-      company_name: field(form, "company_name"),
-      inn: field(form, "inn"),
-      region: field(form, "region"),
-      oked: field(form, "oked"),
-      director_full_name: field(form, "director_full_name"),
-      legal_address: field(form, "legal_address"),
-      activity_type: field(form, "activity_type"),
-      function_description: field(form, "function_description"),
-      privatization_project_name: field(form, "privatization_project_name"),
-      bank_account: field(form, "bank_account"),
-      bank_name: field(form, "bank_name"),
-      mfo: field(form, "mfo"),
-      phone: field(form, "phone"),
-      contact_full_name: field(form, "contact_full_name"),
-      contact_phone: field(form, "contact_phone"),
-      product_id: Number(field(form, "product_id")),
-      total_quantity: normalizeNumberInputValue(field(form, "total_quantity")),
-      unit: field(form, "unit"),
-      internal_comment: field(form, "internal_comment"),
-      schedule: collectRequestSchedule(),
-    };
-    try {
-      if (request.id) {
-        await api(`/api/customer-requests/${request.id}`, { method: "PATCH", body: JSON.stringify(payload) });
-        showToast("Talabnoma muvaffaqiyatli yangilandi.");
-        navigate(`/customer-requests/${request.id}`);
-      } else {
-        const saved = await api("/api/customer-requests", { method: "POST", body: JSON.stringify(payload) });
-        showToast("Talabnoma yaratildi.");
-        navigate(`/customer-requests/${saved.id}`);
+  form.addEventListener("input", refreshRequestScheduleTotals);
+
+  const wizard = bindWizard("customer-request-form", {
+    steps: REQUEST_WIZARD_STEPS,
+    draftKey: request?.id ? "" : "customer-request",
+    // Mavjud talabnomada barcha qadamlar ochiq: xodim bitta maydonni
+    // to'g'rilash uchun to'rt qadamni qaytadan bosib chiqmaydi.
+    unlocked: Boolean(request?.id),
+    prepareDraft: async (values) => {
+      const rows = (values.schedule_year || []).length;
+      const holder = app.querySelector("#customer-request-schedule");
+      if (holder && rows) {
+        holder.innerHTML = Array.from({ length: rows }, () => customerRequestScheduleRow({ year: "", month: 1 })).join("");
+        setupFormattedNumberInputs(app);
       }
-    } catch (error) {
-      showToast(error.message, true);
-    }
+      // Mijoz avval o'rnatiladi va kartochka maydonlari yuklab olinadi.
+      // Aks holda so'rov qoralama tiklangandan keyin qaytib, qo'lda
+      // to'g'rilangan qiymatlar ustidan yozib ketardi.
+      const clientId = values.client_id?.[0];
+      if (clientId && form.elements.client_id) {
+        form.elements.client_id.value = clientId;
+        await applyRequestClient(form);
+      }
+    },
+    onSubmit: async (submitted) => {
+      const payload = {
+        client_id: Number(field(submitted, "client_id")),
+        delivery_point_id: field(submitted, "delivery_point_id") ? Number(field(submitted, "delivery_point_id")) : null,
+        payment_source: field(submitted, "payment_source"),
+        company_name: field(submitted, "company_name"),
+        inn: field(submitted, "inn"),
+        region: field(submitted, "region"),
+        oked: field(submitted, "oked"),
+        director_full_name: field(submitted, "director_full_name"),
+        legal_address: field(submitted, "legal_address"),
+        activity_type: field(submitted, "activity_type"),
+        function_description: field(submitted, "function_description"),
+        privatization_project_name: field(submitted, "privatization_project_name"),
+        bank_account: field(submitted, "bank_account"),
+        bank_name: field(submitted, "bank_name"),
+        mfo: field(submitted, "mfo"),
+        phone: field(submitted, "phone"),
+        contact_full_name: field(submitted, "contact_full_name"),
+        contact_phone: field(submitted, "contact_phone"),
+        product_id: Number(field(submitted, "product_id")),
+        total_quantity: normalizeNumberInputValue(field(submitted, "total_quantity")),
+        unit: field(submitted, "unit"),
+        internal_comment: field(submitted, "internal_comment"),
+        schedule: collectRequestSchedule(),
+      };
+      try {
+        if (request.id) {
+          await api(`/api/customer-requests/${request.id}`, { method: "PATCH", body: JSON.stringify(payload) });
+          showToast("Talabnoma muvaffaqiyatli yangilandi.");
+          navigate(`/customer-requests/${request.id}`);
+        } else {
+          const saved = await api("/api/customer-requests", { method: "POST", body: JSON.stringify(payload) });
+          wizard?.clearDraft();
+          showToast("Talabnoma yaratildi.");
+          navigate(`/customer-requests/${saved.id}`);
+        }
+      } catch (error) {
+        showToast(error.message, true);
+      }
+    },
   });
+  if (!request?.id) wizard?.restoreDraft();
 }
 
 // ---- Talabnomalar boshqaruv paneli ----

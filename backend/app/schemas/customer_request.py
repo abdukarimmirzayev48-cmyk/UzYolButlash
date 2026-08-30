@@ -188,6 +188,17 @@ class CustomerRequestCreate(CustomerRequestBase):
     schedule: list[CustomerRequestScheduleCreate] = Field(default_factory=list)
 
 
+class CustomerRequestInternalCreate(CustomerRequestCreate):
+    """Operator o'zi kiritgan talabnoma.
+
+    Umumiy `CustomerRequestCreate` dan farqi bitta -- ichki izoh. U faqat
+    xodimlar uchun, shuning uchun ochiq portal sxemasiga qo'shilmaydi:
+    tashqaridan kelgan so'rov ichki izohni belgilay olmasligi kerak.
+    """
+
+    internal_comment: str | None = None
+
+
 class CustomerRequestUpdate(BaseModel):
     delivery_point_id: int | None = None
     client_id: int | None = None

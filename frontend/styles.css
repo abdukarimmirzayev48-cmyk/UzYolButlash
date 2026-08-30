@@ -2041,51 +2041,370 @@ body.sidebar-collapsed .app-shell {
 }
 
 .erp-stepper {
-  display: grid;
-  grid-template-columns: repeat(var(--step-count, 5), minmax(120px, 1fr));
-  gap: 10px;
-  margin-bottom: 16px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
 }
 
 .erp-step {
-  display: grid;
-  grid-template-columns: 34px 1fr;
-  gap: 10px;
+  display: flex;
   align-items: center;
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  background: var(--surface);
-  box-shadow: var(--shadow);
-  padding: 12px;
+  gap: 10px;
   color: var(--muted);
+  min-width: 0;
+  flex: 1 1 auto;
 }
 
-.erp-step span {
+/* Qadamlar orasidagi chiziq: o'tilgan qismi yashil, qolgani kulrang. Chiziq
+   qadamning o'zidan keyin turadi, shuning uchun oxirgisida ko'rsatilmaydi. */
+.erp-step::after {
+  content: "";
+  flex: 1 1 24px;
+  min-width: 24px;
+  height: 1px;
+  background: var(--line);
+}
+
+.erp-step:last-child {
+  flex: 0 1 auto;
+}
+
+.erp-step:last-child::after {
+  display: none;
+}
+
+.erp-step.completed::after {
+  background: var(--accent);
+}
+
+.erp-step-mark {
   display: inline-grid;
   place-items: center;
-  width: 30px;
-  height: 30px;
+  flex: none;
+  width: 32px;
+  height: 32px;
   border-radius: 50%;
   border: 1px solid var(--line);
   background: var(--surface-soft);
   font-weight: 750;
+  font-size: 14px;
 }
 
-.erp-step.completed,
-.erp-step.current {
-  border-color: #bedbd4;
-  color: var(--accent);
+.erp-step-text {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
 }
 
-.erp-step.completed span,
-.erp-step.current span {
+.erp-step-text strong {
+  font-size: 14px;
+  font-weight: 650;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.erp-step-text small {
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.erp-step.completed .erp-step-mark,
+.erp-step.current .erp-step-mark {
   border-color: var(--accent);
   background: var(--accent);
   color: #fff;
 }
 
-.erp-step.current {
-  box-shadow: 0 0 0 3px rgba(23, 107, 91, 0.12);
+.erp-step.completed .erp-step-text strong,
+.erp-step.current .erp-step-text strong {
+  color: var(--text, #101828);
+}
+
+.erp-step.current .erp-step-text small {
+  color: var(--accent);
+}
+
+/* Ettita qadamli shartnoma wizardida ostki yozuvga joy qolmaydi. */
+.erp-stepper.compact .erp-step-text small {
+  display: none;
+}
+
+.erp-stepper.compact .erp-step-mark {
+  width: 28px;
+  height: 28px;
+}
+
+/* ---- Bosqichli forma qobig'i --------------------------------------------- */
+
+.wiz-crumbs {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-size: 13px;
+  margin-bottom: 10px;
+}
+
+.wiz-crumb {
+  color: var(--muted);
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.wiz-crumb:hover {
+  color: var(--accent);
+  text-decoration: underline;
+}
+
+.wiz-crumb.current {
+  color: var(--text, #101828);
+}
+
+.wiz-crumb-sep {
+  color: var(--line);
+}
+
+.wiz-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+
+.wiz-head h1 {
+  margin: 0 0 4px;
+}
+
+.wiz-head p {
+  margin: 0;
+  color: var(--muted);
+}
+
+.wiz-close {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+}
+
+.wiz-shell {
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+
+.wiz-steps-bar {
+  padding: 20px 24px;
+  border-bottom: 1px solid var(--line);
+}
+
+.wiz-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 260px;
+  gap: 0;
+  align-items: start;
+}
+
+.wiz-main {
+  padding: 22px 24px;
+  min-width: 0;
+}
+
+.wiz-pane[hidden] {
+  display: none;
+}
+
+.wiz-pane > section:first-child,
+.wiz-pane > .card:first-child {
+  margin-top: 0;
+}
+
+.wiz-panel {
+  border-left: 1px solid var(--line);
+  background: var(--surface-soft);
+  padding: 22px 20px;
+  align-self: stretch;
+}
+
+.wiz-panel h2 {
+  margin: 0 0 14px;
+  font-size: 17px;
+}
+
+.wiz-panel-label {
+  margin: 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.wiz-panel-progress {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  margin: 2px 0 16px;
+}
+
+.wiz-panel-progress strong {
+  font-size: 26px;
+  color: var(--accent);
+  line-height: 1;
+}
+
+.wiz-panel-progress span {
+  color: var(--muted);
+}
+
+.wiz-panel-done {
+  list-style: none;
+  margin: 0;
+  padding: 16px 0 0;
+  border-top: 1px solid var(--line);
+  display: grid;
+  gap: 10px;
+}
+
+.wiz-panel-done:empty {
+  display: none;
+}
+
+.wiz-panel-done li {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+/* Nom va «to'ldirilgan» bitta oqimda qolsin: alohida flex bo'lagi bo'lsa,
+   satr ko'chganda ular ikki chekkaga ajralib ketardi. */
+.wiz-panel-done-text {
+  display: block;
+}
+
+.wiz-panel-done svg {
+  flex: none;
+  margin-top: 2px;
+  color: var(--accent);
+}
+
+.wiz-panel-draft {
+  display: grid;
+  gap: 2px;
+  margin: 16px 0 0;
+  font-size: 12px;
+  color: var(--accent);
+}
+
+.wiz-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding: 16px 24px;
+  border-top: 1px solid var(--line);
+  background: var(--surface-soft);
+}
+
+.wiz-foot-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-left: auto;
+}
+
+.wiz-cancel {
+  border: 0;
+  background: none;
+  padding: 0;
+  color: var(--muted);
+  text-decoration: underline;
+  cursor: pointer;
+  font: inherit;
+}
+
+.wiz-cancel:hover {
+  color: var(--danger);
+}
+
+.wiz-draft-btn {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* To'g'ri to'ldirilgan maydonning yashil belgisi. Maydon `<label>` ichida
+   bo'lgani uchun belgi labelga qo'yiladi va input o'ng tomonda joy qoldiradi. */
+.wiz-pane label.field-ok,
+.wiz-pane .form-field.field-ok {
+  position: relative;
+}
+
+.wiz-pane label.field-ok > input,
+.wiz-pane label.field-ok > select,
+.wiz-pane label.field-ok > textarea,
+.wiz-pane .form-field.field-ok > input,
+.wiz-pane .form-field.field-ok > select,
+.wiz-pane .form-field.field-ok > textarea {
+  padding-right: 34px;
+}
+
+.wiz-pane label.field-ok::after,
+.wiz-pane .form-field.field-ok::after {
+  content: "";
+  position: absolute;
+  right: 12px;
+  bottom: 13px;
+  width: 15px;
+  height: 15px;
+  background: no-repeat center/contain url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23176b5b' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m5 12 5 5L19 7'/%3E%3C/svg%3E");
+  pointer-events: none;
+}
+
+/* Select ning o'z o'qi o'ng chekkada turadi, shuning uchun belgi undan
+   chapga suriladi -- aks holda ikkalasi ustma-ust tushadi. Sinfni JS qo'yadi:
+   `:has()` eski brauzerda butun qoidani tashlab yuborardi. */
+.wiz-pane .field-ok.field-ok-select > select {
+  padding-right: 52px;
+}
+
+.wiz-pane .field-ok.field-ok-select::after {
+  right: 32px;
+}
+
+@media (max-width: 1100px) {
+  .wiz-body {
+    grid-template-columns: 1fr;
+  }
+
+  .wiz-panel {
+    border-left: 0;
+    border-top: 1px solid var(--line);
+  }
+}
+
+@media (max-width: 780px) {
+  .erp-stepper {
+    flex-wrap: wrap;
+    gap: 10px 14px;
+  }
+
+  .erp-step::after {
+    display: none;
+  }
+
+  .erp-step-text small {
+    display: none;
+  }
 }
 
 .erp-warning-panel {
@@ -4715,7 +5034,6 @@ body.public-layout.sidebar-collapsed .app-shell {
   .totals-bar,
   .summary-grid,
   .workflow-status-grid,
-  .erp-stepper,
   .batch-wizard-stepper,
   .confirm-grid,
   .detail-list {

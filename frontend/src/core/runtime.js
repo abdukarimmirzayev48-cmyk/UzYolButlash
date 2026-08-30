@@ -2703,3 +2703,281 @@ function bindOpsPagination(pageKey, basePath) {
     });
   });
 }
+
+// ---- Bosqichli forma (wizard) ---------------------------------------------
+//
+// Uzun forma bir necha qadamga bo'linadi. Muhimi: qadamlarning BARCHASI bir
+// vaqtda chiziladi, joriysidan boshqasi `hidden` bilan yashiriladi. Shu sabab
+// oldinga-orqaga yurganda kiritilgan qiymat yo'qolmaydi va sahifaning mavjud
+// kodi -- `app.querySelector('[name=...]')` bilan ishlaydigan hisob-kitoblar,
+// jo'natish ishlovchisi -- o'zgarishsiz qoladi.
+//
+// Forma `novalidate` bilan chiziladi: yashirin maydonni brauzer o'zi
+// tekshirsa, «invalid control is not focusable» deb jim to'xtab qoladi.
+// Shuning uchun tekshiruvni qadam bo'yicha o'zimiz yuritamiz.
+
+const WIZ_DRAFT_PREFIX = "bitum.draft.";
+
+function wizardBreadcrumb(items = []) {
+  if (!items.length) return "";
+  return `<nav class="wiz-crumbs">${items.map(([label, path], index) => {
+    const last = index === items.length - 1;
+    const node = path && !last
+      ? `<a class="wiz-crumb" data-nav="${esc(path)}">${esc(label)}</a>`
+      : `<span class="wiz-crumb current">${esc(label)}</span>`;
+    return index ? `<span class="wiz-crumb-sep" aria-hidden="true" data-noloc>/</span>${node}` : node;
+  }).join("")}</nav>`;
+}
+
+function wizardStepper(steps, current) {
+  const titles = steps.map((step) => step.title);
+  if (window.BitumFrontend?.components?.stepper) return window.BitumFrontend.components.stepper(titles, current);
+  return `<ol class="erp-stepper" style="--step-count:${steps.length}">${titles.map((title, index) => {
+    const step = index + 1;
+    const cls = step < current ? "completed" : step === current ? "current" : "upcoming";
+    return `<li class="erp-step ${cls}"><span class="erp-step-mark"><span data-noloc>${step}</span></span><span class="erp-step-text"><strong>${esc(title)}</strong></span></li>`;
+  }).join("")}</ol>`;
+}
+
+function wizardPanel(steps, current, { draftAt = "" } = {}) {
+  const done = steps.slice(0, current - 1);
+  return `<h2>Qoralama</h2>
+    <p class="wiz-panel-label">Joriy qadam</p>
+    <p class="wiz-panel-progress"><strong data-noloc>${current}</strong><span data-noloc>/ ${steps.length}</span></p>
+    <ul class="wiz-panel-done">${done.map((step) => `<li><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12 5 5L19 7"/></svg><span class="wiz-panel-done-text"><span>${esc(step.title)}</span> <span>to'ldirilgan</span></span></li>`).join("")}</ul>
+    ${draftAt ? `<p class="wiz-panel-draft"><span>Qoralama saqlandi</span><span data-noloc>${esc(draftAt)}</span></p>` : ""}`;
+}
+
+function wizardPage({
+  formId,
+  title,
+  subtitle = "",
+  breadcrumb = [],
+  closePath = "",
+  closeLabel = "Yopish",
+  steps = [],
+  current = 1,
+  submitLabel = "Saqlash",
+  canSubmit = true,
+  withDraft = false,
+  beforeSteps = "",
+}) {
+  return `<div class="page wiz-page">
+    ${wizardBreadcrumb(breadcrumb)}
+    <div class="wiz-head">
+      <div class="wiz-head-text">
+        <h1>${esc(title)}</h1>
+        ${subtitle ? `<p>${esc(subtitle)}</p>` : ""}
+      </div>
+      ${closePath ? `<button type="button" class="btn wiz-close" data-nav="${esc(closePath)}"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg><span>${esc(closeLabel)}</span></button>` : ""}
+    </div>
+    <form id="${esc(formId)}" class="wiz-shell" novalidate>
+      <div class="wiz-steps-bar" data-wiz-stepper>${wizardStepper(steps, current)}</div>
+      <div class="wiz-body">
+        <div class="wiz-main">
+          ${beforeSteps}
+          ${steps.map((step, index) => `<section class="wiz-pane" data-wiz-pane="${index + 1}" ${index + 1 === current ? "" : "hidden"}>${step.body}</section>`).join("")}
+        </div>
+        <aside class="wiz-panel" data-wiz-panel>${wizardPanel(steps, current)}</aside>
+      </div>
+      <div class="wiz-foot">
+        <button type="button" class="wiz-cancel" data-nav="${esc(closePath || "/")}">Bekor qilish</button>
+        <div class="wiz-foot-actions">
+          <button type="button" class="btn" data-wiz-back>Orqaga</button>
+          ${withDraft ? `<button type="button" class="btn wiz-draft-btn" data-wiz-draft>Qoralama saqlash</button>` : ""}
+          <button type="button" class="btn primary" data-wiz-next>Davom etish</button>
+          ${canSubmit ? `<button type="submit" class="btn primary" data-wiz-submit hidden>${esc(submitLabel)}</button>` : ""}
+        </div>
+      </div>
+    </form>
+  </div>`;
+}
+
+// Qadamdagi haqiqiy maydonlar. Yashirin va o'chirilganlari hisobga olinmaydi:
+// ular ekranda yo'q, demak xodim ularni to'g'rilay olmaydi.
+function wizardStepControls(pane) {
+  return [...pane.querySelectorAll("input, select, textarea")]
+    .filter((control) => !control.disabled && control.type !== "hidden" && control.offsetParent !== null);
+}
+
+function wizardDraftKey(key) {
+  return `${WIZ_DRAFT_PREFIX}${key}`;
+}
+
+// Qoralama nomlar bo'yicha yig'iladi, chunki bir nom bir necha marta uchraydi
+// (kalendar grafik qatorlari). Tiklashda qiymatlar DOM tartibida tarqatiladi,
+// shuning uchun qatorlarni oldindan tiklash sahifaning o'z ishi -- `prepare`.
+function wizardCollectDraft(form) {
+  const values = {};
+  new FormData(form).forEach((value, name) => {
+    if (typeof value !== "string") return;
+    (values[name] = values[name] || []).push(value);
+  });
+  return values;
+}
+
+function wizardApplyDraft(form, values = {}) {
+  Object.entries(values).forEach(([name, list]) => {
+    const controls = [...form.querySelectorAll(`[name="${CSS.escape(name)}"]`)];
+    if (controls.length === 1 && controls[0].type === "radio") return;
+    controls.forEach((control, index) => {
+      if (list[index] === undefined || control.value === list[index]) return;
+      control.value = list[index];
+      control.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+  });
+}
+
+function bindWizard(formId, {
+  steps = [],
+  draftKey = "",
+  unlocked = false,
+  onSubmit = null,
+  onStepChange = null,
+  prepareDraft = null,
+} = {}) {
+  const form = document.querySelector(`#${formId}`);
+  if (!form) return null;
+  const panes = [...form.querySelectorAll("[data-wiz-pane]")];
+  const stepperBar = form.querySelector("[data-wiz-stepper]");
+  const panel = form.querySelector("[data-wiz-panel]");
+  const backBtn = form.querySelector("[data-wiz-back]");
+  const nextBtn = form.querySelector("[data-wiz-next]");
+  const submitBtn = form.querySelector("[data-wiz-submit]");
+  const draftBtn = form.querySelector("[data-wiz-draft]");
+  const total = panes.length;
+  let current = 1;
+  let draftAt = "";
+  let furthest = unlocked ? total : 1;
+  let painted = false;
+
+  function paint() {
+    panes.forEach((pane, index) => { pane.hidden = index + 1 !== current; });
+    if (stepperBar) stepperBar.innerHTML = wizardStepper(steps, current);
+    if (panel) panel.innerHTML = wizardPanel(steps, current, { draftAt });
+    if (backBtn) backBtn.disabled = current === 1;
+    const last = current === total;
+    if (nextBtn) nextBtn.hidden = last;
+    if (submitBtn) submitBtn.hidden = !last;
+    localizeDom(form);
+    steps[current - 1]?.onEnter?.(form, panes[current - 1]);
+    markWizardFields(panes[current - 1]);
+    if (painted) form.scrollIntoView({ block: "start", behavior: "smooth" });
+    painted = true;
+  }
+
+  function validateStep(index) {
+    const pane = panes[index - 1];
+    if (!pane) return true;
+    for (const control of wizardStepControls(pane)) {
+      if (!control.checkValidity()) {
+        control.reportValidity();
+        return false;
+      }
+    }
+    const problem = steps[index - 1]?.validate?.(form);
+    if (problem) {
+      showToast(problem, true);
+      return false;
+    }
+    return true;
+  }
+
+  function goTo(target) {
+    if (target === current || target < 1 || target > total) return;
+    if (target > current) {
+      for (let step = current; step < target; step += 1) {
+        if (!validateStep(step)) {
+          if (step !== current) { current = step; paint(); }
+          return;
+        }
+      }
+    }
+    current = target;
+    furthest = Math.max(furthest, current);
+    paint();
+    onStepChange?.(current);
+  }
+
+  backBtn?.addEventListener("click", () => goTo(current - 1));
+  nextBtn?.addEventListener("click", () => goTo(current + 1));
+
+  // Ko'rsatkichdagi qadamga bosish: o'tilgan qadamga qaytish har doim mumkin,
+  // oldinga esa faqat tekshiruvdan o'tib.
+  stepperBar?.addEventListener("click", (event) => {
+    const item = event.target.closest(".erp-step");
+    if (!item) return;
+    const target = [...stepperBar.querySelectorAll(".erp-step")].indexOf(item) + 1;
+    if (target <= furthest) goTo(target);
+  });
+
+  form.addEventListener("input", (event) => {
+    markWizardField(event.target);
+    if (draftAt) { draftAt = ""; if (panel) { panel.innerHTML = wizardPanel(steps, current); localizeDom(panel); } }
+  });
+  form.addEventListener("change", (event) => markWizardField(event.target));
+
+  if (draftKey && draftBtn) {
+    draftBtn.addEventListener("click", () => {
+      try {
+        localStorage.setItem(wizardDraftKey(draftKey), JSON.stringify({ step: current, values: wizardCollectDraft(form) }));
+        draftAt = new Date().toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
+        if (panel) { panel.innerHTML = wizardPanel(steps, current, { draftAt }); localizeDom(panel); }
+        showToast("Qoralama saqlandi");
+      } catch (error) {
+        showToast("Qoralamani saqlab bo'lmadi", true);
+      }
+    });
+  }
+
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    for (let step = 1; step <= total; step += 1) {
+      if (!validateStep(step)) {
+        if (step !== current) { current = step; paint(); validateStep(step); }
+        return;
+      }
+    }
+    await onSubmit?.(form);
+  });
+
+  const control = {
+    get step() { return current; },
+    goTo,
+    clearDraft() { if (draftKey) localStorage.removeItem(wizardDraftKey(draftKey)); },
+    async restoreDraft() {
+      if (!draftKey) return false;
+      let saved = null;
+      try { saved = JSON.parse(localStorage.getItem(wizardDraftKey(draftKey)) || "null"); } catch (error) { saved = null; }
+      if (!saved?.values) return false;
+      await prepareDraft?.(saved.values);
+      wizardApplyDraft(form, saved.values);
+      // Qoralama qaysi qadamda saqlangan bo'lsa, o'sha qadamdan davom etadi --
+      // xodim to'ldirganini qaytadan varaqlab o'tirmaydi.
+      furthest = Math.max(furthest, Math.min(total, Math.max(1, Number(saved.step) || 1)));
+      current = furthest;
+      paint();
+      showToast("Saqlangan qoralama tiklandi");
+      return true;
+    },
+  };
+  paint();
+  return control;
+}
+
+// To'ldirilgan va to'g'ri maydon yonida yashil belgi turadi. Bo'sh maydonga
+// belgi qo'yilmaydi -- aks holda hali tegilmagan maydon ham to'g'ri
+// to'ldirilgandek ko'rinardi.
+function markWizardField(control) {
+  if (!control?.closest) return;
+  const holder = control.closest("label, .form-field");
+  if (!holder || !holder.closest(".wiz-pane")) return;
+  const filled = String(control.value ?? "").trim() !== "";
+  holder.classList.toggle("field-ok", filled && control.checkValidity());
+  holder.classList.toggle("field-ok-select", control.tagName === "SELECT");
+}
+
+function markWizardFields(pane) {
+  if (!pane) return;
+  wizardStepControls(pane).forEach(markWizardField);
+}
