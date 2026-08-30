@@ -141,68 +141,190 @@ function bindRowMenus() {
   }, { once: true });
 }
 
+// Xarita Leaflet bilan chiziladi. Kutubxona loyihada tayyor fayl bo'lib
+// turadi -- CDN dan olinmaydi, chunki ofis internetisiz qolganda ham
+// sahifa ochilishi kerak. Plitkalar esa OpenStreetMap dan keladi va ular
+// tashqi so'rov talab qiladi: internet bo'lmasa xarita bo'sh qoladi,
+// sahifaning qolgan qismi ishlayveradi.
+const MAP_STATUS_COLORS = { active: "#176b5b", attention: "#d68a12", inactive: "#b42318", planned: "#2c5cc5" };
+
+// O'zbekiston markazi va butun mamlakat ko'rinadigan masshtab.
+const MAP_CENTER = [41.3, 64.6];
+const MAP_ZOOM = 6;
+
+let pointsMap = null;
+
+function mapPinIcon(status) {
+  const color = MAP_STATUS_COLORS[status] || MAP_STATUS_COLORS.planned;
+  return L.divIcon({
+    className: "map-pin",
+    // Rasm fayli emas, ichki SVG: qo'shimcha yuklanadigan narsa qolmaydi
+    // va rang holatga qarab o'zgaradi.
+    html: `<svg viewBox="0 0 24 24" width="26" height="26" fill="${color}" stroke="#ffffff" stroke-width="1.4">
+      <path d="M12 2c-3.9 0-7 3.1-7 7 0 5.2 7 13 7 13s7-7.8 7-13c0-3.9-3.1-7-7-7z"/>
+      <circle cx="12" cy="9" r="2.6" fill="#ffffff" stroke="none"/>
+    </svg>`,
+    iconSize: [26, 26],
+    iconAnchor: [13, 26],
+    popupAnchor: [0, -24],
+  });
+}
+
+function drawPointsMap(points) {
+  const holder = document.querySelector("#points-map");
+  if (!holder) return;
+  if (typeof L === "undefined") {
+    holder.innerHTML = `<div class="empty">Xarita kutubxonasi yuklanmadi.</div>`;
+    return;
+  }
+  // Sahifa qayta chizilganda eski xarita DOM dan ketadi, lekin Leaflet
+  // uni hali ham eslab turadi -- shuning uchun avval yopiladi.
+  if (pointsMap) {
+    pointsMap.remove();
+    pointsMap = null;
+  }
+  pointsMap = L.map(holder, { scrollWheelZoom: false, attributionControl: true }).setView(MAP_CENTER, MAP_ZOOM);
+  L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    maxZoom: 18,
+    attribution: "&copy; OpenStreetMap",
+  }).addTo(pointsMap);
+
+  const located = points.filter((point) => point.latitude && point.longitude);
+  const markers = located.map((point) => {
+    const marker = L.marker([Number(point.latitude), Number(point.longitude)], { icon: mapPinIcon(point.status) });
+    marker.bindPopup(`<div class="map-popup">
+      <strong>${esc(point.name)}</strong>
+      <span>${esc(point.full_address || "")}</span>
+      <span>${point.daily_capacity_tons ? `${esc(fmtQty(point.daily_capacity_tons))} ${esc(localizeText("t/kun"))}` : ""}</span>
+      <span class="map-popup-status" style="color:${MAP_STATUS_COLORS[point.status] || ""}">${esc(localizeText(optionLabel(deliveryPointStatuses, point.status)))}</span>
+      ${point.responsible_name ? `<span>${esc(point.responsible_name)}${point.responsible_phone ? ` · ${esc(point.responsible_phone)}` : ""}</span>` : ""}
+    </div>`);
+    marker.addTo(pointsMap);
+    return marker;
+  });
+  // Nuqtalar bir viloyatda to'planib qolsa, butun mamlakatni ko'rsatish
+  // ma'nosiz -- ko'rinishni ularning o'ziga moslaymiz.
+  if (markers.length > 1) {
+    pointsMap.fitBounds(L.featureGroup(markers).getBounds(), { padding: [30, 30] });
+  } else if (markers.length === 1) {
+    pointsMap.setView(markers[0].getLatLng(), 10);
+  }
+  if (!located.length) {
+    holder.insertAdjacentHTML("beforeend", `<div class="map-empty">Koordinatasi kiritilgan ABZ yo'q.</div>`);
+  }
+}
+
+function pointsViewToggle(view) {
+  const link = (key, label) => {
+    const next = new URLSearchParams(location.search);
+    if (key === "table") next.delete("view");
+    else next.set("view", key);
+    return `<button type="button" class="view-toggle-btn ${view === key ? "active" : ""}" data-nav="/delivery-points${next.toString() ? `?${next}` : ""}">${label}</button>`;
+  };
+  return `<div class="view-toggle">${link("table", "Jadval")}${link("map", "Xarita")}</div>`;
+}
+
+function pointsPageSize(current) {
+  const options = [10, 25, 50, 100]
+    .map((size) => `<option value="${size}" ${current === size ? "selected" : ""}>${size}</option>`)
+    .join("");
+  // Yorliq bosh harf bilan: generator bitta kichik harfli so'zni enum
+  // kaliti deb rad etadi, qiyalik bilan boshlanganini esa yo'l deb --
+  // «/ sahifa» ikkala qoidaga ham tushib, lug'atga umuman kirmasdi.
+  return `<label class="page-size"><select name="page_size" data-point-page-size>${options}</select><span data-noloc>/</span><span>Sahifada</span></label>`;
+}
+
 async function renderDeliveryPointsList() {
   const params = new URLSearchParams(location.search);
+  const view = params.get("view") === "map" ? "map" : "table";
+  const query = new URLSearchParams(params);
+  query.delete("view");
   const [data, board, clients] = await Promise.all([
-    api(`/api/delivery-points?${params.toString()}`),
-    api(`/api/delivery-points/dashboard?${params.toString()}`),
+    api(`/api/delivery-points?${query.toString()}`),
+    api(`/api/delivery-points/dashboard?${query.toString()}`),
     fetchAllClients(),
   ]);
   const editable = canEdit("sotuv");
+  const pageSize = Number(data.page_size || 50);
   const clientOptions = clients
     .map((client) => `<option value="${client.id}" ${params.get("client_id") === String(client.id) ? "selected" : ""}>${esc(client.name)}</option>`)
     .join("");
   const regions = [...new Set(data.items.map((item) => item.region).filter(Boolean))].sort();
-  const exportQuery = params.toString();
+  const exportQuery = query.toString();
 
-  app.innerHTML = opsListPage({
-    className: "delivery-points-ops-page",
-    title: "ABZ boshqaruvi",
-    tabs: [
-      { label: "Mijozlar", path: "/clients" },
-      { label: "Talabnomalar", path: "/customer-requests" },
-      { label: "Shartnomalar", path: "/contracts" },
-      { label: "ABZ nuqtalari", active: true },
-    ],
-    createPath: editable ? "/delivery-points/new" : undefined,
-    createLabel: "Yangi ABZ",
-    clearPath: "/delivery-points",
-    counter: `${fmt(data.total)} ta nuqta`,
-    extraActions: `<a class="btn" href="/api/delivery-points/export.xlsx?${esc(exportQuery)}${exportQuery ? "&" : ""}lang=${esc(currentLang())}">Eksport</a>`,
-    formId: "delivery-point-search-form",
-    filters: `${opsFilterField("Qidirish", `<input name="search" placeholder="Nomi, kodi, manzili, mas'ul" value="${esc(params.get("search") || "")}" />`)}${
-      opsFilterField("Viloyat", `<select name="region"><option value="">Barchasi</option>${regions.map((region) => `<option value="${esc(region)}" ${params.get("region") === region ? "selected" : ""}>${esc(region)}</option>`).join("")}</select>`)}${
-      opsFilterField("Holati", `<select name="status"><option value="">Barchasi</option>${deliveryPointStatuses.map(([key, label]) => `<option value="${key}" ${params.get("status") === key ? "selected" : ""}>${label}</option>`).join("")}</select>`)}${
-      opsFilterField("Mijoz", `<select name="client_id"><option value="">Barchasi</option>${clientOptions}</select>`)}`,
-    beforeTable: `${deliveryPointKpis(board)}${workflowWarningsPanel(board.warnings || [])}${deliveryPointStatusPanel(board)}`,
-    headers: [
-      pointSortHead("ABZ", "name", params),
-      pointSortHead("Joylashuv", "region", params),
-      "Mijoz",
-      pointSortHead("Quvvati", "capacity", params),
-      pointSortHead("Mas'ul shaxs", "responsible", params),
-      pointSortHead("Holati", "status", params),
-      pointSortHead("Yangilangan", "updated", params),
-      "Amallar",
-    ],
-    rows: data.items.map((point) => `<tr class="${point.is_active ? "" : "ops-row-muted"}">
-      <td><button class="ops-primary-link" data-nav="/delivery-points/${point.id}">${fmt(point.name)}</button></td>
-      <td>${fmt(point.full_address)}</td>
-      <td>${fmt(point.client?.name)}</td>
-      <td class="ops-money">${point.daily_capacity_tons ? `<span data-noloc>${fmtQty(point.daily_capacity_tons)}</span> <span>t/kun</span>` : dash}</td>
-      <td>${fmt(point.responsible_name)}${point.responsible_phone ? `<br /><span class="muted-line" data-noloc>${esc(point.responsible_phone)}</span>` : ""}</td>
-      <td>${deliveryPointStatusChip(point.status)}</td>
-      <td>${fmtDate(point.updated_at)}</td>
-      <td>${pointRowMenu(point.id, editable)}</td>
-    </tr>`).join(""),
-    emptyText: "Nuqtalar topilmadi.",
-    colspan: 8,
-    footer: opsFooter(data, "deliverypoint"),
-  });
-  bindOpsSearch("delivery-point-search-form", "/delivery-points", ["search", "client_id", "region", "status"]);
+  app.innerHTML = `<div class="page ops-page delivery-points-ops-page">
+    ${detailBreadcrumb(["Sotuv", "ABZlar"])}
+    <div class="page-head-row">
+      <div class="page-title">
+        <h1>ABZ boshqaruvi</h1>
+        <p>ABZlarni nazorat qilish, holatini tahlil qilish va samaradorlikni boshqarish.</p>
+      </div>
+      <div class="actions">
+        <a class="btn" href="/api/delivery-points/export.xlsx?${esc(exportQuery)}${exportQuery ? "&" : ""}lang=${esc(currentLang())}">Eksport</a>
+        ${editable ? `<button class="btn primary" type="button" data-nav="/delivery-points/new">Yangi ABZ</button>` : ""}
+      </div>
+    </div>
+
+    ${deliveryPointKpis(board)}
+    ${workflowWarningsPanel(board.warnings || [])}
+
+    <div class="map-row">
+      <section class="card map-card"><div id="points-map" class="points-map"></div></section>
+      ${deliveryPointStatusPanel(board)}
+    </div>
+
+    <form class="ops-search points-filter" id="delivery-point-search-form">
+      ${opsFilterField("Qidirish", `<input name="search" placeholder="Qidirish..." value="${esc(params.get("search") || "")}" />`)}
+      ${opsFilterField("Viloyat", `<select name="region"><option value="">Barchasi</option>${regions.map((region) => `<option value="${esc(region)}" ${params.get("region") === region ? "selected" : ""}>${esc(region)}</option>`).join("")}</select>`)}
+      ${opsFilterField("Holat", `<select name="status"><option value="">Barchasi</option>${deliveryPointStatuses.map(([key, label]) => `<option value="${key}" ${params.get("status") === key ? "selected" : ""}>${label}</option>`).join("")}</select>`)}
+      ${opsFilterField("Mijoz", `<select name="client_id"><option value="">Barchasi</option>${clientOptions}</select>`)}
+      <button class="ops-tool-btn primary" type="submit">Qidirish</button>
+      <button class="btn" type="button" data-nav="/delivery-points">Tozalash</button>
+      ${pointsViewToggle(view)}
+    </form>
+
+    ${view === "map"
+      ? `<section class="card map-card tall"><div id="points-map-large" class="points-map"></div></section>`
+      : `<section class="ops-table-card"><table class="ops-table"><thead><tr>
+          <th>${pointSortHead("ABZ", "name", params)}</th>
+          <th>${pointSortHead("Joylashuv", "region", params)}</th>
+          <th>Mijoz</th>
+          <th>${pointSortHead("Quvvati", "capacity", params)}</th>
+          <th>${pointSortHead("Mas'ul shaxs", "responsible", params)}</th>
+          <th>${pointSortHead("Holati", "status", params)}</th>
+          <th>${pointSortHead("Yangilangan", "updated", params)}</th>
+          <th>Amallar</th>
+        </tr></thead><tbody>${data.items.length ? data.items.map((point) => `<tr>
+          <td><button class="ops-primary-link accent" data-nav="/delivery-points/${point.id}">${fmt(point.name)}</button></td>
+          <td>${fmt(point.full_address)}</td>
+          <td>${fmt(point.client?.name)}</td>
+          <td class="ops-money">${point.daily_capacity_tons ? `<span data-noloc>${fmtQty(point.daily_capacity_tons)}</span> <span>t/kun</span>` : dash}</td>
+          <td><span class="person-cell">${personIcon()}${fmt(point.responsible_name)}</span></td>
+          <td>${deliveryPointStatusChip(point.status)}</td>
+          <td data-noloc>${fmtDate(point.updated_at)}</td>
+          <td>${pointRowMenu(point.id, editable)}</td>
+        </tr>`).join("") : `<tr><td colspan="8"><div class="empty">Nuqtalar topilmadi.</div></td></tr>`}</tbody></table></section>`}
+
+    <div class="ops-footer points-footer">
+      <span><span>Jami</span> <span data-noloc>${fmt(data.total)}</span> <span>ta yozuv</span></span>
+      ${paginationBlock(data, "deliverypoint")}
+      ${pointsPageSize(pageSize)}
+    </div>
+  </div>`;
+
+  bindOpsSearch("delivery-point-search-form", "/delivery-points", ["search", "client_id", "region", "status", "view", "page_size"]);
   bindOpsPagination("deliverypoint", "/delivery-points");
   bindPointSort();
   bindRowMenus();
+  drawPointsMap(data.items);
+  if (view === "map") drawLargePointsMap(data.items);
+
+  document.querySelector("[data-point-page-size]")?.addEventListener("change", (event) => {
+    const next = new URLSearchParams(location.search);
+    next.set("page_size", event.target.value);
+    next.delete("page");
+    navigate(`/delivery-points?${next}`);
+  });
   document.querySelectorAll("[data-point-map]").forEach((button) => button.addEventListener("click", () => {
     const point = data.items.find((item) => item.id === Number(button.dataset.pointMap));
     if (point?.map_url) window.open(point.map_url, "_blank", "noopener");
@@ -218,6 +340,29 @@ async function renderDeliveryPointsList() {
       showToast(error.message, true);
     }
   }));
+}
+
+function personIcon() {
+  return `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" class="person-icon"><circle cx="12" cy="8" r="3.4"/><path d="M5 20a7 7 0 0 1 14 0"/></svg>`;
+}
+
+let largePointsMap = null;
+
+function drawLargePointsMap(points) {
+  const holder = document.querySelector("#points-map-large");
+  if (!holder || typeof L === "undefined") return;
+  if (largePointsMap) {
+    largePointsMap.remove();
+    largePointsMap = null;
+  }
+  largePointsMap = L.map(holder).setView(MAP_CENTER, MAP_ZOOM);
+  L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 18, attribution: "&copy; OpenStreetMap" }).addTo(largePointsMap);
+  const markers = points
+    .filter((point) => point.latitude && point.longitude)
+    .map((point) => L.marker([Number(point.latitude), Number(point.longitude)], { icon: mapPinIcon(point.status) })
+      .bindPopup(`<div class="map-popup"><strong>${esc(point.name)}</strong><span>${esc(point.full_address || "")}</span></div>`)
+      .addTo(largePointsMap));
+  if (markers.length > 1) largePointsMap.fitBounds(L.featureGroup(markers).getBounds(), { padding: [40, 40] });
 }
 
 async function renderDeliveryPointForm(id = null) {

@@ -2534,6 +2534,21 @@ function paginationPageList(current, total) {
   return result;
 }
 
+// Sahifalar tugmalari alohida -- ba'zi sahifalarda oyoq qatorida boshqa
+// narsalar ham turadi (jami yozuv, sahifa hajmi), lekin tugmalar bir xil.
+function paginationBlock(data, pageKey) {
+  const currentPage = Number(data.page || 1);
+  const pageSize = Number(data.page_size || 20);
+  const end = Math.min(currentPage * pageSize, data.total);
+  const totalPages = Math.max(1, Math.ceil((data.total || 0) / pageSize));
+  const pages = paginationPageList(currentPage, totalPages);
+  return `<div class="ops-pagination">
+    <button type="button" class="ops-page-btn" data-${pageKey}-page="${currentPage - 1}" ${currentPage <= 1 ? "disabled" : ""} aria-label="Oldingi">${paginationChevron("left")}</button>
+    ${pages.map((p) => (p === "..." ? `<span class="ops-page-btn ellipsis">…</span>` : `<button type="button" class="ops-page-btn ${p === currentPage ? "active" : ""}" data-${pageKey}-page="${p}">${fmt(p)}</button>`)).join("")}
+    <button type="button" class="ops-page-btn" data-${pageKey}-page="${currentPage + 1}" ${end >= data.total ? "disabled" : ""} aria-label="Keyingi">${paginationChevron("right")}</button>
+  </div>`;
+}
+
 function opsFooter(data, pageKey) {
   const currentPage = Number(data.page || 1);
   const pageSize = Number(data.page_size || 20);
