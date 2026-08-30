@@ -1701,6 +1701,101 @@ function opsFilterField(label, control) {
   return `<label class="ops-field"><span class="ops-field-label">${label}</span>${control}</label>`;
 }
 
+// List pages were built over time, so older filters are still passed as bare
+// inputs/selects while newer pages use opsFilterField(). Normalize both shapes
+// here: one shared shell can then give every module the same labelled,
+// accessible filter experience without each page carrying presentation logic.
+const OPS_FILTER_LABELS = {
+  search: "Qidirish",
+  status: "Status",
+  risk: "Hujjatlar",
+  delivery: "Yetkazish muddati",
+  order_number: "Buyurtma raqami",
+  client_name: "Mijoz",
+  location_type: "Joylashuv",
+};
+
+function normalizeOpsFilters(filters = "") {
+  const template = document.createElement("template");
+  template.innerHTML = filters;
+  [...template.content.children].forEach((control) => {
+    if (control.matches(".ops-field, .inline-check")) return;
+    if (!control.matches("input, select, textarea")) return;
+    const name = control.getAttribute("name") || "";
+    const labelText = OPS_FILTER_LABELS[name]
+      || control.getAttribute("aria-label")
+      || control.querySelector?.("option")?.textContent
+      || "Filtr";
+    const wrapper = document.createElement("label");
+    wrapper.className = "ops-field";
+    const label = document.createElement("span");
+    label.className = "ops-field-label";
+    label.textContent = labelText;
+    control.replaceWith(wrapper);
+    wrapper.append(label, control);
+  });
+  return template.innerHTML;
+}
+
+function opsFilterParts(filters = "") {
+  const template = document.createElement("template");
+  template.innerHTML = normalizeOpsFilters(filters);
+  const fields = [...template.content.children];
+  const searchField = fields.find((field) => field.querySelector?.('[name="search"]'));
+  if (searchField) searchField.remove();
+  return {
+    search: searchField?.outerHTML || "",
+    advanced: template.innerHTML,
+    advancedFields: fields.filter((field) => field !== searchField),
+  };
+}
+
+function opsActiveFilterState(fields = []) {
+  const params = new URLSearchParams(location.search);
+  return fields.flatMap((field) => {
+    const control = field.querySelector?.("input, select, textarea");
+    const name = control?.name;
+    const value = name ? params.get(name) : "";
+    if (!name || !value) return [];
+    const label = field.querySelector?.(".ops-field-label")?.textContent?.trim()
+      || OPS_FILTER_LABELS[name]
+      || "Filtr";
+    let displayValue = value;
+    // Ro'yxatdan yoki belgilashdan olingan qiymat -- bizning o'z yorlig'imiz,
+    // shuning uchun u tarjima qilinadi. Matn maydoniga esa foydalanuvchi
+    // o'zi yozadi (nom, raqam, manzil): uni tarjimaga bermaymiz.
+    let translatable = false;
+    if (control.tagName === "SELECT") {
+      displayValue = [...control.options].find((option) => option.value === value)?.textContent || value;
+      translatable = true;
+    } else if (control.type === "checkbox") {
+      displayValue = field.textContent?.trim() || value;
+      translatable = true;
+    }
+    return [{ name, label, value: displayValue, translatable }];
+  });
+}
+
+function bindOpsFilterUi(root = app) {
+  root.querySelectorAll("[data-ops-filter-toggle]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const form = button.closest(".ops-search");
+      const panel = form?.querySelector(".ops-advanced-filters");
+      if (!panel) return;
+      panel.hidden = !panel.hidden;
+      button.setAttribute("aria-expanded", String(!panel.hidden));
+    });
+  });
+  root.querySelectorAll("[data-ops-remove-filter]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const params = new URLSearchParams(location.search);
+      params.delete(button.dataset.opsRemoveFilter);
+      params.delete("page");
+      navigate(`${location.pathname}${params.toString() ? `?${params}` : ""}`);
+    });
+  });
+}
+
 function subtitleLine(parts) {
   return parts
     .filter((part) => part && part.value !== null && part.value !== undefined && String(part.value) !== "")
@@ -2513,8 +2608,23 @@ function quantityDisplay(value, unit = "") {
   return value === null || value === undefined || value === "" ? dash : fmtQty(value, unit);
 }
 
-function opsListPage({ className = "", title, tabs = [], createPath, createLabel = "Yaratish", clearPath, counter = "", statCards = [], formId, filters = "", extraActions = "", beforeTable = "", headers = [], rows = "", emptyText = "Ma'lumot topilmadi.", colspan = headers.length, footer = "" }) {
-  return `<div class="page ops-page ${className}"><div class="ops-titlebar"><div class="ops-title-left"><h1>${title}</h1></div>${tabs.length ? `<nav class="ops-tabs" aria-label="${title} ko'rinishlari">${tabs.map((tab) => `<button class="${tab.active ? "active" : ""}" type="button" ${tab.path ? `data-nav="${tab.path}"` : ""}>${tab.label}</button>`).join("")}</nav>` : ""}</div>${statCards.length ? summaryCards(statCards.map((c) => [c.label, c.value, c.cls])) : ""}<div class="ops-commandbar"><div class="ops-command-left">${createPath ? `<button class="btn primary" data-nav="${createPath}">${createLabel}</button>` : ""}${clearPath ? `<button class="btn" type="button" data-nav="${clearPath}">Tozalash</button>` : ""}${counter ? `<span class="ops-counter">${counter}</span>` : ""}${extraActions}</div>${formId ? `<form class="ops-search" id="${formId}">${filters}<button class="ops-tool-btn primary" type="submit">Qidirish</button></form>` : ""}</div>${beforeTable}<section class="ops-table-card"><table class="ops-table"><thead><tr>${headers.map((head) => `<th>${head}</th>`).join("")}</tr></thead><tbody>${rows || `<tr><td colspan="${colspan}"><div class="empty">${emptyText}</div></td></tr>`}</tbody></table></section>${footer}</div>`;
+function opsListPage({ className = "", title, subtitle = "Ro'yxatdagi ma'lumotlarni boshqarish", tabs = [], createPath, createLabel = "Yangi qo'shish", clearPath, counter = "", statCards = [], formId, filters = "", extraActions = "", beforeTable = "", headers = [], rows = "", emptyText = "Ma'lumot topilmadi.", colspan = headers.length, footer = "" }) {
+  const filterParts = formId ? opsFilterParts(filters) : { search: "", advanced: "", advancedFields: [] };
+  const activeFilters = opsActiveFilterState(filterParts.advancedFields);
+  const filterCount = activeFilters.length
+    ? `<span class="ops-filter-count" data-noloc>${activeFilters.length}</span>`
+    : "";
+  const activeChips = activeFilters.map((filter) => `<button class="ops-active-filter" type="button" data-ops-remove-filter="${esc(filter.name)}" title="Filtrni olib tashlash"><span>${esc(filter.label)}</span>: <strong${filter.translatable ? "" : " data-noloc"}>${esc(filter.value)}</strong><span aria-hidden="true">×</span></button>`).join("");
+  const filterPanel = formId ? `<form class="ops-search" id="${formId}">
+    <div class="ops-search-main">
+      ${filterParts.search ? `<div class="ops-searchbox"><span class="ops-searchbox-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg></span>${filterParts.search}<kbd data-noloc>↵</kbd></div>` : ""}
+      ${filterParts.advanced ? `<button class="ops-filter-toggle" type="button" data-ops-filter-toggle aria-expanded="false"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 5h18M6 12h12M10 19h4"/></svg><span>Filter qo'shish</span>${filterCount}</button>` : ""}
+      <span class="ops-search-result">${counter}</span>
+    </div>
+    ${filterParts.advanced ? `<div class="ops-advanced-filters" hidden><div class="ops-filter-fields">${filterParts.advanced}</div><div class="ops-filter-actions">${clearPath ? `<button class="ops-filter-clear" type="button" data-nav="${clearPath}">Barchasini tozalash</button>` : ""}<button class="ops-tool-btn primary" type="submit">Qo'llash</button></div></div>` : ""}
+    ${(activeChips || (clearPath && new URLSearchParams(location.search).get("search"))) ? `<div class="ops-active-filters">${activeChips}${clearPath ? `<button class="ops-clear-all" type="button" data-nav="${clearPath}">Barchasini tozalash</button>` : ""}</div>` : ""}
+  </form>` : "";
+  return `<div class="page ops-page ${className}"><section class="ops-list-head"><div class="ops-list-heading"><div class="ops-title-left"><h1>${title}</h1>${counter ? `<span class="ops-title-count">${counter}</span>` : ""}</div>${subtitle ? `<p>${subtitle}</p>` : ""}</div><div class="ops-command-actions">${extraActions}${createPath ? `<button class="btn primary ops-create-btn" data-nav="${createPath}"><span aria-hidden="true">＋</span>${createLabel}</button>` : ""}</div></section>${tabs.length ? `<nav class="ops-tabs" aria-label="${title} ko'rinishlari">${tabs.map((tab) => `<button class="${tab.active ? "active" : ""}" type="button" ${tab.path ? `data-nav="${tab.path}"` : ""}>${tab.label}</button>`).join("")}</nav>` : ""}${statCards.length ? summaryCards(statCards.map((c) => [c.label, c.value, c.cls])) : ""}${filterPanel}${beforeTable}<section class="ops-table-card"><table class="ops-table"><thead><tr>${headers.map((head) => `<th>${head}</th>`).join("")}</tr></thead><tbody>${rows || `<tr><td colspan="${colspan}"><div class="empty">${emptyText}</div></td></tr>`}</tbody></table></section>${footer}</div>`;
 }
 
 function paginationChevron(direction) {

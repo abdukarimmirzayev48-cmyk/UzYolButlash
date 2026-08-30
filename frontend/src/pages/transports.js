@@ -270,15 +270,13 @@ function bindTransportForm(item = null) {
 async function renderTransportsList() {
   const params = new URLSearchParams(location.search);
   const data = await api(`/api/transports?${params.toString()}`);
-  const freeCount = data.items.filter((item) => item.status === "free").length;
-  const riskCount = data.items.filter((item) => item.readiness && (item.readiness.level === "expired" || item.readiness.level === "soon")).length;
   const editable = canEdit("yetkazib_berish");
   app.innerHTML = opsListPage({
     className: "transports-ops-page",
     title: "Transportlar",
     tabs: [{ label: "Partiyalar", path: "/delivery-batches" }, { label: "Logistika", path: "/logistics" }, { label: "Transportlar", active: true }, { label: "Hodisalar", path: "/transport-events" }, { label: "TO va ta'mir", path: "/transport-repairs" }, { label: "Xulosa", path: "/fleet-summary" }, { label: "Monitoring", path: "/transports/monitoring" }],
     clearPath: "/transports",
-    counter: `${fmt(data.total)} ta transport · ${fmt(freeCount)} ta bo'sh · ${fmt(riskCount)} tasida hujjat muddati`,
+    counter: `${fmt(data.total)} ta yozuv`,
     formId: "transport-search-form",
     filters: `${opsFilterField("Qidirish", `<input name="search" placeholder="Haydovchi, transport raqami" value="${esc(params.get("search") || "")}" />`)}${opsFilterField("Parkdagi holati", `<select name="status"><option value="">Barchasi</option>${transportStatuses.map(([key, label]) => `<option value="${key}" ${params.get("status") === key ? "selected" : ""}>${label}</option>`).join("")}</select>`)}${opsFilterField("Hujjatlar", `<select name="risk"><option value="">Barchasi</option>${transportRiskLevels.map(([key, label]) => `<option value="${key}" ${params.get("risk") === key ? "selected" : ""}>${label}</option>`).join("")}</select>`)}`,
     headers: ["Transport", "Haydovchi", "Tirkama", "Sig'im", "Hujjatlar", "TO gacha", "Parkdagi holati", ""],

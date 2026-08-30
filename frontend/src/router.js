@@ -212,6 +212,7 @@ async function render() {
     setupFormattedNumberInputs(app);
     setupFieldValidationMessages(app);
     bindSelectSearch(app);
+    bindOpsFilterUi(app);
     bindRuDateFields(app);
     scrollToHashTarget();
     document.querySelectorAll("[data-nav]").forEach((element) => {

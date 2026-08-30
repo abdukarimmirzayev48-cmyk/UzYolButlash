@@ -101,6 +101,7 @@ _REJECT = re.compile(
     r"|^[A-Z][A-Z0-9]*_[A-Z0-9_]*$"            # CONST_NAME (needs an underscore, so NB survives)
     r"|^[A-Za-z]+-[A-Z]"                       # header-ish: Content-Type
     r'|"'                                      # embedded double quote -> code fragment
+    r"|^[MmLlHhVvCcSsQqTtAaZz][\d\s.,+-]"       # SVG yo'l boshlanishi: «M3 5h18M6 12h12»
 )                                              # NB: single quotes are Uzbek (o', ta'til), never rejected
 _CODEY = set("[]{}=;`")  # "|" allowed: appears in real UI text
 
@@ -196,6 +197,30 @@ def load_english_keys() -> None:
         _ENGLISH_VALUES.add(value)
 
 
+# «input, select, textarea» va «figure img» -- querySelector argumentlari,
+# ekranda hech qachon ko'rinmaydi. Bo'laklarning bari HTML teg nomi bo'lsa,
+# bu selektor: o'zbekcha ibora bunday ko'rinmaydi, shuning uchun qoida tor.
+_HTML_TAGS = {
+    "a", "article", "aside", "b", "button", "canvas", "caption", "dialog",
+    "div", "em", "fieldset", "figure", "footer", "form", "h1", "h2", "h3",
+    "h4", "h5", "h6", "header", "i", "iframe", "img", "input", "kbd", "label",
+    "legend", "li", "main", "nav", "option", "p", "picture", "section",
+    "select", "small", "span", "strong", "svg", "table", "tbody", "td",
+    "textarea", "tfoot", "th", "thead", "tr", "ul", "video",
+}
+
+
+def is_selector_list(s: str) -> bool:
+    parts = [part for part in re.split(r"[,\s]+", s.strip()) if part]
+    if len(parts) > 1 and all(part in _HTML_TAGS for part in parts):
+        return True
+    # Yolg'iz katta harfli teg nomi -- `field.tagName === "SELECT"` kabi
+    # solishtiruv, ekranda ko'rinmaydi. Kichik harflisi allaqachon
+    # identifikator sifatida rad etiladi. Ikki harflilar chetda qoladi:
+    # yig'ilgan yon panel qisqartmalari (TR, NB) aynan shunday ko'rinadi.
+    return len(s) > 2 and s.isupper() and s.lower() in _HTML_TAGS
+
+
 def is_ui_text(s: str) -> bool:
     s = s.strip()
     if s in ALWAYS_INCLUDE:
@@ -219,6 +244,8 @@ def is_ui_text(s: str) -> bool:
     if "', '" in s or '", "' in s:
         return False
     if _REJECT.search(s):
+        return False
+    if is_selector_list(s):
         return False
     if is_css_class_list(s) or is_english_phrase(s):
         return False
