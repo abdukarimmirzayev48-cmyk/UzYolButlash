@@ -207,6 +207,16 @@ function bindRepairStatusActions(repair, rerender) {
   }));
 }
 
+// Ta'mir arizasi to'rt qadamda. Mavjud arizada holat tugmalari va xarajat
+// kartochkalari qadamlardan yuqorida qoladi: usta arizani ochib, avvalo uni
+// keyingi holatga o'tkazadi -- buning uchun to'rt qadamni varaqlash shart emas.
+const REPAIR_WIZARD_STEPS = [
+  { title: "Nosozlik" },
+  { title: "Turib qolish va ish" },
+  { title: "Ehtiyot qismlar" },
+  { title: "Tekshirish", onEnter: (form) => renderRepairSummary(form) },
+];
+
 async function renderRepairForm(id = null) {
   app.innerHTML = `<div class="page"><div class="empty">Yuklanmoqda...</div></div>`;
   const params = new URLSearchParams(location.search);
@@ -222,26 +232,9 @@ async function renderRepairForm(id = null) {
   const parts = repair?.parts?.length ? repair.parts : [{}];
   const localInput = (value) => (value ? String(value).slice(0, 16) : "");
 
-  app.innerHTML = `<div class="page">
-    ${workflowHeader({
-      title: repair ? repair.repair_number : "Yangi ariza",
-      subtitle: subtitleLine([
-        { value: repair?.transport?.vehicle_number, raw: true },
-        { value: optionLabel(repairCategories, repair?.category) },
-        { value: optionLabel(repairStatuses, repair?.status) },
-      ]),
-      backPath: "/transport-repairs",
-    })}
-    ${repair ? summaryCards([
-      ["Turib qolish", repairHours(repair.downtime_hours)],
-      ["Ehtiyot qismlar", fmtMoney(repair.parts_amount)],
-      ["Ish haqi", fmtMoney(repair.labour_cost)],
-      ["Jami xarajat", fmtMoney(repair.total_amount)],
-    ]) : ""}
-    ${repair && editable ? repairTransitionsHtml(repair) : ""}
-    <form id="repair-form">
-      ${section("Nosozlik", `<div class="grid">
-        <label><span class="field-label-text">Mashina</span><select name="transport_id" required ${repair ? "disabled" : ""}><option value="">Mashinani tanlang</option>${vehicleOptions}</select></label>
+  const bodies = [
+    `${section("Nosozlik", `<div class="grid">
+        <label><span class="field-label-text">Mashina <span class="required-mark">*</span></span><select name="transport_id" required ${repair ? "disabled" : ""}><option value="">Mashinani tanlang</option>${vehicleOptions}</select></label>
         ${textField("opened_at", "Ochilgan vaqti", localInput(repair?.opened_at) || new Date().toISOString().slice(0, 16), "datetime-local", { required: true })}
         ${selectField("category", "Kategoriya", repairCategories, repair?.category || "other")}
         ${selectField("severity", "Kritikligi", repairSeverities, repair?.severity || "medium")}
@@ -250,12 +243,13 @@ async function renderRepairForm(id = null) {
         ${selectField("can_move", "Mashina yura oladimi", [["1", "Ha"], ["0", "Yo'q"]], repair && repair.can_move === false ? "0" : "1")}
         ${textField("odometer_km", "Odometr (km)", repair?.odometer_km ?? "", "number")}
       </div>${textArea("description", "Nosozlik tavsifi", repair?.description || "")}
-      <p class="form-hint">Mashina yura olmasa, uning holati «Ta'mirda» ga o'tadi va unga reys berib bo'lmaydi.</p>`)}
-      ${section("Turib qolish", `<div class="grid">
+      <p class="form-hint">Mashina yura olmasa, uning holati «Ta'mirda» ga o'tadi va unga reys berib bo'lmaydi.</p>`)}`,
+
+    `${section("Turib qolish", `<div class="grid">
         ${textField("downtime_started_at", "Turib qolish boshlandi", localInput(repair?.downtime_started_at), "datetime-local")}
         ${textField("downtime_finished_at", "Turib qolish tugadi", localInput(repair?.downtime_finished_at), "datetime-local")}
       </div><p class="form-hint">Tugagani yozilmasa, soat hozirgacha hisoblanadi. Ariza yopilganda u avtomatik yopiladi.</p>`)}
-      ${section("Bajarilgan ish", `<div class="grid">
+     ${section("Bajarilgan ish", `<div class="grid">
         ${textField("repair_place", "Ta'mir joyi", repair?.repair_place || "")}
         ${textField("contractor", "Pudratchi / usta", repair?.contractor || "")}
         ${textField("act_number", "Akt / zakaz-naryad", repair?.act_number || "")}
@@ -264,16 +258,34 @@ async function renderRepairForm(id = null) {
         ${textField("responsible_name", "Mas'ul", repair?.responsible_name || "")}
         ${textField("delay_reason", "Kechikish sababi", repair?.delay_reason || "")}
       </div>${textArea("work_done", "Bajarilgan ishlar", repair?.work_done || "")}${textArea("result", "Natija", repair?.result || "")}
-      <p class="form-hint">Natija yozilmaguncha ariza yopilmaydi.</p>`)}
-      ${section("Ehtiyot qismlar va materiallar", `<div id="repair-parts">${parts.map((part, index) => repairPartRow(part, index)).join("")}</div>
-      <button class="btn" type="button" id="repair-add-part">Qator qo'shish</button>`)}
-      ${section("Izoh", textArea("note", "Izoh", repair?.note || ""))}
-      <div class="form-footer">
-        <button class="btn" type="button" data-nav="/transport-repairs">Bekor qilish</button>
-        ${editable ? `<button class="btn primary" type="submit">Saqlash</button>` : ""}
-      </div>
-    </form>
-  </div>`;
+      <p class="form-hint">Natija yozilmaguncha ariza yopilmaydi.</p>`)}`,
+
+    `${section("Ehtiyot qismlar va materiallar", `<div id="repair-parts">${parts.map((part, index) => repairPartRow(part, index)).join("")}</div>
+      <button class="btn" type="button" id="repair-add-part">Qator qo'shish</button>`)}`,
+
+    `${section("Ariza xulosasi", `<div data-repair-summary></div>`)}
+     ${section("Izoh", textArea("note", "Izoh", repair?.note || ""))}`,
+  ];
+
+  app.innerHTML = wizardPage({
+    formId: "repair-form",
+    title: repair ? repair.repair_number : "Yangi ariza",
+    subtitle: repair
+      ? [repair.transport?.vehicle_number, optionLabel(repairCategories, repair.category), optionLabel(repairStatuses, repair.status)].filter(Boolean).join(" · ")
+      : "Mashinadagi nosozlik yoki navbatdagi texnik ko'rikni qayd eting",
+    breadcrumb: [["TO va ta'mir", "/transport-repairs"], [repair ? "Tahrirlash" : "Yangi ariza", ""]],
+    closePath: "/transport-repairs",
+    beforeSteps: repair ? `${summaryCards([
+      ["Turib qolish", repairHours(repair.downtime_hours)],
+      ["Ehtiyot qismlar", fmtMoney(repair.parts_amount)],
+      ["Ish haqi", fmtMoney(repair.labour_cost)],
+      ["Jami xarajat", fmtMoney(repair.total_amount)],
+    ])}${editable ? repairTransitionsHtml(repair) : ""}` : "",
+    steps: REPAIR_WIZARD_STEPS.map((step, index) => ({ ...step, body: bodies[index] })),
+    submitLabel: repair ? "Saqlash" : "Ariza ochish",
+    canSubmit: editable,
+    withDraft: !repair,
+  });
 
   const rerender = () => renderRepairForm(id);
   if (repair && editable) bindRepairStatusActions(repair, rerender);
@@ -288,51 +300,92 @@ async function renderRepairForm(id = null) {
     if (partsHolder.children.length > 1) event.target.closest("[data-repair-part-row]").remove();
   });
 
-  document.querySelector("#repair-form")?.addEventListener("submit", async (event) => {
-    event.preventDefault();
-    const form = event.currentTarget;
-    const payload = {
-      opened_at: field(form, "opened_at"),
-      category: field(form, "category"),
-      severity: field(form, "severity"),
-      source: field(form, "source"),
-      breakdown_location: field(form, "breakdown_location"),
-      can_move: field(form, "can_move") !== "0",
-      odometer_km: field(form, "odometer_km"),
-      description: field(form, "description"),
-      downtime_started_at: field(form, "downtime_started_at"),
-      downtime_finished_at: field(form, "downtime_finished_at"),
-      repair_place: field(form, "repair_place"),
-      contractor: field(form, "contractor"),
-      act_number: field(form, "act_number"),
-      document_url: field(form, "document_url"),
-      labour_cost: field(form, "labour_cost"),
-      responsible_name: field(form, "responsible_name"),
-      delay_reason: field(form, "delay_reason"),
-      work_done: field(form, "work_done"),
-      result: field(form, "result"),
-      note: field(form, "note"),
-      parts: collectRepairParts(form),
-    };
-    try {
-      if (repair) {
-        await api(`/api/transports/repairs/${repair.id}`, { method: "PATCH", body: JSON.stringify(payload) });
-        showToast("Ariza saqlandi.");
-        await renderRepairForm(repair.id);
-      } else {
-        const transportId = field(form, "transport_id");
-        if (!transportId) return showToast("Mashinani tanlang.", true);
-        const saved = await api("/api/transports/repairs", {
-          method: "POST",
-          body: JSON.stringify({ ...payload, transport_id: Number(transportId) }),
-        });
-        showToast("Ariza ochildi.");
-        navigate(`/transport-repairs/${saved.id}`);
+  const wizard = bindWizard("repair-form", {
+    steps: REPAIR_WIZARD_STEPS,
+    draftKey: repair ? "" : "transport-repair",
+    // Mavjud arizada barcha qadamlar ochiq: usta bitta maydonni to'ldirish
+    // uchun boshidan varaqlab o'tirmaydi.
+    unlocked: Boolean(repair),
+    prepareDraft: async (values) => {
+      // Qism qatorlari indeksli nom bilan saqlanadi (`part_name_0`), shuning
+      // uchun qatorlar soni nomlardan sanaladi.
+      const rows = Object.keys(values).filter((name) => /^part_name_\d+$/.test(name)).length;
+      if (partsHolder && rows) {
+        partsHolder.innerHTML = Array.from({ length: rows }, (unused, index) => repairPartRow({}, index)).join("");
+        localizeDom(partsHolder);
       }
-    } catch (error) {
-      showToast(error.message, true);
-    }
+    },
+    onSubmit: async (form) => {
+      const payload = {
+        opened_at: field(form, "opened_at"),
+        category: field(form, "category"),
+        severity: field(form, "severity"),
+        source: field(form, "source"),
+        breakdown_location: field(form, "breakdown_location"),
+        can_move: field(form, "can_move") !== "0",
+        odometer_km: field(form, "odometer_km"),
+        description: field(form, "description"),
+        downtime_started_at: field(form, "downtime_started_at"),
+        downtime_finished_at: field(form, "downtime_finished_at"),
+        repair_place: field(form, "repair_place"),
+        contractor: field(form, "contractor"),
+        act_number: field(form, "act_number"),
+        document_url: field(form, "document_url"),
+        labour_cost: field(form, "labour_cost"),
+        responsible_name: field(form, "responsible_name"),
+        delay_reason: field(form, "delay_reason"),
+        work_done: field(form, "work_done"),
+        result: field(form, "result"),
+        note: field(form, "note"),
+        parts: collectRepairParts(form),
+      };
+      try {
+        if (repair) {
+          await api(`/api/transports/repairs/${repair.id}`, { method: "PATCH", body: JSON.stringify(payload) });
+          showToast("Ariza saqlandi.");
+          await renderRepairForm(repair.id);
+        } else {
+          const transportId = field(form, "transport_id");
+          if (!transportId) return showToast("Mashinani tanlang.", true);
+          const saved = await api("/api/transports/repairs", {
+            method: "POST",
+            body: JSON.stringify({ ...payload, transport_id: Number(transportId) }),
+          });
+          wizard?.clearDraft();
+          showToast("Ariza ochildi.");
+          navigate(`/transport-repairs/${saved.id}`);
+        }
+      } catch (error) {
+        showToast(error.message, true);
+      }
+    },
   });
+  if (!repair) wizard?.restoreDraft();
+}
+
+// Oxirgi qadam: ariza yopilishidan oldin nima yozilgani bir ekranda.
+function renderRepairSummary(form) {
+  const holder = form.querySelector("[data-repair-summary]");
+  if (!holder) return;
+  const text = (name) => (form.elements[name]?.value || "").trim();
+  const choice = (name) => (form.elements[name]?.selectedOptions?.[0]?.textContent || "").trim();
+  const row = (label, value) => `<div class="detail-item"><span>${label}</span><strong data-noloc>${esc(value || dash)}</strong></div>`;
+  const parts = collectRepairParts(form);
+  const partsTotal = parts.reduce((sum, part) => sum + numberValue(part.quantity) * numberValue(part.unit_price), 0);
+  holder.innerHTML = `<div class="detail-list">
+      ${row("Mashina", choice("transport_id"))}
+      ${row("Kategoriya", choice("category"))}
+      ${row("Kritikligi", choice("severity"))}
+      ${row("Ariza manbasi", choice("source"))}
+      ${row("Mashina yura oladimi", choice("can_move"))}
+      ${row("Ta'mir joyi", text("repair_place"))}
+      ${row("Pudratchi / usta", text("contractor"))}
+      ${row("Ehtiyot qismlar soni", String(parts.length))}
+      ${row("Ehtiyot qismlar summasi", fmtMoney(partsTotal))}
+      ${row("Ish haqi va boshqa xarajat", fmtMoney(numberValue(text("labour_cost"))))}
+    </div>
+    ${text("result") ? "" : `<div class="empty warning">Natija yozilmagan. Natijasiz ariza yopilmaydi.</div>`}`;
+  localizeDom(holder);
 }
 
 // ---- Park bo'yicha davr xulosasi ----

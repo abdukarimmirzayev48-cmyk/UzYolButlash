@@ -365,6 +365,18 @@ function drawLargePointsMap(points) {
   if (markers.length > 1) largePointsMap.fitBounds(L.featureGroup(markers).getBounds(), { padding: [40, 40] });
 }
 
+// ABZ nuqtasi to'rt qadamda kiritiladi. Ikkinchi qadam -- joylashuv --
+// xaritadan belgilanadi: koordinatani qo'lda ko'chirishda yo'l qo'yilgan
+// xato faqat haydovchi nuqtani qidirayotganda bilinadi.
+const POINT_WIZARD_STEPS = [
+  { title: "Asosiy ma'lumotlar" },
+  { title: "Joylashuv" },
+  { title: "Mas'ul shaxs" },
+  { title: "Tekshirish", onEnter: (form) => renderPointSummary(form) },
+];
+
+let pointMapPicker = null;
+
 async function renderDeliveryPointForm(id = null) {
   app.innerHTML = `<div class="page"><div class="empty">Yuklanmoqda...</div></div>`;
   const [point, clients] = await Promise.all([
@@ -373,23 +385,13 @@ async function renderDeliveryPointForm(id = null) {
   ]);
   await loadGeoRegions();
   const editable = canEdit("sotuv");
+  const isNew = !id;
   const clientOptions = clients
     .map((client) => `<option value="${client.id}" ${Number(point.client_id) === client.id ? "selected" : ""}>${esc(client.name)}${client.inn ? ` - ${esc(client.inn)}` : ""}</option>`)
     .join("");
 
-  app.innerHTML = `<div class="page">
-    ${workflowHeader({
-      title: id ? point.name : "Yangi nuqta",
-      subtitle: subtitleLine([
-        { value: optionLabel(deliveryPointTypes, point.point_type || "abz") },
-        { value: optionLabel(deliveryPointStatuses, point.status || "active") },
-        { value: point.full_address, raw: true },
-      ]),
-      backPath: "/delivery-points",
-    })}
-    ${id && point.map_url ? `<div class="toolbar"><a class="btn" target="_blank" rel="noopener" href="${esc(point.map_url)}">Xaritada ochish</a></div>` : ""}
-    <form id="delivery-point-form">
-      ${section("Nuqta", `<div class="grid">
+  const bodies = [
+    `${section("Nuqta", `<div class="grid">
         ${textField("name", "Nuqta nomi", point.name || "", "text", { required: true, maxlength: 255 })}
         ${textField("code", "Kodi", point.code || "", "text", { maxlength: 64 })}
         ${selectField("point_type", "Turi", deliveryPointTypes, point.point_type || "abz")}
@@ -397,71 +399,107 @@ async function renderDeliveryPointForm(id = null) {
         ${selectField("status", "Holati", deliveryPointStatuses, point.status || "active")}
         ${textField("daily_capacity_tons", "Kunlik quvvati, t/kun", point.daily_capacity_tons ?? "", "number")}
         ${textField("tank_capacity_tons", "Sisterna sig'imi, t", point.tank_capacity_tons ?? "", "number")}
-      </div>`)}
-      ${section("Manzil", `<div class="grid">
+      </div>`)}`,
+
+    `${section("Manzil", `<div class="grid">
         ${geoRegionField(point.region || "")}
         ${geoDistrictField(point.region || "", point.district || "")}
         ${textArea("address", "To'liq manzil", point.address || "")}
       </div>`)}
-      ${section("GPS koordinatasi", `<div class="grid">
-        ${textField("latitude", "Kenglik", point.latitude || "", "text", { maxlength: 64, inputmode: "decimal", placeholder: "41.311081", title: "Masalan: 41.311081" })}
-        ${textField("longitude", "Uzunlik", point.longitude || "", "text", { maxlength: 64, inputmode: "decimal", placeholder: "69.240562", title: "Masalan: 69.240562" })}
-      </div><div class="form-hint">Koordinatani xaritadan nusxalab qo'ying. Haydovchi uni telefonida ochadi.</div>`)}
-      ${section("Mas'ul shaxs", `<div class="grid">
+     ${section("Xaritadagi joyi", mapPickerField(point.latitude || "", point.longitude || "", {
+       hint: "Nuqtani xaritadan belgilang yoki manzilni qidiring. Xaritadagi belgi to'liq manzilga mos bo'lishi kerak.",
+     }))}`,
+
+    `${section("Mas'ul shaxs", `<div class="grid">
         ${textField("responsible_name", "F.I.Sh.", point.responsible_name || "")}
         ${textField("responsible_position", "Lavozimi", point.responsible_position || "")}
         ${textField("responsible_phone", "Telefon", point.responsible_phone || "", "text", { maxlength: 64 })}
         ${textField("responsible_email", "Email", point.responsible_email || "", "email")}
         ${textField("working_hours", "Ish vaqti", point.working_hours || "", "text", { maxlength: 255 })}
-      </div>`)}
-      ${section("Izoh", textArea("notes", "Izoh", point.notes || ""))}
-      <div class="form-footer">
-        <button type="button" class="btn" data-nav="/delivery-points">Bekor qilish</button>
-        ${editable ? `<button class="btn primary" type="submit">${id ? "Saqlash" : "Nuqta qo'shish"}</button>` : ""}
-      </div>
-    </form>
-  </div>`;
+      </div>`)}`,
+
+    `${section("Nuqta xulosasi", `<div data-point-summary></div>`)}
+     ${section("Izoh", textArea("notes", "Izoh", point.notes || ""))}`,
+  ];
+
+  app.innerHTML = wizardPage({
+    formId: "delivery-point-form",
+    title: id ? point.name : "Yangi ABZ",
+    subtitle: id
+      ? [optionLabel(deliveryPointTypes, point.point_type || "abz"), point.full_address].filter(Boolean).join(" · ")
+      : "Yangi asfalt-beton zavodi ma'lumotlarini kiriting",
+    breadcrumb: [["ABZ nuqtalari", "/delivery-points"], [id ? "Tahrirlash" : "Yangi ABZ", ""]],
+    // Tahrirlash yo'li ham `/delivery-points/{id}`, ya'ni nuqtaning alohida
+    // kartochkasi yo'q. Shuning uchun «Yopish» har doim ro'yxatga qaytaradi.
+    closePath: "/delivery-points",
+    steps: POINT_WIZARD_STEPS.map((step, index) => ({ ...step, body: bodies[index] })),
+    submitLabel: id ? "Saqlash" : "Nuqta qo'shish",
+    canSubmit: editable,
+    withDraft: isNew,
+  });
 
   bindGeoFields(app);
   bindSelectSearch(app);
-  document.querySelector("#delivery-point-form")?.addEventListener("submit", async (event) => {
-    event.preventDefault();
-    const form = event.currentTarget;
-    const clientId = field(form, "client_id");
-    const payload = {
-      name: field(form, "name"),
-      code: field(form, "code"),
-      point_type: field(form, "point_type"),
-      client_id: clientId ? Number(clientId) : null,
-      status: field(form, "status") || "active",
-      daily_capacity_tons: field(form, "daily_capacity_tons"),
-      tank_capacity_tons: field(form, "tank_capacity_tons"),
-      region: field(form, "region"),
-      district: field(form, "district"),
-      address: field(form, "address"),
-      latitude: field(form, "latitude"),
-      longitude: field(form, "longitude"),
-      responsible_name: field(form, "responsible_name"),
-      responsible_position: field(form, "responsible_position"),
-      responsible_phone: field(form, "responsible_phone"),
-      responsible_email: field(form, "responsible_email"),
-      working_hours: field(form, "working_hours"),
-      notes: field(form, "notes"),
-    };
-    try {
-      if (id) {
-        await api(`/api/delivery-points/${id}`, { method: "PATCH", body: JSON.stringify(payload) });
-        showToast("Nuqta saqlandi.");
-        await renderDeliveryPointForm(id);
-      } else {
-        const saved = await api("/api/delivery-points", { method: "POST", body: JSON.stringify(payload) });
-        showToast("Nuqta qo'shildi.");
-        navigate(`/delivery-points/${saved.id}`);
+  pointMapPicker = bindMapPicker(app);
+
+  const wizard = bindWizard("delivery-point-form", {
+    steps: POINT_WIZARD_STEPS.map((step, index) => (index === 1
+      // Xarita yashirin bo'lganda o'lchamini bilmaydi va kulrang bo'lib
+      // qoladi. Shuning uchun u qadam ochilganda yaratiladi.
+      ? { ...step, onEnter: () => pointMapPicker?.ensureMap() }
+      : step)),
+    draftKey: id ? "" : "delivery-point",
+    unlocked: Boolean(id),
+    prepareDraft: async (values) => {
+      // Tuman ro'yxati viloyatga bog'liq: viloyat oldin qo'yilmasa,
+      // qoralamadagi tuman variantlar orasida bo'lmaydi va yo'qoladi.
+      const region = values.region?.[0];
+      const form = app.querySelector("#delivery-point-form");
+      if (region && form?.elements.region) {
+        form.elements.region.value = region;
+        form.elements.region.dispatchEvent(new Event("change", { bubbles: true }));
+        await Promise.resolve();
       }
-    } catch (error) {
-      showToast(error.message, true);
-    }
+    },
+    onSubmit: async (form) => {
+      const clientId = field(form, "client_id");
+      const payload = {
+        name: field(form, "name"),
+        code: field(form, "code"),
+        point_type: field(form, "point_type"),
+        client_id: clientId ? Number(clientId) : null,
+        status: field(form, "status") || "active",
+        daily_capacity_tons: field(form, "daily_capacity_tons"),
+        tank_capacity_tons: field(form, "tank_capacity_tons"),
+        region: field(form, "region"),
+        district: field(form, "district"),
+        address: field(form, "address"),
+        latitude: field(form, "latitude"),
+        longitude: field(form, "longitude"),
+        responsible_name: field(form, "responsible_name"),
+        responsible_position: field(form, "responsible_position"),
+        responsible_phone: field(form, "responsible_phone"),
+        responsible_email: field(form, "responsible_email"),
+        working_hours: field(form, "working_hours"),
+        notes: field(form, "notes"),
+      };
+      try {
+        if (id) {
+          await api(`/api/delivery-points/${id}`, { method: "PATCH", body: JSON.stringify(payload) });
+          showToast("Nuqta saqlandi.");
+          await renderDeliveryPointForm(id);
+        } else {
+          const saved = await api("/api/delivery-points", { method: "POST", body: JSON.stringify(payload) });
+          wizard?.clearDraft();
+          showToast("Nuqta qo'shildi.");
+          navigate(`/delivery-points/${saved.id}`);
+        }
+      } catch (error) {
+        showToast(error.message, true);
+      }
+    },
   });
+  if (!id) wizard?.restoreDraft();
 }
 
 // Boshqa bo'limlardagi tanlash ro'yxati. Faqat faol nuqtalar ko'rsatiladi:
@@ -491,4 +529,31 @@ function deliveryPointDetail(point) {
   if (!point) return null;
   const contact = [point.responsible_name, point.responsible_phone].filter(Boolean).join(", ");
   return [point.name, point.full_address, contact].filter(Boolean).join(" · ");
+}
+
+// Oxirgi qadam: yaratishdan oldin hammasi bir ekranda. Qiymatlar formadagi
+// ko'rinishidan olinadi, ya'ni allaqachon tarjima qilingan -- `data-noloc`
+// ularni ikkinchi marta o'girilishdan saqlaydi.
+function renderPointSummary(form) {
+  const holder = form.querySelector("[data-point-summary]");
+  if (!holder) return;
+  const text = (name) => (form.elements[name]?.value || "").trim();
+  const choice = (name) => (form.elements[name]?.selectedOptions?.[0]?.textContent || "").trim();
+  const row = (label, value) => `<div class="detail-item"><span>${label}</span><strong data-noloc>${esc(value || dash)}</strong></div>`;
+  const address = [text("region"), text("district"), text("address")].filter(Boolean).join(", ");
+  const point = text("latitude") && text("longitude") ? `${text("latitude")}, ${text("longitude")}` : "";
+  holder.innerHTML = `<div class="detail-list">
+      ${row("Nuqta nomi", text("name"))}
+      ${row("Kodi", text("code"))}
+      ${row("Turi", choice("point_type"))}
+      ${row("Mijoz", choice("client_id"))}
+      ${row("Holati", choice("status"))}
+      ${row("To'liq manzil", address)}
+      ${row("Koordinata", point)}
+      ${row("Kunlik quvvati", text("daily_capacity_tons"))}
+      ${row("Mas'ul shaxs", text("responsible_name"))}
+      ${row("Telefon", text("responsible_phone"))}
+    </div>
+    ${point ? "" : `<div class="empty warning">Koordinata belgilanmagan. Haydovchi nuqtani telefonida topa olmaydi.</div>`}`;
+  localizeDom(holder);
 }

@@ -2981,3 +2981,212 @@ function markWizardFields(pane) {
   if (!pane) return;
   wizardStepControls(pane).forEach(markWizardField);
 }
+
+// ---- Xaritadan nuqta tanlash --------------------------------------------
+//
+// Koordinatani qo'lda ko'chirib yozish xatoga olib keladi va xato yo'lda,
+// haydovchi nuqtani qidirayotganda bilinadi. Shuning uchun nuqta xaritadan
+// belgilanadi, qo'lda kiritish esa zaxira yo'l bo'lib qoladi.
+//
+// Haqiqiy forma maydonlari -- `latitude` va `longitude` -- qo'lda kiritish
+// bo'limi ichida turadi. Xaritaga bosilganda ularning qiymati yoziladi,
+// ya'ni forma jo'natilishi xarita ishlaganiga bog'liq emas.
+
+const MAP_PICKER_CENTER = [41.3, 64.6];
+const MAP_PICKER_ZOOM = 6;
+const MAP_PICKER_PIN_ZOOM = 15;
+// Nominatim qoidasi: sekundiga bittadan ko'p so'rov yubormaslik. Shuning
+// uchun qidiruv yozayotganda emas, faqat Enter yoki tugma bosilganda
+// ishlaydi va oldingisi tugamaguncha yangisi yuborilmaydi.
+const GEOCODER_URL = "https://nominatim.openstreetmap.org/search";
+const GEOCODER_MIN_LENGTH = 3;
+
+const MSG_GEOCODER_EMPTY = "Bunday manzil topilmadi";
+const MSG_GEOCODER_FAILED = "Manzil qidiruvi ishlamadi. Nuqtani xaritadan belgilang";
+const MSG_GEOLOCATION_OFF = "Brauzer joylashuvni bermadi. Nuqtani xaritadan belgilang";
+
+function mapPickerField(latitude = "", longitude = "", { hint = "" } = {}) {
+  const hasPoint = Boolean(latitude && longitude);
+  return `<div class="map-picker" data-map-picker>
+    <div class="map-picker-canvas">
+      <div class="map-picker-search">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg>
+        <input type="search" data-map-search placeholder="Xaritadan manzil qidiring" autocomplete="off" />
+      </div>
+      <div class="map-picker-map" data-map-canvas></div>
+      <button type="button" class="btn map-picker-locate" data-map-locate>
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="3"/><circle cx="12" cy="12" r="8"/><path d="M12 1v3M12 20v3M1 12h3M20 12h3"/></svg>
+        <span>Joriy joylashuv</span>
+      </button>
+      <ul class="map-picker-results" data-map-results hidden></ul>
+    </div>
+    <div class="map-picker-coords">
+      <div class="map-picker-coord ${hasPoint ? "filled" : ""}" data-map-coord="lat"><span>Kenglik</span><strong data-noloc>${esc(latitude || dash)}</strong></div>
+      <div class="map-picker-coord ${hasPoint ? "filled" : ""}" data-map-coord="lng"><span>Uzunlik</span><strong data-noloc>${esc(longitude || dash)}</strong></div>
+    </div>
+    <details class="map-picker-manual"${hasPoint ? "" : ""}>
+      <summary>GPS ma'lumotlarini qo'lda kiritish</summary>
+      <div class="grid">
+        ${textField("latitude", "Kenglik", latitude, "text", { maxlength: 64, inputmode: "decimal", placeholder: "41.311081", title: "Masalan: 41.311081" })}
+        ${textField("longitude", "Uzunlik", longitude, "text", { maxlength: 64, inputmode: "decimal", placeholder: "69.240562", title: "Masalan: 69.240562" })}
+      </div>
+    </details>
+    ${hint ? `<p class="form-hint">${hint}</p>` : ""}
+  </div>`;
+}
+
+// Koordinata olti kasrgacha qoldiriladi: bu taxminan 10 sm aniqlik, undan
+// ortig'i xaritadan olinganda ham ma'nosiz uzun raqam bo'lib qoladi.
+// Leaflet ning standart belgisi tashqi PNG so'raydi -- kutubxonadan faqat JS
+// va CSS ko'chirilgani uchun u 404 bo'lardi va belgi ko'rinmasdi. Ichki SVG
+// hech narsa yuklamaydi va ro'yxatdagi belgi bilan bir xil ko'rinadi.
+function mapPickerPin() {
+  return L.divIcon({
+    className: "map-pin",
+    html: `<svg viewBox="0 0 24 24" width="30" height="30" fill="#176b5b" stroke="#ffffff" stroke-width="1.4">
+      <path d="M12 2c-3.9 0-7 3.1-7 7 0 5.2 7 13 7 13s7-7.8 7-13c0-3.9-3.1-7-7-7z"/>
+      <circle cx="12" cy="9" r="2.6" fill="#ffffff" stroke="none"/>
+    </svg>`,
+    iconSize: [30, 30],
+    iconAnchor: [15, 30],
+  });
+}
+
+function trimCoordinate(value) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number.toFixed(6) : "";
+}
+
+function bindMapPicker(root = app) {
+  const holder = root.querySelector?.("[data-map-picker]");
+  if (!holder || typeof L === "undefined") return null;
+  const canvas = holder.querySelector("[data-map-canvas]");
+  const latInput = holder.querySelector('[name="latitude"]');
+  const lngInput = holder.querySelector('[name="longitude"]');
+  const results = holder.querySelector("[data-map-results]");
+  const searchInput = holder.querySelector("[data-map-search]");
+  let map = null;
+  let marker = null;
+  let searching = false;
+
+  function currentPoint() {
+    const lat = Number(latInput?.value);
+    const lng = Number(lngInput?.value);
+    return Number.isFinite(lat) && Number.isFinite(lng) && latInput.value && lngInput.value ? [lat, lng] : null;
+  }
+
+  function showCoordinates() {
+    const point = currentPoint();
+    holder.querySelectorAll("[data-map-coord]").forEach((box) => {
+      const which = box.getAttribute("data-map-coord");
+      box.classList.toggle("filled", Boolean(point));
+      box.querySelector("strong").textContent = point ? (which === "lat" ? latInput.value : lngInput.value) : dash;
+    });
+  }
+
+  function place(lat, lng, { fly = true } = {}) {
+    const latText = trimCoordinate(lat);
+    const lngText = trimCoordinate(lng);
+    if (!latText || !lngText) return;
+    if (latInput) latInput.value = latText;
+    if (lngInput) lngInput.value = lngText;
+    if (!marker) {
+      marker = L.marker([lat, lng], { draggable: true, icon: mapPickerPin() }).addTo(map);
+      marker.on("dragend", () => {
+        const position = marker.getLatLng();
+        place(position.lat, position.lng, { fly: false });
+      });
+    } else {
+      marker.setLatLng([lat, lng]);
+    }
+    if (fly) map.setView([lat, lng], Math.max(map.getZoom(), MAP_PICKER_PIN_ZOOM));
+    showCoordinates();
+    latInput?.dispatchEvent(new Event("input", { bubbles: true }));
+  }
+
+  function ensureMap() {
+    if (map) {
+      map.invalidateSize();
+      return map;
+    }
+    const point = currentPoint();
+    // Masshtab tugmalari o'ng tomonda: chap yuqorida ular qidiruv qatori
+    // ostida qolib ketadi.
+    map = L.map(canvas, { scrollWheelZoom: false, zoomControl: false }).setView(point || MAP_PICKER_CENTER, point ? MAP_PICKER_PIN_ZOOM : MAP_PICKER_ZOOM);
+    L.control.zoom({ position: "topright" }).addTo(map);
+    L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, attribution: "&copy; OpenStreetMap" }).addTo(map);
+    map.on("click", (event) => place(event.latlng.lat, event.latlng.lng, { fly: false }));
+    if (point) place(point[0], point[1]);
+    return map;
+  }
+
+  function hideResults() {
+    if (!results) return;
+    results.hidden = true;
+    results.innerHTML = "";
+  }
+
+  async function search() {
+    const query = (searchInput?.value || "").trim();
+    if (searching || query.length < GEOCODER_MIN_LENGTH) return;
+    searching = true;
+    try {
+      const url = `${GEOCODER_URL}?format=jsonv2&limit=5&countrycodes=uz&accept-language=uz&q=${encodeURIComponent(query)}`;
+      const response = await fetch(url, { headers: { Accept: "application/json" } });
+      if (!response.ok) throw new Error(MSG_GEOCODER_FAILED);
+      const rows = await response.json();
+      if (!rows.length) {
+        hideResults();
+        showToast(MSG_GEOCODER_EMPTY, true);
+        return;
+      }
+      results.innerHTML = rows
+        .map((row) => `<li><button type="button" data-map-result data-lat="${esc(row.lat)}" data-lng="${esc(row.lon)}"><span data-noloc>${esc(row.display_name)}</span></button></li>`)
+        .join("");
+      results.hidden = false;
+    } catch (error) {
+      hideResults();
+      showToast(MSG_GEOCODER_FAILED, true);
+    } finally {
+      searching = false;
+    }
+  }
+
+  searchInput?.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter") return;
+    // Forma jo'natilib ketmasin: bu qidiruv, saqlash emas.
+    event.preventDefault();
+    search();
+  });
+  searchInput?.addEventListener("search", () => { if (!searchInput.value.trim()) hideResults(); });
+
+  results?.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-map-result]");
+    if (!button) return;
+    place(Number(button.getAttribute("data-lat")), Number(button.getAttribute("data-lng")));
+    hideResults();
+  });
+
+  holder.querySelector("[data-map-locate]")?.addEventListener("click", () => {
+    if (!navigator.geolocation) {
+      showToast(MSG_GEOLOCATION_OFF, true);
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(
+      (position) => place(position.coords.latitude, position.coords.longitude),
+      () => showToast(MSG_GEOLOCATION_OFF, true),
+      { enableHighAccuracy: true, timeout: 10000 },
+    );
+  });
+
+  // Qo'lda yozilgan koordinata ham xaritada ko'rinsin -- xodim yozganini
+  // darhol tekshira oladi.
+  [latInput, lngInput].forEach((input) => input?.addEventListener("change", () => {
+    const point = currentPoint();
+    showCoordinates();
+    if (point && map) place(point[0], point[1]);
+  }));
+
+  showCoordinates();
+  return { ensureMap, place };
+}

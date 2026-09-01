@@ -8663,3 +8663,174 @@ body.public-layout.sidebar-collapsed .app-shell {
     justify-content: flex-start;
   }
 }
+
+/* ---- Xaritadan nuqta tanlash --------------------------------------------- */
+
+.map-picker {
+  display: grid;
+  gap: 12px;
+}
+
+.map-picker-canvas {
+  position: relative;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.map-picker-map {
+  height: 380px;
+  width: 100%;
+  background: var(--surface-soft);
+}
+
+/* Qidiruv va tugma xarita ustida turadi. Leaflet o'z boshqaruvlarini 400 --
+   1000 oralig'ida chizadi, shuning uchun ular undan yuqorida. */
+.map-picker-search {
+  position: absolute;
+  z-index: 1100;
+  top: 14px;
+  left: 14px;
+  right: 14px;
+  max-width: 380px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px;
+  height: 42px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+  box-shadow: 0 2px 8px rgba(16, 24, 40, 0.12);
+  color: var(--muted);
+}
+
+.map-picker-search input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: none;
+  background: none;
+  font: inherit;
+  color: var(--text, #101828);
+  padding: 0;
+  height: auto;
+}
+
+.map-picker-locate {
+  position: absolute;
+  z-index: 1100;
+  right: 14px;
+  bottom: 20px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--surface);
+  box-shadow: 0 2px 8px rgba(16, 24, 40, 0.12);
+}
+
+.map-picker-results {
+  position: absolute;
+  z-index: 1200;
+  top: 60px;
+  left: 14px;
+  max-width: 380px;
+  width: calc(100% - 28px);
+  margin: 0;
+  padding: 6px;
+  list-style: none;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+  box-shadow: 0 6px 20px rgba(16, 24, 40, 0.16);
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+.map-picker-results button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: 0;
+  background: none;
+  font: inherit;
+  padding: 8px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  color: var(--text, #101828);
+}
+
+.map-picker-results button:hover {
+  background: var(--surface-soft);
+}
+
+.map-picker-coords {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.map-picker-coord {
+  display: grid;
+  gap: 2px;
+  position: relative;
+  padding: 10px 40px 10px 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+}
+
+.map-picker-coord span {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.map-picker-coord strong {
+  font-size: 15px;
+}
+
+.map-picker-coord.filled::after {
+  content: "";
+  position: absolute;
+  right: 14px;
+  top: 50%;
+  margin-top: -7px;
+  width: 15px;
+  height: 15px;
+  background: no-repeat center/contain url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23176b5b' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m5 12 5 5L19 7'/%3E%3C/svg%3E");
+}
+
+.map-picker-manual {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+}
+
+.map-picker-manual summary {
+  padding: 12px 14px;
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.map-picker-manual[open] summary {
+  border-bottom: 1px solid var(--line);
+}
+
+.map-picker-manual > .grid {
+  padding: 14px;
+}
+
+@media (max-width: 780px) {
+  .map-picker-map {
+    height: 300px;
+  }
+
+  .map-picker-coords {
+    grid-template-columns: 1fr;
+  }
+
+  .map-picker-locate {
+    bottom: 14px;
+  }
+}
