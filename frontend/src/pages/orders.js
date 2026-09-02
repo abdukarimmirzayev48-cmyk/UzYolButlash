@@ -139,7 +139,7 @@ function generatedOrderNumber() {
 async function orderForm(order = null) {
   // Nuqta shartnomadan meros bo'ladi: yangi buyurtmada shartnomadagi
   // nuqta oldindan tanlangan bo'lib turadi.
-  const points = await deliveryPointOptions(order?.delivery_point_id);
+  const points = await deliveryPointList(order?.delivery_point_id);
   const contracts = await fetchContractsForSelect(order?.contract_id);
   const contract = order ? await api(`/api/contracts/${order.contract_id}`) : null;
   const stockLots = await api("/api/stock-lots?available_only=true&page_size=100").catch(() => ({ items: [] }));
@@ -176,7 +176,7 @@ async function orderForm(order = null) {
             ${readonlyField("order_number", "Buyurtma raqami", order?.order_number || generatedOrderNumber())}
             ${textField("order_date", "Buyurtma sanasi", order?.order_date || today, "date")}
             ${textField("required_date", "Talab qilingan sana", order?.required_date || "", "date")}
-            ${deliveryPointField("Yetkazish nuqtasi", order?.delivery_point_id ?? contract?.delivery_point_id, points)}
+            ${deliveryPointPicker("Yetkazish nuqtasi", order?.delivery_point_id ?? contract?.delivery_point_id, points)}
             ${readonlyField("status_label", "Status", optionLabel(orderStatuses, order?.status || "created"))}
             ${textField("created_by", "Yaratgan", order?.created_by)}
             ${textArea("notes", "Izoh", order?.notes)}
@@ -227,6 +227,7 @@ ${section("Manba va yetkazib berish", `
 
 async function bindOrderForm(order = null) {
   const form = document.querySelector("#order-form");
+  bindDeliveryPointPicker(app);
   let contract = order ? await api(`/api/contracts/${order.contract_id}`) : null;
   let balances = order ? order.contract_item_balances : [];
   async function reloadContract() {
@@ -385,7 +386,7 @@ async function enrichOrderWizardContract(state, contractId) {
     // Shartnomada yetkazish usuli kelishilgan -- nuqtalar ro'yxati shunga
   // qarab filtrlanadi, ya'ni tuz shartnomasiga ABZ tanlab bo'lmaydi.
   state.deliveryMethod = state.contract.transport_terms?.delivery_method || null;
-  state.deliveryPointOptions = await deliveryPointOptions(state.contract.delivery_point_id, null, state.deliveryMethod);
+  state.deliveryPointOptions = await deliveryPointList(state.contract.delivery_point_id, null, state.deliveryMethod);
   }
   state.stockLotId = "";
   state.stockAllocatedQuantity = "";
@@ -629,7 +630,7 @@ function orderWizardBody(state) {
   if (state.step === 1) return section("Shartnoma tanlash", `${selectField("contract_id", "Shartnoma", [["", "Shartnomani tanlang"]], "", { required: true }).replace("</select>", `${state.contractOptions || ""}</select>`)}${orderWizardContractSummary(state)}`);
   // Mahsulot manzildan oldin: nima jo'natilayotgani qayerga jo'natish
   // mumkinligini belgilaydi -- tuzga stansiya, bitumga ABZ.
-  if (state.step === 2) return section("Mahsulot va miqdor", `${orderRequiredDateField(state)}${orderWizardProductsTable(state)}<div class="grid">${deliveryPointField("Yetkazish nuqtasi", state.deliveryPointId, state.deliveryPointOptions || "")}</div><p class="form-hint">Mahsulot qayerga yetkaziladi. Ro'yxat shartnomadagi yetkazish usuliga qarab filtrlanadi.</p>`);
+  if (state.step === 2) return section("Mahsulot va miqdor", `${orderRequiredDateField(state)}${orderWizardProductsTable(state)}<div class="grid">${deliveryPointPicker("Yetkazish nuqtasi", state.deliveryPointId, state.deliveryPointOptions || [])}</div><p class="form-hint">Mahsulot qayerga yetkaziladi. Ro'yxat shartnomadagi yetkazish usuliga qarab filtrlanadi.</p>`);
   if (state.step === 3) return section("Manba va yetkazib berish modeli", orderWizardSourcePanel(state));
   if (state.step === 4) return section("Zaxira / Xarid", orderWizardStockPanel(state));
   if (state.step === 5) return section("Narx va logistika", orderWizardPricePanel(state));
@@ -706,7 +707,7 @@ async function renderOrderWizard() {
     deliveryPointId: "",
   };
   state.contractOptions = await orderWizardContractOptions(preselectedContractId);
-  state.deliveryPointOptions = await deliveryPointOptions();
+  state.deliveryPointOptions = await deliveryPointList();
   if (preselectedContractId) {
     await enrichOrderWizardContract(state, preselectedContractId);
   }
@@ -734,6 +735,7 @@ async function renderOrderWizard() {
 
   async function draw() {
     app.innerHTML = orderWizardHtml(state);
+    bindDeliveryPointPicker(app);
     const form = document.querySelector("#order-wizard-form");
     form.elements.contract_id?.addEventListener("change", async () => {
       const contractId = Number(form.elements.contract_id.value);

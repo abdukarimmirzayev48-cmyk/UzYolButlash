@@ -9240,3 +9240,23 @@ body.map-modal-open {
     max-height: 320px;
   }
 }
+
+/* ---- Kaskadli nuqta tanlash ---------------------------------------------- */
+
+.point-picker {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 12px 16px;
+  grid-column: 1 / -1;
+}
+
+/* Nuqta o'zi butun kenglikni oladi: uning matni eng uzun -- nom va manzil. */
+.point-picker > .form-field {
+  grid-column: 1 / -1;
+}
+
+@media (max-width: 780px) {
+  .point-picker {
+    grid-template-columns: 1fr;
+  }
+}

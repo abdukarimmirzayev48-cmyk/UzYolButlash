@@ -545,7 +545,7 @@ function contractWizardTransportPanel(state) {
   return `<div class="grid">
     ${selectField("transport_payment_type", "Transport to'lovi turi", transportPaymentTypes, state.transportPaymentType || "separate_invoice", { required: true })}
     ${selectField("delivery_method", "Yetkazib berish usuli", deliveryMethods, state.deliveryMethod || "auto", { required: true })}
-    ${deliveryPointField("Yetkazish nuqtasi", state.deliveryPointId, state.deliveryPointOptions || "")}
+    ${deliveryPointPicker("Yetkazish nuqtasi", state.deliveryPointId, state.deliveryPointOptions || [])}
     <div class="form-hint">Ro'yxat yuqorida tanlangan yetkazish usuliga qarab filtrlanadi.</div>
     ${textArea("transport_notes", "Izoh", state.transportNotes || "")}
   </div><div class="empty compact">Transport bo'yicha aniq tashuvchi, haydovchi va sana ma'lumotlari partiya yaratilgandan keyin kiritiladi.</div>`;
@@ -735,6 +735,7 @@ function bindContractWizard(state, draw) {
   if (form) bindProductSelects(form);
   // The wizard redraws itself between steps without going through the router.
   bindSelectSearch(app);
+  bindDeliveryPointPicker(app);
   if (form?.querySelector("[data-contract-wizard-item]")) updateContractWizardProductTotals(state);
   document.querySelector("[data-contract-wizard-cancel]")?.addEventListener("click", () => navigate("/contracts"));
   form?.elements.client_id?.addEventListener("change", async (event) => {
@@ -844,7 +845,7 @@ async function renderContractWizard() {
   };
   [state.clientOptions, state.deliveryPointOptions, state.products, state.contractNumber] = await Promise.all([
     contractWizardClientOptions(state.clientId),
-    deliveryPointOptions(),
+    deliveryPointList(),
     api("/api/products"),
     api("/api/contracts/next-number").then((data) => data.contract_number).catch(() => ""),
   ]);

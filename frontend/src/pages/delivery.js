@@ -993,7 +993,7 @@ async function batchForm(batch = null) {
   const transportOptions = await fetchTransportsForSelect(logistics.transport_id || logistics.carrier_id);
   // Nuqtalar ro'yxati partiyaning yetkazish usuliga qarab filtrlanadi:
   // tuz stansiyaga keladi, bitum ABZ ga.
-  const deliveryPoints = await deliveryPointOptions(
+  const deliveryPoints = await deliveryPointList(
     batch?.delivery_point_id ?? order?.delivery_point_id,
     null,
     batch?.delivery_method || order?.suggested_delivery_method || null,
@@ -1056,7 +1056,7 @@ async function batchForm(batch = null) {
           <h3>Logistika xulosasi</h3>
           ${logisticsSummary}
           <h3>Yetkazish nuqtasi</h3>
-          <div class="grid">${deliveryPointField("Yetkazish nuqtasi", batch?.delivery_point_id ?? order?.delivery_point_id, deliveryPoints)}</div>
+          <div class="grid">${deliveryPointPicker("Yetkazish nuqtasi", batch?.delivery_point_id ?? order?.delivery_point_id, deliveryPoints)}</div>
           <p class="form-hint">Nuqta tanlansa, yetkazish manzili uning kartochkasidan olinadi.</p>
           <h3>Transport biriktirish</h3>
           <div class="grid">
@@ -1146,6 +1146,7 @@ async function batchForm(batch = null) {
 
 async function bindBatchForm(batch = null) {
   const form = document.querySelector("#batch-form");
+  bindDeliveryPointPicker(app);
   let order = batch ? await api(`/api/orders/${batch.order_id}`) : null;
   let balances = batch ? batch.order_item_balances : [];
   async function reloadOrder() {

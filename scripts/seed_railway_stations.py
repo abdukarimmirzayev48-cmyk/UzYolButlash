@@ -55,7 +55,8 @@ def main() -> int:
     added = 0
     located = 0
     addressed = 0
-    for code, (cyr, latin, lat, lon, near) in railway_stations.STATIONS.items():
+    located_geo = 0
+    for code, (cyr, latin, lat, lon, near, region, district) in railway_stations.STATIONS.items():
         point = by_code.get(code)
         if point:
             if not (point.latitude and point.longitude):
@@ -64,6 +65,10 @@ def main() -> int:
             if not point.address and near:
                 point.address = near
                 addressed += 1
+            if not point.region and region:
+                point.region = region
+                point.district = district or None
+                located_geo += 1
             continue
         note = None
         if code in used:
@@ -77,6 +82,8 @@ def main() -> int:
                 point_type=DeliveryPointType.railway_station,
                 status=DeliveryPointStatus.active,
                 address=near or None,
+                region=region or None,
+                district=district or None,
                 latitude=lat,
                 longitude=lon,
                 notes=note,
@@ -90,10 +97,14 @@ def main() -> int:
         print(f"Koordinata to'ldirildi: {located} ta")
     if addressed:
         print(f"Manzil to'ldirildi: {addressed} ta")
+    if located_geo:
+        print(f"Viloyat/tuman to'ldirildi: {located_geo} ta")
     stations = db.query(DeliveryPoint).filter(DeliveryPoint.point_type == DeliveryPointType.railway_station).all()
     print(f"Jami stansiya: {len(stations)}")
     print("Koordinatasi yo'q:", sum(1 for s in stations if not (s.latitude and s.longitude)))
     print("Manzili yo'q:", sum(1 for s in stations if not s.address))
+    print("Viloyati yo'q:", sum(1 for s in stations if not s.region))
+    print("Tumani yo'q:", sum(1 for s in stations if not s.district))
     db.close()
     return 0
 

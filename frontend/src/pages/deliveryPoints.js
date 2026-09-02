@@ -610,32 +610,6 @@ async function renderDeliveryPointForm(id = null, scopeKey = "abz") {
 // Boshqa bo'limlardagi tanlash ro'yxati. Faqat faol nuqtalar ko'rsatiladi:
 // yopilgan ABZ ga yangi yuk yuborilmaydi. Tanlangani ro'yxatda bo'lmasa ham
 // qo'shiladi -- aks holda forma ochilishining o'zi uni o'chirib yuboradi.
-// `method` -- yetkazish usuli. Tuz vagonda keladi, ya'ni stansiyaga
-// yetkaziladi; bitum bitumovozda, ya'ni ABZ ga. Ro'yxat filtrlanmasa,
-// operator tuz partiyasiga ABZ tanlab qo'yadi va xato faqat vagon
-// jo'natilgandan keyin bilinadi.
-//
-// Qaysi tur qaysi usulga mos ekanini server hal qiladi -- brauzer faqat
-// usulni yuboradi.
-async function deliveryPointOptions(selectedId = null, clientId = null, method = null) {
-  const query = new URLSearchParams({ page_size: "500", active_only: "true" });
-  if (clientId) query.set("client_id", String(clientId));
-  if (method) query.set("method", method);
-  const data = await api(`/api/delivery-points?${query.toString()}`);
-  const items = [...data.items];
-  if (selectedId && !items.some((item) => item.id === Number(selectedId))) {
-    const missing = await api(`/api/delivery-points/${selectedId}`).catch(() => null);
-    if (missing) items.unshift(missing);
-  }
-  return items
-    .map((item) => `<option value="${item.id}" data-point-type="${esc(item.point_type)}" ${Number(selectedId) === item.id ? "selected" : ""}>${esc(item.name)}${item.full_address ? ` — ${esc(item.full_address)}` : ""}</option>`)
-    .join("");
-}
-
-function deliveryPointField(label, selectedId, options) {
-  return `<label class="form-field"><span class="field-label-text">${esc(label)}</span>${selectSearch("delivery_point_id", "Nuqta nomi yoki manzili bo'yicha qidiring")}<select name="delivery_point_id"><option value="">Tanlanmagan</option>${options}</select></label>`;
-}
-
 // Kartochkalarda ko'rsatiladigan qisqa shakl. Oddiy matn qaytaradi:
 // chaqiruvchilar uni `fmt()` orqali chiqaradi va u o'zi ekranlaydi.
 function deliveryPointDetail(point) {
@@ -723,4 +697,104 @@ async function bindStationLookup(root = app) {
   codeInput.addEventListener("change", lookup);
   codeInput.addEventListener("blur", lookup);
   if (codeInput.value.trim()) lookup();
+}
+
+// ---- Kaskadli tanlash: viloyat -> tuman -> nuqta --------------------------
+//
+// Stansiyalar 220 ta bo'lgach bitta ro'yxatdan tanlash ishlamay qoldi:
+// kerakli stansiyani topish uchun nomini oldindan bilish kerak edi. Endi
+// avval viloyat, keyin tuman tanlanadi va nuqtalar shunga qarab qisqaradi.
+//
+// Butun filtr brauzerda: nuqtalar bir marta yuklanadi (usul bo'yicha
+// filtrlangan holda), keyin har bir tanlov qo'shimcha so'rovsiz ishlaydi.
+//
+// Viloyat «Barchasi» dan boshlanadi -- kaskad toraytiradi, lekin hech
+// narsani yashirmaydi. Viloyati ko'rsatilmagan nuqta ham yo'qolib qolmaydi.
+
+let deliveryPickerItems = [];
+
+async function deliveryPointList(selectedId = null, clientId = null, method = null) {
+  const query = new URLSearchParams({ page_size: "500", active_only: "true" });
+  if (clientId) query.set("client_id", String(clientId));
+  if (method) query.set("method", method);
+  const data = await api(`/api/delivery-points?${query.toString()}`);
+  const items = [...data.items];
+  // Tanlangani ro'yxatda bo'lmasa ham qo'shiladi: formani ochishning o'zi
+  // uni o'chirib yuborishi mumkin emas.
+  if (selectedId && !items.some((item) => item.id === Number(selectedId))) {
+    const missing = await api(`/api/delivery-points/${selectedId}`).catch(() => null);
+    if (missing) items.unshift(missing);
+  }
+  return items;
+}
+
+function pointOptionLabel(item) {
+  return `${item.name}${item.full_address ? ` — ${item.full_address}` : ""}`;
+}
+
+function deliveryPointPicker(label, selectedId, items, { required = false } = {}) {
+  deliveryPickerItems = items || [];
+  const selected = deliveryPickerItems.find((item) => item.id === Number(selectedId)) || null;
+  const regions = [...new Set(deliveryPickerItems.map((item) => item.region).filter(Boolean))].sort();
+  const option = (value, text, active) => `<option value="${esc(value)}" ${active ? "selected" : ""}>${esc(text)}</option>`;
+  return `<div class="point-picker" data-point-picker>
+    <label><span class="field-label-text">Viloyat</span>
+      <select data-point-region>${option("", "Barchasi", !selected?.region)}${regions.map((region) => option(region, region, selected?.region === region)).join("")}</select>
+    </label>
+    <label><span class="field-label-text">Tuman</span>
+      <select data-point-district>${option("", "Barchasi", true)}</select>
+    </label>
+    <label class="form-field"><span class="field-label-text">${esc(label)}${required ? ' <span class="required-mark">*</span>' : ""}</span>
+      ${selectSearch("delivery_point_id", "Nuqta nomi yoki manzili bo'yicha qidiring")}
+      <select name="delivery_point_id" data-selected="${esc(selectedId ?? "")}" ${required ? "required" : ""}><option value="">Tanlanmagan</option></select>
+    </label>
+  </div>`;
+}
+
+function bindDeliveryPointPicker(root = app) {
+  const holder = root.querySelector("[data-point-picker]");
+  if (!holder) return;
+  const regionSelect = holder.querySelector("[data-point-region]");
+  const districtSelect = holder.querySelector("[data-point-district]");
+  const pointSelect = holder.querySelector('[name="delivery_point_id"]');
+  const wanted = Number(pointSelect.getAttribute("data-selected") || 0)
+    || Number(deliveryPickerItems.find((item) => item.id === Number(pointSelect.value))?.id || 0);
+
+  function fill(select, values, keep) {
+    const current = keep && values.includes(keep) ? keep : "";
+    select.innerHTML = `<option value="">Barchasi</option>${values.map((value) => `<option value="${esc(value)}" ${value === current ? "selected" : ""}>${esc(value)}</option>`).join("")}`;
+    return current;
+  }
+
+  function visible() {
+    const region = regionSelect.value;
+    const district = districtSelect.value;
+    return deliveryPickerItems.filter((item) => (!region || item.region === region) && (!district || item.district === district));
+  }
+
+  function paintPoints(keepId) {
+    const rows = visible();
+    const current = rows.some((item) => item.id === Number(keepId)) ? Number(keepId) : "";
+    pointSelect.innerHTML = `<option value="">Tanlanmagan</option>${rows
+      .map((item) => `<option value="${item.id}" ${item.id === current ? "selected" : ""}>${esc(pointOptionLabel(item))}</option>`)
+      .join("")}`;
+    pointSelect.value = current ? String(current) : "";
+    bindSelectSearch(root);
+    localizeDom(holder);
+  }
+
+  function paintDistricts(keepDistrict, keepId) {
+    const region = regionSelect.value;
+    const districts = [...new Set(
+      deliveryPickerItems.filter((item) => !region || item.region === region).map((item) => item.district).filter(Boolean),
+    )].sort();
+    fill(districtSelect, districts, keepDistrict);
+    paintPoints(keepId);
+  }
+
+  regionSelect.addEventListener("change", () => paintDistricts("", ""));
+  districtSelect.addEventListener("change", () => paintPoints(""));
+
+  const start = deliveryPickerItems.find((item) => item.id === wanted);
+  paintDistricts(start?.district || "", wanted);
 }

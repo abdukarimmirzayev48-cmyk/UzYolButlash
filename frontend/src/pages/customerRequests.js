@@ -292,7 +292,7 @@ async function renderEditCustomerRequest(id) {
     api(`/api/customer-requests/${id}`),
     customerRequestProductOptions(),
   ]);
-  app.innerHTML = customerRequestForm(request, products, await customerRequestClientOptions(request.client_id), await deliveryPointOptions(request.delivery_point_id));
+  app.innerHTML = customerRequestForm(request, products, await customerRequestClientOptions(request.client_id), await deliveryPointList(request.delivery_point_id));
   bindCustomerRequestForm(request);
 }
 
@@ -356,7 +356,7 @@ async function renderNewCustomerRequest() {
     { schedule: [{ year: today.getFullYear(), month: today.getMonth() + 1, quantity: "" }] },
     products,
     await customerRequestClientOptions(),
-    await deliveryPointOptions(),
+    await deliveryPointList(),
   );
   bindCustomerRequestForm({});
 }
@@ -399,7 +399,7 @@ function customerRequestForm(request, products, clients = "", points = "") {
     `${section("Mahsulot talabi", `<div class="grid">${selectField("product_id", "Mahsulot nomi", products, String(request.product?.id || request.product_id || ""), { required: true })}${textField("total_quantity", "Umumiy miqdor", request.total_quantity, "number", { required: true })}${textField("unit", "O'lchov birligi", request.unit || "t", "text", { required: true })}</div>`)}
      ${section("Kalendar grafik", customerRequestScheduleEditor(request.schedule || [], request.unit))}`,
 
-    `${section("Yetkazish nuqtasi", `<div class="grid">${deliveryPointField("Yetkazish nuqtasi", request.delivery_point_id, points)}</div><div class="form-hint">Mahsulot qayerga yetkaziladi. Ro'yxat tanlangan mahsulotning yetkazish usuliga qarab filtrlanadi.</div><div data-request-method-hint></div>`)}
+    `${section("Yetkazish nuqtasi", `<div class="grid">${deliveryPointPicker("Yetkazish nuqtasi", request.delivery_point_id, points)}</div><div class="form-hint">Mahsulot qayerga yetkaziladi. Ro'yxat tanlangan mahsulotning yetkazish usuliga qarab filtrlanadi.</div><div data-request-method-hint></div>`)}
      ${section("Kontakt ma'lumotlari", `<div class="grid">${textField("phone", "Telefon raqami", request.phone, "text", { required: true })}${textField("contact_full_name", "Kontakt shaxs F.I.Sh.", request.contact_full_name)}${textField("contact_phone", "Kontakt telefon raqami", request.contact_phone)}</div>`)}`,
 
     `${section("Talabnoma xulosasi", `<div data-request-summary></div>`)}
@@ -520,6 +520,8 @@ function bindCustomerRequestForm(request) {
     refreshRequestScheduleTotals();
   });
   form.addEventListener("input", refreshRequestScheduleTotals);
+
+  bindDeliveryPointPicker(app);
 
   const wizard = bindWizard("customer-request-form", {
     steps: REQUEST_WIZARD_STEPS,
@@ -811,12 +813,22 @@ async function refreshRequestPoints(form) {
   const method = requestProductMethods[form.elements.product_id?.value] || "";
   const current = select.value;
   try {
-    select.innerHTML = `<option value="">Tanlanmagan</option>${await deliveryPointOptions(null, null, method)}`;
+    deliveryPickerItems = await deliveryPointList(null, null, method);
   } catch (error) {
     showToast(error.message, true);
     return;
   }
-  const stillThere = [...select.options].some((option) => option.value === current);
+  // Viloyat ro'yxati ham yangilanadi: tuzda stansiyalar boshqa
+  // viloyatlarda joylashgan.
+  const holder = form.querySelector("[data-point-picker]");
+  const regionSelect = holder?.querySelector("[data-point-region]");
+  if (regionSelect) {
+    const regions = [...new Set(deliveryPickerItems.map((item) => item.region).filter(Boolean))].sort();
+    regionSelect.innerHTML = `<option value="">Barchasi</option>${regions.map((region) => `<option value="${esc(region)}">${esc(region)}</option>`).join("")}`;
+  }
+  select.setAttribute("data-selected", "");
+  bindDeliveryPointPicker(app);
+  const stillThere = deliveryPickerItems.some((item) => String(item.id) === current);
   select.value = stillThere ? current : "";
   if (hint) {
     hint.innerHTML = method
@@ -825,6 +837,5 @@ async function refreshRequestPoints(form) {
     localizeDom(hint);
   }
   if (!stillThere && current) showToast("Tanlangan nuqta bu mahsulotga to'g'ri kelmadi, qaytadan tanlang.", true);
-  bindSelectSearch(app);
   markWizardFields(form);
 }
