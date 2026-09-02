@@ -1,7 +1,6 @@
 const customerRequestStatuses = [
   ["new", "Yangi"],
   ["reviewing", "Ko'rib chiqilmoqda"],
-  ["negotiation", "Muzokarada"],
   ["contract_preparation", "Shartnoma tayyorlanmoqda"],
   ["contract_signed", "Shartnoma imzolandi"],
   ["converted_to_order", "Buyurtmaga o'tkazildi"],
@@ -116,7 +115,9 @@ async function renderCustomerRequestDetail(id) {
           <button class="btn danger" data-delete-request="${request.id}" data-request-number="${esc(request.request_number || "")}">O'chirish</button>` : ""}
         </div>
       </div>
-      ${section("Mijoz turi va to'lov manbasi", detailList([["Mijoz turi", request.customer_type_label], ["To'lov manbasi", request.payment_source_label], ["Status", request.status_label]]))}
+      ${requestStatusCard(request)}
+      ${requestDocumentsSection(request)}
+      ${section("Mijoz turi va to'lov manbasi", detailList([["Mijoz turi", request.customer_type_label], ["To'lov manbasi", request.payment_source_label]]))}
       ${section("Korxona ma'lumotlari", detailList([["Korxona nomi", request.company_name], ["STIR", request.inn], ["Hudud", request.region], ["Yuridik manzil", request.legal_address], ["Asosiy faoliyat turi", request.activity_type], ["Funksiyasi va vazifalari", request.function_description], ["OKED", request.oked], ["Direktor F.I.Sh.", request.director_full_name]]))}
       ${section("Rekvizitlar", detailList([["Hisob raqami", request.bank_account], ["Bank nomi", request.bank_name], ["MFO", request.mfo]]))}
       ${section("Yetkazish nuqtasi", detailList([["ABZ nuqtasi", deliveryPointDetail(request.delivery_point)]]))}
@@ -129,11 +130,11 @@ async function renderCustomerRequestDetail(id) {
           <div class="total-box"><span>Umumiy miqdor</span><strong>${fmtQty(request.total_quantity, request.unit)}</strong></div>
         </div>
       `)}
-      ${canEdit("sotuv") ? section("Statusni o'zgartirish", requestTransitionsHtml(request)) : ""}
       ${section("Status tarixi", tableOrEmpty(request.status_history, ["Sana", "Oldingi status", "Yangi status", "Izoh", "Foydalanuvchi"], (item) => `<tr><td>${fmtDate(item.created_at)}</td><td>${fmt(item.old_status_label)}</td><td>${fmt(item.new_status_label)}</td><td>${fmt(item.comment)}</td><td>${fmt(item.changed_by)}</td></tr>`, "Status tarixi mavjud emas."))}
     </div>
   `;
   bindCustomerRequestDetailActions(request);
+  bindRequestDocuments(request, () => renderCustomerRequestDetail(id));
 }
 
 // Shared by the list and the card so both delete the same way. The backend
@@ -195,7 +196,7 @@ const REQUEST_STATUS_DIALOGS = {
   },
 };
 
-function requestTransitionsHtml(request) {
+function requestTransitionsHtml(request, { blocked = false } = {}) {
   const moves = request.available_transitions || [];
   if (!moves.length) {
     return `<div class="empty">Bu holatdan status o'zgartirilmaydi.</div>`;
@@ -220,13 +221,14 @@ function requestTransitionsHtml(request) {
       const prefix = move.direction === "backward"
         ? `<span>${REQUEST_BACK_LABEL}</span><span data-noloc>\u2190</span>`
         : "";
-      return `<button class="${cls}" type="button" data-request-status="${esc(move.status)}" data-request-direction="${esc(move.direction)}">${prefix}<span>${esc(move.label)}</span></button>`;
+      const off = blocked && move.status === "contract_preparation" && move.direction === "forward";
+      return `<button class="${cls}" type="button" data-request-status="${esc(move.status)}" data-request-direction="${esc(move.direction)}" ${off ? "disabled" : ""}>${prefix}<span>${esc(move.label)}</span></button>`;
     })
     .join("");
   const hint = moves.some((move) => move.direction === "backward")
     ? `<p class="form-hint">Orqaga qaytarish uchun sabab yozish shart — u status tarixida qoladi.</p>`
     : "";
-  return `${hint}<div class="actions">${buttons}</div>`;
+  return `<div class="actions">${buttons}</div>${hint}`;
 }
 
 function bindCustomerRequestDetailActions(request) {
@@ -679,4 +681,109 @@ function requestDashboardBlocks(board) {
       </tr>`,
       "Javobsiz turgan talabnoma yo'q."
     ))}`;
+}
+
+// ---- Status paneli --------------------------------------------------------
+//
+// Status o'zgartirish ilgari kartochkaning eng pastida, to'qqizta bo'limdan
+// sakkizinchisi bo'lib turardi: operator uni ko'rish uchun butun sahifani
+// aylantirishi kerak edi, holbuki kartochka ochilishining asosiy sababi
+// aynan shu. Endi u sarlavhadan keyin darhol keladi.
+//
+// Panel uch narsani aytadi: hozir qaysi holatda, bu nimani bildiradi va
+// keyin nima qilish mumkin.
+
+const REQUEST_STATUS_HELP = {
+  new: "Talabnoma qabul qilindi. Uni ko'rib chiqishga oling.",
+  reviewing: "Mijoz bilan ishlanmoqda: shartlar kelishiladi va hujjat yig'iladi.",
+  contract_preparation: "Shartnoma matni tayyorlanmoqda.",
+  contract_signed: "Shartnoma imzolangan. Endi buyurtmaga o'tkazish mumkin.",
+  converted_to_order: "Buyurtma yaratilgan, talabnoma yopildi.",
+  rejected: "Talabnoma rad etilgan.",
+};
+
+function requestStatusCard(request) {
+  const editable = canEdit("sotuv");
+  const help = REQUEST_STATUS_HELP[request.status] || "";
+  // Xat yo'q bo'lsa, shartnoma tayyorlashga o'tish tugmasi ishlamaydi.
+  // Buni tugma bosilgandan keyin xato bilan aytish o'rniga, oldindan
+  // aytamiz -- va nima qilish kerakligini ham.
+  const blocked = !request.has_letter
+    && (request.available_transitions || []).some((move) => move.status === "contract_preparation" && move.direction === "forward");
+  return `<section class="card request-status-card">
+    <div class="request-status-now">
+      <span class="eyebrow">Joriy status</span>
+      <div class="request-status-badge">${requestStatusBadge(request)}</div>
+      ${help ? `<p class="request-status-help">${help}</p>` : ""}
+    </div>
+    <div class="request-status-moves">
+      ${blocked ? `<div class="request-status-block">
+        <strong>Mijozning xati kerak</strong>
+        <span>Shartnoma tayyorlashga o'tish uchun avval xatni biriktiring.</span>
+      </div>` : ""}
+      ${editable ? requestTransitionsHtml(request, { blocked }) : `<div class="empty compact">Statusni o'zgartirish uchun ruxsat yo'q.</div>`}
+    </div>
+  </section>`;
+}
+
+// ---- Hujjatlar ------------------------------------------------------------
+//
+// Shartnoma mijozning xati asosida tayyorlanadi. Ilgari xat pochtada yoki
+// qog'oz papkada qolardi: talabnomani ochgan odam uni topa olmasdi.
+
+const REQUEST_DOCUMENT_TYPES = [
+  ["letter", "Mijoz xati"],
+  ["specification", "Spetsifikatsiya"],
+  ["other", "Boshqa"],
+];
+
+function requestDocumentsSection(request) {
+  const editable = canEdit("sotuv");
+  const rows = (request.documents || []).map((doc) => `<tr>
+    <td>${fmt(optionLabel(REQUEST_DOCUMENT_TYPES, doc.document_type))}</td>
+    <td>${doc.file_url ? `<a href="${esc(doc.file_url)}" target="_blank" rel="noopener">${fmt(doc.title)}</a>` : fmt(doc.title)}</td>
+    <td data-noloc>${fmtDate(doc.uploaded_at)}</td>
+    <td>${fmt(doc.uploaded_by)}</td>
+    <td>${editable ? `<button class="link-btn danger" type="button" data-delete-request-doc="${doc.id}">O'chirish</button>` : ""}</td>
+  </tr>`).join("");
+  const upload = editable ? `<form id="request-document-form" class="grid inline-edit">
+    ${selectField("document_type", "Hujjat turi", REQUEST_DOCUMENT_TYPES, "letter")}
+    ${textField("title", "Nomi", "", "text", { required: true, placeholder: "Mijoz xati" })}
+    <label><span class="field-label-text">Fayl <span class="required-mark">*</span></span><input type="file" name="file" required /></label>
+    <button class="btn primary" type="submit">Yuklash</button>
+  </form>` : "";
+  return section("Hujjatlar", `${rows
+    ? `<table class="ops-table"><thead><tr><th>Turi</th><th>Nomi</th><th>Sana</th><th>Yuklagan</th><th></th></tr></thead><tbody>${rows}</tbody></table>`
+    : `<div class="empty">Hujjat biriktirilmagan.</div>`}${upload}`);
+}
+
+function bindRequestDocuments(request, reload) {
+  const form = app.querySelector("#request-document-form");
+  form?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const data = new FormData(form);
+    if (!data.get("file")?.size) {
+      showToast("Fayl tanlanmagan.", true);
+      return;
+    }
+    try {
+      await apiForm(`/api/customer-requests/${request.id}/documents`, data);
+      showToast("Hujjat yuklandi.");
+      await reload();
+    } catch (error) {
+      showToast(error.message, true);
+    }
+  });
+  app.querySelectorAll("[data-delete-request-doc]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      if (!confirmMsg("Hujjat o'chiriladi. Davom etasizmi?")) return;
+      try {
+        await api(`/api/customer-requests/${request.id}/documents/${button.dataset.deleteRequestDoc}`, { method: "DELETE" });
+        showToast("Hujjat o'chirildi.");
+        await reload();
+      } catch (error) {
+        showToast(error.message, true);
+      }
+    });
+  });
 }

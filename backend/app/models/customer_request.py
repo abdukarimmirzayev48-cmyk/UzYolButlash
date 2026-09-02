@@ -22,8 +22,10 @@ class PaymentSource(str, Enum):
 
 class CustomerRequestStatus(str, Enum):
     new = "new"
+    # Ko'rib chiqish va muzokara bitta holat: amalda ular bir vaqtda ketadi
+    # va operator qaysi biridaligini ajrata olmasdi -- natijada tugma
+    # tasodifan bosilardi va tarix ma'nosini yo'qotardi.
     reviewing = "reviewing"
-    negotiation = "negotiation"
     contract_preparation = "contract_preparation"
     contract_signed = "contract_signed"
     converted_to_order = "converted_to_order"
@@ -95,6 +97,9 @@ class CustomerRequest(Base, TimestampMixin):
     schedules: Mapped[list["CustomerRequestSchedule"]] = relationship(
         back_populates="request", cascade="all, delete-orphan", order_by="CustomerRequestSchedule.id"
     )
+    documents: Mapped[list["CustomerRequestDocument"]] = relationship(
+        back_populates="request", cascade="all, delete-orphan", order_by="CustomerRequestDocument.uploaded_at.desc()"
+    )
     status_history: Mapped[list["CustomerRequestStatusHistory"]] = relationship(
         back_populates="request", cascade="all, delete-orphan", order_by="CustomerRequestStatusHistory.created_at.desc()"
     )
@@ -124,3 +129,30 @@ class CustomerRequestStatusHistory(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now, nullable=False)
 
     request: Mapped[CustomerRequest] = relationship(back_populates="status_history")
+
+
+class CustomerRequestDocumentType(str, Enum):
+    # Mijozning rasmiy xati -- shartnoma tayyorlashga o'tish uchun asos.
+    letter = "letter"
+    specification = "specification"
+    other = "other"
+
+
+# Shartnoma tayyorlashga o'tish uchun aynan shu tur talab qilinadi.
+REQUIRED_FOR_CONTRACT = CustomerRequestDocumentType.letter
+
+
+class CustomerRequestDocument(Base):
+    __tablename__ = "customer_request_documents"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    request_id: Mapped[int] = mapped_column(ForeignKey("customer_requests.id", ondelete="CASCADE"), index=True)
+    document_type: Mapped[CustomerRequestDocumentType] = mapped_column(
+        SAEnum(CustomerRequestDocumentType), nullable=False, index=True
+    )
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    file_url: Mapped[str | None] = mapped_column(Text)
+    uploaded_by: Mapped[str | None] = mapped_column(String(255))
+    uploaded_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now, nullable=False)
+
+    request: Mapped["CustomerRequest"] = relationship(back_populates="documents")

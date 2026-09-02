@@ -3,7 +3,7 @@ from decimal import Decimal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from backend.app.models.customer_request import CustomerRequestStatus, CustomerType, PaymentSource
+from backend.app.models.customer_request import CustomerRequestDocumentType, CustomerRequestStatus, CustomerType, PaymentSource
 from backend.app.schemas.delivery_point import DeliveryPointSummary
 from backend.app.schemas.client import Page
 
@@ -21,7 +21,6 @@ PAYMENT_SOURCE_LABELS = {
 REQUEST_STATUS_LABELS = {
     CustomerRequestStatus.new: "Yangi",
     CustomerRequestStatus.reviewing: "Ko'rib chiqilmoqda",
-    CustomerRequestStatus.negotiation: "Muzokarada",
     CustomerRequestStatus.contract_preparation: "Shartnoma tayyorlanmoqda",
     CustomerRequestStatus.contract_signed: "Shartnoma imzolandi",
     CustomerRequestStatus.converted_to_order: "Buyurtmaga o'tkazildi",
@@ -280,6 +279,17 @@ class StatusTransition(BaseModel):
     requires_comment: bool
 
 
+class CustomerRequestDocumentRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    document_type: CustomerRequestDocumentType
+    title: str
+    file_url: str | None = None
+    uploaded_by: str | None = None
+    uploaded_at: datetime
+
+
 class CustomerRequestDetail(CustomerRequestListItem):
     delivery_point_id: int | None = None
     delivery_point: DeliveryPointSummary | None = None
@@ -309,6 +319,10 @@ class CustomerRequestDetail(CustomerRequestListItem):
     # the server would refuse.
     available_transitions: list[StatusTransition] = Field(default_factory=list)
     can_convert_to_order: bool = False
+    documents: list[CustomerRequestDocumentRead] = Field(default_factory=list)
+    # Saqlanmaydi: shartnoma tayyorlashga o'tish uchun xat biriktirilganmi.
+    # Tugmani o'chirish uchun brauzerga ham kerak.
+    has_letter: bool = False
 
 
 CustomerRequestPage = Page[CustomerRequestListItem]

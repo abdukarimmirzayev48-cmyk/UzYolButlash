@@ -8961,3 +8961,102 @@ body.map-modal-open {
     display: none;
   }
 }
+
+/* ---- Talabnoma status paneli --------------------------------------------- */
+
+.request-status-card {
+  display: grid;
+  grid-template-columns: minmax(0, 320px) minmax(0, 1fr);
+  gap: 24px;
+  align-items: start;
+  padding: 20px 22px;
+}
+
+.request-status-now {
+  display: grid;
+  gap: 6px;
+}
+
+.request-status-now .eyebrow {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+
+.request-status-badge {
+  font-size: 16px;
+}
+
+.request-status-help {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.request-status-moves {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  padding-left: 24px;
+  border-left: 1px solid var(--line);
+  min-height: 40px;
+}
+
+.request-status-moves .toolbar {
+  gap: 10px;
+}
+
+/* Nima yetishmayotgani tugmani bosishdan OLDIN aytiladi. */
+.request-status-block {
+  flex: 1 1 100%;
+  display: grid;
+  gap: 2px;
+  padding: 10px 14px;
+  border: 1px solid #f0c9a0;
+  border-left-width: 3px;
+  border-radius: 8px;
+  background: #fdf6ec;
+}
+
+.request-status-block strong {
+  font-size: 13px;
+  color: #9a5b16;
+}
+
+.request-status-block span {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.request-status-moves button[disabled] {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+@media (max-width: 980px) {
+  .request-status-card {
+    grid-template-columns: 1fr;
+  }
+
+  .request-status-moves {
+    padding-left: 0;
+    border-left: 0;
+    border-top: 1px solid var(--line);
+    padding-top: 16px;
+  }
+}
+
+/* Eslatma tugmalardan keyin, o'z qatorida. */
+.request-status-moves .actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.request-status-moves > .form-hint {
+  flex: 1 1 100%;
+  margin: 0;
+}

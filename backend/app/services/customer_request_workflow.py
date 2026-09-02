@@ -15,8 +15,17 @@ offering something the API then refuses.
 
 The flow:
 
-    new -> reviewing -> negotiation -> contract_preparation
+    new -> reviewing -> contract_preparation
         -> contract_signed -> converted_to_order
+
+«Muzokara» alohida holat edi. Amalda ko'rib chiqish va muzokara bir vaqtda
+ketadi -- operator qaysi biridaligini ajrata olmasdi va tugma tasodifan
+bosilardi, tarix esa ma'nosini yo'qotardi. Ikkalasi bitta holatga
+birlashtirildi.
+
+Shartnoma tayyorlashga o'tish uchun mijozning xati biriktirilgan bo'lishi
+shart: shartnoma aynan shu xat asosida tayyorlanadi, va uni keyin qidirib
+topib bo'lmasdi.
 
 Any open state can be rejected, and a rejected talabnoma can be reopened.
 Each step also has a way back to the one before it, because correcting a
@@ -29,8 +38,7 @@ from backend.app.models.customer_request import CustomerRequestStatus as S
 # Moves that advance the request. Order matters only for display.
 FORWARD: dict[S, tuple[S, ...]] = {
     S.new: (S.reviewing,),
-    S.reviewing: (S.negotiation,),
-    S.negotiation: (S.contract_preparation,),
+    S.reviewing: (S.contract_preparation,),
     S.contract_preparation: (S.contract_signed,),
     S.contract_signed: (S.converted_to_order,),
     S.converted_to_order: (),
@@ -42,8 +50,7 @@ FORWARD: dict[S, tuple[S, ...]] = {
 BACKWARD: dict[S, tuple[S, ...]] = {
     S.new: (),
     S.reviewing: (S.new,),
-    S.negotiation: (S.reviewing,),
-    S.contract_preparation: (S.negotiation,),
+    S.contract_preparation: (S.reviewing,),
     S.contract_signed: (S.contract_preparation,),
     # Once an order exists the talabnoma is done; unwinding that means dealing
     # with the order, not the talabnoma.
@@ -53,7 +60,7 @@ BACKWARD: dict[S, tuple[S, ...]] = {
 
 # Anything still open can be rejected. Rejection always needs a reason, which
 # the endpoint enforces separately.
-REJECTABLE = (S.new, S.reviewing, S.negotiation, S.contract_preparation, S.contract_signed)
+REJECTABLE = (S.new, S.reviewing, S.contract_preparation, S.contract_signed)
 
 # converted_to_order is reached through the convert endpoint, which creates the
 # order. Allowing it here as well would let the status be set without one.
@@ -91,3 +98,15 @@ def transition_kind(current: S, target: S) -> str | None:
         if move["status"] == target.value:
             return move["direction"]
     return None
+
+
+# Shartnoma tayyorlashga o'tish uchun mijozning xati biriktirilgan bo'lishi
+# shart. Qoida shu yerda, chunki brauzer tugmani shu asosda o'chiradi va
+# server ham shu asosda rad etadi -- ikkisi hech qachon ajralib qolmaydi.
+REQUIRES_LETTER = (S.contract_preparation,)
+
+MSG_LETTER_REQUIRED = "Shartnoma tayyorlashga o'tish uchun mijozning xati biriktirilishi shart."
+
+
+def needs_letter(target: S) -> bool:
+    return target in REQUIRES_LETTER

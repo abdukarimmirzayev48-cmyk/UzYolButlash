@@ -1,17 +1,24 @@
 from dataclasses import asdict
 from datetime import datetime
 from decimal import Decimal
+from pathlib import Path
+from shutil import copyfileobj
+from uuid import uuid4
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Response, UploadFile, status
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session, selectinload
 
+from backend.app.core.paths import UPLOADS_DIR
 from backend.app.db.session import get_db
 from backend.app.models.contract import Contract
 from backend.app.models.client import Client
 from backend.app.models.customer_request import (
+    REQUIRED_FOR_CONTRACT,
     CompanyRegistry,
     CustomerRequest,
+    CustomerRequestDocument,
+    CustomerRequestDocumentType,
     CustomerRequestSchedule,
     CustomerRequestStatus,
     CustomerRequestStatusHistory,
@@ -27,6 +34,7 @@ from backend.app.schemas.customer_request import (
     StatusTransition,
     CompanyRegistryRead,
     CustomerRequestCreate,
+    CustomerRequestDocumentRead,
     CustomerRequestInternalCreate,
     CustomerRequestDetail,
     CustomerRequestListItem,
@@ -200,7 +208,18 @@ def serialize_detail(request: CustomerRequest) -> CustomerRequestDetail:
             for move in customer_request_workflow.transitions_from(request.status)
         ],
         can_convert_to_order=request.status is CustomerRequestStatus.contract_signed,
+        documents=[CustomerRequestDocumentRead.model_validate(doc) for doc in request.documents],
+        has_letter=has_letter(request),
     )
+
+
+def has_letter(request) -> bool:
+    """Mijozning xati biriktirilganmi.
+
+    Shartnoma aynan shu xat asosida tayyorlanadi. Brauzer tugmani shu
+    asosda o'chiradi, server ham shu asosda rad etadi -- qoida bitta.
+    """
+    return any(doc.document_type is REQUIRED_FOR_CONTRACT for doc in request.documents)
 
 
 @public_router.get("/company-by-inn")
@@ -512,6 +531,11 @@ def update_customer_request_status(
                 "Sahifani yangilang."
             ),
         )
+    if kind == "forward" and customer_request_workflow.needs_letter(payload.status) and not has_letter(request):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=customer_request_workflow.MSG_LETTER_REQUIRED,
+        )
     reason = payload.rejection_reason or payload.comment
     if kind in {"reject", "backward"} and not reason:
         raise HTTPException(
@@ -571,3 +595,66 @@ def convert_customer_request_to_order(request_id: int, db: Session = Depends(get
             "message": "Talabnomani buyurtmaga o'tkazish keyingi bosqichda ulanadi.",
         },
     }
+
+
+# ---- Talabnoma hujjatlari -------------------------------------------------
+#
+# Shartnoma mijozning xati asosida tayyorlanadi. Ilgari xat pochtada yoki
+# qog'oz papkada qolardi va uni keyin qidirib topib bo'lmasdi.
+
+REQUEST_UPLOAD_DIR = UPLOADS_DIR / "customer-requests"
+
+
+def store_request_upload(file: UploadFile) -> str:
+    if not file.filename:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Fayl talab qilinadi.")
+    REQUEST_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+    safe_name = Path(file.filename).name.replace(" ", "_")
+    stored_name = f"{uuid4().hex}_{safe_name}"
+    with (REQUEST_UPLOAD_DIR / stored_name).open("wb") as buffer:
+        copyfileobj(file.file, buffer)
+    return f"/static/uploads/customer-requests/{stored_name}"
+
+
+@router.post(
+    "/{request_id}/documents",
+    response_model=CustomerRequestDetail,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_edit("sotuv"))],
+)
+def upload_request_document(
+    request_id: int,
+    document_type: CustomerRequestDocumentType = Form(CustomerRequestDocumentType.letter),
+    title: str = Form(...),
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    request = get_request_or_404(db, request_id)
+    db.add(
+        CustomerRequestDocument(
+            request_id=request.id,
+            document_type=document_type,
+            title=title.strip(),
+            file_url=store_request_upload(file),
+            # Kim yuklaganini brauzer emas, sessiya aytadi.
+            uploaded_by=user.username,
+        )
+    )
+    db.commit()
+    return serialize_detail(get_request_or_404(db, request_id))
+
+
+@router.delete(
+    "/{request_id}/documents/{document_id}",
+    response_model=CustomerRequestDetail,
+    dependencies=[Depends(require_edit("sotuv"))],
+)
+def delete_request_document(request_id: int, document_id: int, db: Session = Depends(get_db)):
+    request = get_request_or_404(db, request_id)
+    document = db.get(CustomerRequestDocument, document_id)
+    if not document or document.request_id != request.id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Hujjat topilmadi.")
+    db.delete(document)
+    db.commit()
+    return serialize_detail(get_request_or_404(db, request_id))
