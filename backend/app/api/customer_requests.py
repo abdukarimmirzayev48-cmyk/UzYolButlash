@@ -75,6 +75,11 @@ def product_summary(product: Product | None) -> ProductSummary:
         product_type=product.category.name if product.category else None,
         brand=product.name,
         unit=product.unit,
+        delivery_method=(
+            product.category.default_delivery_method.value
+            if product.category and product.category.default_delivery_method
+            else None
+        ),
     )
 
 
@@ -85,6 +90,11 @@ def public_product(product: Product) -> PublicProductRead:
         product_type=product.category.name if product.category else None,
         brand=product.name,
         unit=product.unit,
+        delivery_method=(
+            product.category.default_delivery_method.value
+            if product.category and product.category.default_delivery_method
+            else None
+        ),
     )
 
 

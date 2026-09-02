@@ -42,9 +42,16 @@ function requestStatusBadge(item) {
   return `<span class="status-badge ${esc(item.status || "")}">${fmt(item.status_label || optionLabel(customerRequestStatuses, item.status))}</span>`;
 }
 
+// Mahsulot -> yetkazish usuli xaritasi. Mahsulot tanlanganda yetkazish
+// nuqtalari ro'yxati shu bo'yicha qayta filtrlanadi, shuning uchun uni
+// eslab qolamiz.
+let requestProductMethods = {};
+
 async function customerRequestProductOptions() {
   const response = await api("/api/public/products");
-  return (response.data || []).map((product) => [String(product.id), `${product.name}${product.product_type ? ` - ${product.product_type}` : ""}`]);
+  const products = response.data || [];
+  requestProductMethods = Object.fromEntries(products.map((product) => [String(product.id), product.delivery_method || ""]));
+  return products.map((product) => [String(product.id), `${product.name}${product.product_type ? ` - ${product.product_type}` : ""}`]);
 }
 
 async function renderCustomerRequestsList() {
@@ -363,8 +370,11 @@ async function renderNewCustomerRequest() {
 // bog'lashda ham aynan shu ro'yxat ishlatiladi, ikki joyda takrorlanmaydi.
 const REQUEST_WIZARD_STEPS = [
   { title: "Korxona" },
-  { title: "Yetkazish va kontakt" },
+  // Mahsulot manzildan oldin: nima jo'natilayotgani qayerga jo'natish
+  // mumkinligini belgilaydi. Tuz vagonda keladi -- unga stansiya
+  // tanlanadi, ABZ emas.
   { title: "Mahsulot va grafik" },
+  { title: "Yetkazish va kontakt" },
   { title: "Tekshirish", onEnter: (form) => renderRequestSummary(form) },
 ];
 
@@ -386,11 +396,11 @@ function customerRequestForm(request, products, clients = "", points = "") {
       </div><div class="form-hint">Bu maydonlar mijoz kartochkasidan olinadi. O'zgartirish kerak bo'lsa, mijoz kartochkasida to'g'rilang.</div><div id="request-client-warnings"></div>`)}
      ${section("Qo'shimcha ma'lumotlar", `<div class="grid">${textArea("activity_type", "Asosiy faoliyat turi", request.activity_type)}${textArea("function_description", "Funksiyasi va vazifalari", request.function_description)}${textField("privatization_project_name", "205 xususiylashtirish loyiha", request.privatization_project_name)}</div>`)}`,
 
-    `${section("Yetkazish nuqtasi", `<div class="grid">${deliveryPointField("Yetkazish nuqtasi", request.delivery_point_id, points)}</div><div class="form-hint">Mahsulot qayerga yetkaziladi: ABZ nuqtasi yoki temiryo'l stansiyasi. Nuqta shartnoma va partiyalarga ham o'tadi.</div>`)}
-     ${section("Kontakt ma'lumotlari", `<div class="grid">${textField("phone", "Telefon raqami", request.phone, "text", { required: true })}${textField("contact_full_name", "Kontakt shaxs F.I.Sh.", request.contact_full_name)}${textField("contact_phone", "Kontakt telefon raqami", request.contact_phone)}</div>`)}`,
-
     `${section("Mahsulot talabi", `<div class="grid">${selectField("product_id", "Mahsulot nomi", products, String(request.product?.id || request.product_id || ""), { required: true })}${textField("total_quantity", "Umumiy miqdor", request.total_quantity, "number", { required: true })}${textField("unit", "O'lchov birligi", request.unit || "t", "text", { required: true })}</div>`)}
      ${section("Kalendar grafik", customerRequestScheduleEditor(request.schedule || [], request.unit))}`,
+
+    `${section("Yetkazish nuqtasi", `<div class="grid">${deliveryPointField("Yetkazish nuqtasi", request.delivery_point_id, points)}</div><div class="form-hint">Mahsulot qayerga yetkaziladi. Ro'yxat tanlangan mahsulotning yetkazish usuliga qarab filtrlanadi.</div><div data-request-method-hint></div>`)}
+     ${section("Kontakt ma'lumotlari", `<div class="grid">${textField("phone", "Telefon raqami", request.phone, "text", { required: true })}${textField("contact_full_name", "Kontakt shaxs F.I.Sh.", request.contact_full_name)}${textField("contact_phone", "Kontakt telefon raqami", request.contact_phone)}</div>`)}`,
 
     `${section("Talabnoma xulosasi", `<div data-request-summary></div>`)}
      ${section("Ichki izoh", `<div class="grid">${textArea("internal_comment", "Izoh", request.internal_comment)}</div>`)}`,
@@ -494,6 +504,7 @@ function bindCustomerRequestForm(request) {
   const form = app.querySelector("#customer-request-form");
   if (!form) return;
   form.elements.client_id?.addEventListener("change", () => applyRequestClient(form));
+  form.elements.product_id?.addEventListener("change", () => refreshRequestPoints(form));
   // Yangi talabnomada mijoz oldindan tanlanmagan; tahrirlashda esa
   // maydonlar allaqachon to'ldirilgan va ularni qayta so'rash shart emas.
   if (!request?.id && form.elements.client_id?.value) applyRequestClient(form);
@@ -786,4 +797,34 @@ function bindRequestDocuments(request, reload) {
       }
     });
   });
+}
+
+
+// Mahsulot almashganda yetkazish nuqtalari ro'yxati qayta yuklanadi: tuzga
+// stansiyalar, bitumga ABZ nuqtalari. Tanlangani yangi ro'yxatda bo'lmasa
+// tozalanadi -- aks holda forma «tuz, lekin ABZ ga» degan holatda
+// saqlanib ketardi.
+async function refreshRequestPoints(form) {
+  const select = form.elements.delivery_point_id;
+  const hint = form.querySelector("[data-request-method-hint]");
+  if (!select) return;
+  const method = requestProductMethods[form.elements.product_id?.value] || "";
+  const current = select.value;
+  try {
+    select.innerHTML = `<option value="">Tanlanmagan</option>${await deliveryPointOptions(null, null, method)}`;
+  } catch (error) {
+    showToast(error.message, true);
+    return;
+  }
+  const stillThere = [...select.options].some((option) => option.value === current);
+  select.value = stillThere ? current : "";
+  if (hint) {
+    hint.innerHTML = method
+      ? `<div class="form-hint"><span>Yetkazish usuli</span>: <strong>${esc(optionLabel(deliveryMethods, method))}</strong></div>`
+      : "";
+    localizeDom(hint);
+  }
+  if (!stillThere && current) showToast("Tanlangan nuqta bu mahsulotga to'g'ri kelmadi, qaytadan tanlang.", true);
+  bindSelectSearch(app);
+  markWizardFields(form);
 }

@@ -34,6 +34,7 @@ from backend.app.models.order import Order, OrderItem
 from backend.app.models.procurement import SupplierAddress, SupplierAddressType
 from backend.app.models.transport import Transport, TransportEvent, TransportEventCheckResult, TransportEventType
 from backend.app.services import delivery_stats
+from backend.app.services import delivery_method as delivery_method_service
 from backend.app.services.delivery_method import default_method_for
 from backend.app.services.auth import get_current_user, require_edit
 from backend.app.services.order_status import sync_order_status
@@ -874,11 +875,18 @@ def transport_check_read(batch: DeliveryBatch) -> DeliveryBatchTransportCheck:
         ),
         customer_price=logistics.customer_price if logistics else 0,
     )
+    # Tanlangan nuqta usulga mos keladimi -- «tuz partiyasi ABZ ga ketyapti»
+    # degan holat aynan shu yerda ko'rinadi. Bloklamaydi: hujjat allaqachon
+    # boshqacha rasmiylashtirilgan bo'lishi mumkin.
+    warnings = list(check.warnings or [])
+    point_problem = delivery_method_service.point_warning(batch.delivery_method, batch.delivery_point)
+    if point_problem:
+        warnings.append(point_problem)
     return DeliveryBatchTransportCheck(
         delivery_method=check.delivery_method,
         transport_payment_type=check.transport_payment_type,
         customer_price=money(check.customer_price),
-        warnings=check.warnings or [],
+        warnings=warnings,
     )
 
 

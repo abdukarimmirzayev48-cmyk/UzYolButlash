@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, computed_field
 
 from backend.app.models.contract import DeliveryMethod
 
@@ -56,3 +56,11 @@ class ProductRead(ProductBase):
     category: ProductCategoryRead
     created_at: datetime
     updated_at: datetime
+
+    # Saqlanmaydi: turkumning sukut usuli. Brauzer mahsulot tanlanganda
+    # yetkazish nuqtalari ro'yxatini shu bo'yicha filtrlaydi -- tuzga
+    # stansiya, bitumga ABZ.
+    @computed_field
+    @property
+    def delivery_method(self) -> str | None:
+        return self.category.default_delivery_method.value if self.category.default_delivery_method else None

@@ -382,7 +382,10 @@ async function enrichOrderWizardContract(state, contractId) {
   // o'sha bo'ladi va uni qayta tanlash shart emas.
   if (state.contract?.delivery_point_id) {
     state.deliveryPointId = String(state.contract.delivery_point_id);
-    state.deliveryPointOptions = await deliveryPointOptions(state.contract.delivery_point_id);
+    // Shartnomada yetkazish usuli kelishilgan -- nuqtalar ro'yxati shunga
+  // qarab filtrlanadi, ya'ni tuz shartnomasiga ABZ tanlab bo'lmaydi.
+  state.deliveryMethod = state.contract.transport_terms?.delivery_method || null;
+  state.deliveryPointOptions = await deliveryPointOptions(state.contract.delivery_point_id, null, state.deliveryMethod);
   }
   state.stockLotId = "";
   state.stockAllocatedQuantity = "";

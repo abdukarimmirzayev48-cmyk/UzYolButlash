@@ -610,9 +610,17 @@ async function renderDeliveryPointForm(id = null, scopeKey = "abz") {
 // Boshqa bo'limlardagi tanlash ro'yxati. Faqat faol nuqtalar ko'rsatiladi:
 // yopilgan ABZ ga yangi yuk yuborilmaydi. Tanlangani ro'yxatda bo'lmasa ham
 // qo'shiladi -- aks holda forma ochilishining o'zi uni o'chirib yuboradi.
-async function deliveryPointOptions(selectedId = null, clientId = null) {
-  const query = new URLSearchParams({ page_size: "200", active_only: "true" });
+// `method` -- yetkazish usuli. Tuz vagonda keladi, ya'ni stansiyaga
+// yetkaziladi; bitum bitumovozda, ya'ni ABZ ga. Ro'yxat filtrlanmasa,
+// operator tuz partiyasiga ABZ tanlab qo'yadi va xato faqat vagon
+// jo'natilgandan keyin bilinadi.
+//
+// Qaysi tur qaysi usulga mos ekanini server hal qiladi -- brauzer faqat
+// usulni yuboradi.
+async function deliveryPointOptions(selectedId = null, clientId = null, method = null) {
+  const query = new URLSearchParams({ page_size: "500", active_only: "true" });
   if (clientId) query.set("client_id", String(clientId));
+  if (method) query.set("method", method);
   const data = await api(`/api/delivery-points?${query.toString()}`);
   const items = [...data.items];
   if (selectedId && !items.some((item) => item.id === Number(selectedId))) {
@@ -620,7 +628,7 @@ async function deliveryPointOptions(selectedId = null, clientId = null) {
     if (missing) items.unshift(missing);
   }
   return items
-    .map((item) => `<option value="${item.id}" ${Number(selectedId) === item.id ? "selected" : ""}>${esc(item.name)}${item.full_address ? ` — ${esc(item.full_address)}` : ""}</option>`)
+    .map((item) => `<option value="${item.id}" data-point-type="${esc(item.point_type)}" ${Number(selectedId) === item.id ? "selected" : ""}>${esc(item.name)}${item.full_address ? ` — ${esc(item.full_address)}` : ""}</option>`)
     .join("");
 }
 

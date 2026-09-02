@@ -50,6 +50,9 @@ class PublicProductRead(BaseModel):
     product_type: str | None = None
     brand: str | None = None
     unit: str
+    # Turkumning sukut yetkazish usuli: mahsulot tanlanganda yetkazish
+    # nuqtalari ro'yxati shu bo'yicha filtrlanadi.
+    delivery_method: str | None = None
 
 
 class CustomerRequestScheduleBase(BaseModel):

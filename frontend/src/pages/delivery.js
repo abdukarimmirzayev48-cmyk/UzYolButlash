@@ -991,7 +991,13 @@ async function batchForm(batch = null) {
   const rows = batch?.items?.length ? batch.items : batchRowsFromBalances(balances);
   const logistics = batch?.logistics || {};
   const transportOptions = await fetchTransportsForSelect(logistics.transport_id || logistics.carrier_id);
-  const deliveryPoints = await deliveryPointOptions(batch?.delivery_point_id ?? order?.delivery_point_id);
+  // Nuqtalar ro'yxati partiyaning yetkazish usuliga qarab filtrlanadi:
+  // tuz stansiyaga keladi, bitum ABZ ga.
+  const deliveryPoints = await deliveryPointOptions(
+    batch?.delivery_point_id ?? order?.delivery_point_id,
+    null,
+    batch?.delivery_method || order?.suggested_delivery_method || null,
+  );
   const batchNumber = batch?.batch_number || generatedBatchNumber(order?.order_number);
   const summaryProduct = rows.map((item) => item.product_name || order?.items?.find((orderItem) => orderItem.id === Number(item.order_item_id))?.product_name).filter(Boolean).join(", ");
   const summaryQuantity = rows.reduce((sum, item) => sum + numberValue(item.planned_quantity), 0);
