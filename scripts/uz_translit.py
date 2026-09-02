@@ -28,6 +28,9 @@ PROTECTED = [
     # yoziladi va shundayligicha qoldirilgan -- ular allaqachon shu
     # ko'rinishda ishlatilib kelmoqda.
     "GPS",
+    # Klaviatura tugmasining nomi: u klaviaturada lotincha yozilgan,
+    # «Ктрл» esa hech qayerda yo'q.
+    "Ctrl",
 ]
 
 # Ordinary transliteration gets these wrong; fix them once here so the fix

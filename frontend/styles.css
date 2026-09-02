@@ -8834,3 +8834,130 @@ body.public-layout.sidebar-collapsed .app-shell {
     bottom: 14px;
   }
 }
+
+/* ---- Xarita: g'ildirak, kengaytirish, to'liq ekran ------------------------ */
+
+/* Kengaytirish tugmasi xarita ustida turadi, shuning uchun kartochka
+   o'lchov nuqtasi bo'lishi kerak. */
+.map-card,
+.points-map,
+.map-picker-map {
+  position: relative;
+}
+
+.map-expand-btn {
+  position: absolute;
+  z-index: 1100;
+  right: 16px;
+  top: 16px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: 0 2px 8px rgba(16, 24, 40, 0.12);
+  color: var(--text, #101828);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.map-expand-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* Ctrl siz aylantirilganda qisqa vaqt chiqadigan eslatma. */
+.map-wheel-hint {
+  position: absolute;
+  inset: 0;
+  z-index: 1050;
+  display: grid;
+  place-items: center;
+  background: rgba(16, 24, 40, 0.45);
+  color: #fff;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.18s ease;
+  pointer-events: none;
+  text-align: center;
+  padding: 16px;
+}
+
+.map-wheel-hint.visible {
+  opacity: 1;
+  visibility: visible;
+}
+
+.map-wheel-hint span {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.map-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 4000;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(16, 24, 40, 0.55);
+}
+
+.map-modal {
+  display: flex;
+  flex-direction: column;
+  width: min(1400px, 100%);
+  height: min(900px, 100%);
+  border-radius: 14px;
+  background: var(--surface);
+  overflow: hidden;
+  box-shadow: 0 20px 50px rgba(16, 24, 40, 0.3);
+}
+
+.map-modal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--line);
+}
+
+.map-modal-head h2 {
+  margin: 0;
+  font-size: 17px;
+}
+
+.map-modal-close {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.map-modal-body {
+  flex: 1;
+  min-height: 0;
+}
+
+/* Oyna ochiq turganda orqadagi sahifa surilmasin. */
+body.map-modal-open {
+  overflow: hidden;
+}
+
+@media (max-width: 780px) {
+  .map-modal-backdrop {
+    padding: 0;
+  }
+
+  .map-modal {
+    height: 100%;
+    border-radius: 0;
+  }
+
+  .map-expand-btn span {
+    display: none;
+  }
+}

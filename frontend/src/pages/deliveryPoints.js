@@ -170,6 +170,42 @@ function mapPinIcon(status) {
   });
 }
 
+// Belgilarni chizish uch joyda kerak: panel xaritasi, katta ko'rinish va
+// to'liq ekran oynasi. Uchalasida bir xil ko'rinishi uchun bitta joyda.
+function addPointMarkers(map, points, { full = true } = {}) {
+  const markers = points
+    .filter((point) => point.latitude && point.longitude)
+    .map((point) => {
+      const marker = L.marker([Number(point.latitude), Number(point.longitude)], { icon: mapPinIcon(point.status) });
+      marker.bindPopup(`<div class="map-popup">
+        <strong>${esc(point.name)}</strong>
+        <span>${esc(point.full_address || "")}</span>
+        ${full && point.daily_capacity_tons ? `<span>${esc(fmtQty(point.daily_capacity_tons))} ${esc(localizeText("t/kun"))}</span>` : ""}
+        <span class="map-popup-status" style="color:${MAP_STATUS_COLORS[point.status] || ""}">${esc(localizeText(optionLabel(deliveryPointStatuses, point.status)))}</span>
+        ${full && point.responsible_name ? `<span>${esc(point.responsible_name)}${point.responsible_phone ? ` · ${esc(point.responsible_phone)}` : ""}</span>` : ""}
+      </div>`);
+      marker.addTo(map);
+      return marker;
+    });
+  if (markers.length > 1) {
+    map.fitBounds(L.featureGroup(markers).getBounds(), { padding: [30, 30] });
+  } else if (markers.length === 1) {
+    map.setView(markers[0].getLatLng(), 10);
+  }
+  return markers;
+}
+
+// To'liq ekranda orqa fon surilmaydi, shuning uchun oddiy g'ildirak ham
+// yaqinlashtiraveradi -- Ctrl shart emas.
+function openPointsMapModal(points) {
+  openMapModal("ABZ nuqtalari xaritasi", (holder) => {
+    const map = L.map(holder).setView(MAP_CENTER, MAP_ZOOM);
+    L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, attribution: "&copy; OpenStreetMap" }).addTo(map);
+    addPointMarkers(map, points);
+    return map;
+  });
+}
+
 function drawPointsMap(points) {
   const holder = document.querySelector("#points-map");
   if (!holder) return;
@@ -189,26 +225,9 @@ function drawPointsMap(points) {
     attribution: "&copy; OpenStreetMap",
   }).addTo(pointsMap);
 
+  bindMapWheelZoom(pointsMap, holder);
   const located = points.filter((point) => point.latitude && point.longitude);
-  const markers = located.map((point) => {
-    const marker = L.marker([Number(point.latitude), Number(point.longitude)], { icon: mapPinIcon(point.status) });
-    marker.bindPopup(`<div class="map-popup">
-      <strong>${esc(point.name)}</strong>
-      <span>${esc(point.full_address || "")}</span>
-      <span>${point.daily_capacity_tons ? `${esc(fmtQty(point.daily_capacity_tons))} ${esc(localizeText("t/kun"))}` : ""}</span>
-      <span class="map-popup-status" style="color:${MAP_STATUS_COLORS[point.status] || ""}">${esc(localizeText(optionLabel(deliveryPointStatuses, point.status)))}</span>
-      ${point.responsible_name ? `<span>${esc(point.responsible_name)}${point.responsible_phone ? ` · ${esc(point.responsible_phone)}` : ""}</span>` : ""}
-    </div>`);
-    marker.addTo(pointsMap);
-    return marker;
-  });
-  // Nuqtalar bir viloyatda to'planib qolsa, butun mamlakatni ko'rsatish
-  // ma'nosiz -- ko'rinishni ularning o'ziga moslaymiz.
-  if (markers.length > 1) {
-    pointsMap.fitBounds(L.featureGroup(markers).getBounds(), { padding: [30, 30] });
-  } else if (markers.length === 1) {
-    pointsMap.setView(markers[0].getLatLng(), 10);
-  }
+  addPointMarkers(pointsMap, points);
   if (!located.length) {
     holder.insertAdjacentHTML("beforeend", `<div class="map-empty">Koordinatasi kiritilgan ABZ yo'q.</div>`);
   }
@@ -269,7 +288,7 @@ async function renderDeliveryPointsList() {
     ${workflowWarningsPanel(board.warnings || [])}
 
     <div class="map-row">
-      <section class="card map-card"><div id="points-map" class="points-map"></div></section>
+      <section class="card map-card"><div id="points-map" class="points-map"></div>${mapExpandButton("points")}</section>
       ${deliveryPointStatusPanel(board)}
     </div>
 
@@ -284,7 +303,7 @@ async function renderDeliveryPointsList() {
     </form>
 
     ${view === "map"
-      ? `<section class="card map-card tall"><div id="points-map-large" class="points-map"></div></section>`
+      ? `<section class="card map-card tall"><div id="points-map-large" class="points-map"></div>${mapExpandButton("points")}</section>`
       : `<section class="ops-table-card"><table class="ops-table"><thead><tr>
           <th>${pointSortHead("ABZ", "name", params)}</th>
           <th>${pointSortHead("Joylashuv", "region", params)}</th>
@@ -318,6 +337,9 @@ async function renderDeliveryPointsList() {
   bindRowMenus();
   drawPointsMap(data.items);
   if (view === "map") drawLargePointsMap(data.items);
+  app.querySelectorAll('[data-map-expand="points"]').forEach((button) => {
+    button.addEventListener("click", () => openPointsMapModal(data.items));
+  });
 
   document.querySelector("[data-point-page-size]")?.addEventListener("change", (event) => {
     const next = new URLSearchParams(location.search);
@@ -355,14 +377,10 @@ function drawLargePointsMap(points) {
     largePointsMap.remove();
     largePointsMap = null;
   }
-  largePointsMap = L.map(holder).setView(MAP_CENTER, MAP_ZOOM);
-  L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 18, attribution: "&copy; OpenStreetMap" }).addTo(largePointsMap);
-  const markers = points
-    .filter((point) => point.latitude && point.longitude)
-    .map((point) => L.marker([Number(point.latitude), Number(point.longitude)], { icon: mapPinIcon(point.status) })
-      .bindPopup(`<div class="map-popup"><strong>${esc(point.name)}</strong><span>${esc(point.full_address || "")}</span></div>`)
-      .addTo(largePointsMap));
-  if (markers.length > 1) largePointsMap.fitBounds(L.featureGroup(markers).getBounds(), { padding: [40, 40] });
+  largePointsMap = L.map(holder, { scrollWheelZoom: false }).setView(MAP_CENTER, MAP_ZOOM);
+  L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, attribution: "&copy; OpenStreetMap" }).addTo(largePointsMap);
+  bindMapWheelZoom(largePointsMap, holder);
+  addPointMarkers(largePointsMap, points);
 }
 
 // ABZ nuqtasi to'rt qadamda kiritiladi. Ikkinchi qadam -- joylashuv --

@@ -3116,6 +3116,7 @@ function bindMapPicker(root = app) {
     L.control.zoom({ position: "topright" }).addTo(map);
     L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, attribution: "&copy; OpenStreetMap" }).addTo(map);
     map.on("click", (event) => place(event.latlng.lat, event.latlng.lng, { fly: false }));
+    bindMapWheelZoom(map, canvas);
     if (point) place(point[0], point[1]);
     return map;
   }
@@ -3189,4 +3190,89 @@ function bindMapPicker(root = app) {
 
   showCoordinates();
   return { ensureMap, place };
+}
+
+// ---- Xarita bilan ishlash qulayligi ---------------------------------------
+//
+// Sahifa ichidagi xarita ustida g'ildirak aylantirilsa, sahifa surilishi
+// kerak -- xarita emas. Aks holda ro'yxatga tushmoqchi bo'lgan odam
+// tasodifan mamlakat miqyosigacha uzoqlashib ketadi va qayerda ekanini
+// yo'qotadi.
+//
+// Yaqinlashtirish uchun Ctrl (Macda trackpad chimchilashi ham shu hodisani
+// beradi) yoki to'liq ekran oynasi bor. To'liq ekranda orqa fon surilmaydi,
+// shuning uchun u yerda oddiy g'ildirak ham yaqinlashtiradi.
+
+const MSG_MAP_WHEEL_HINT = "Yaqinlashtirish uchun Ctrl bosib aylantiring";
+const MAP_HINT_MS = 1600;
+
+function bindMapWheelZoom(map, holder) {
+  map.scrollWheelZoom.disable();
+  const hint = document.createElement("div");
+  hint.className = "map-wheel-hint";
+  hint.innerHTML = `<span>${MSG_MAP_WHEEL_HINT}</span>`;
+  holder.appendChild(hint);
+  localizeDom(hint);
+  let timer = null;
+
+  holder.addEventListener("wheel", (event) => {
+    if (event.ctrlKey || event.metaKey) {
+      // Brauzerning o'z masshtabini to'xtatamiz: bu yerda xarita
+      // yaqinlashadi, sahifa emas.
+      event.preventDefault();
+      const point = map.mouseEventToLatLng(event);
+      map.setZoomAround(point, map.getZoom() + (event.deltaY < 0 ? 1 : -1));
+      return;
+    }
+    hint.classList.add("visible");
+    clearTimeout(timer);
+    timer = setTimeout(() => hint.classList.remove("visible"), MAP_HINT_MS);
+  }, { passive: false });
+}
+
+function mapExpandButton(key) {
+  return `<button type="button" class="map-expand-btn" data-map-expand="${esc(key)}">
+    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>
+    <span>Kengaytirish</span>
+  </button>`;
+}
+
+// To'liq ekran oynasi. `build(holder)` Leaflet xaritasini qaytaradi --
+// nuqtalarni chizish chaqiruvchining ishi, bu yerda faqat oyna.
+function openMapModal(title, build) {
+  const backdrop = document.createElement("div");
+  backdrop.className = "map-modal-backdrop";
+  backdrop.innerHTML = `<div class="map-modal" role="dialog" aria-modal="true">
+    <div class="map-modal-head">
+      <h2>${esc(title)}</h2>
+      <button type="button" class="btn map-modal-close" data-map-close>
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>
+        <span>Yopish</span>
+      </button>
+    </div>
+    <div class="map-modal-body" data-map-modal-canvas></div>
+  </div>`;
+  document.body.appendChild(backdrop);
+  // Modal `#app` dan tashqarida, ya'ni kuzatuvchi uni ko'rmaydi.
+  localizeDom(backdrop);
+  document.body.classList.add("map-modal-open");
+
+  const canvas = backdrop.querySelector("[data-map-modal-canvas]");
+  const map = build(canvas);
+  map?.invalidateSize();
+
+  function close() {
+    map?.remove();
+    backdrop.remove();
+    document.body.classList.remove("map-modal-open");
+    document.removeEventListener("keydown", onKey);
+  }
+  function onKey(event) {
+    if (event.key === "Escape") close();
+  }
+  backdrop.addEventListener("click", (event) => {
+    if (event.target === backdrop || event.target.closest("[data-map-close]")) close();
+  });
+  document.addEventListener("keydown", onKey);
+  return close;
 }

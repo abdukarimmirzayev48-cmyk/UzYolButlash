@@ -34,6 +34,7 @@ const uzCyrillic = {
   "ABZ": "АБЗ",
   "ABZ boshqaruvi": "АБЗ бошқаруви",
   "ABZ nuqtalari": "АБЗ нуқталари",
+  "ABZ nuqtalari xaritasi": "АБЗ нуқталари харитаси",
   "ABZ nuqtasi": "АБЗ нуқтаси",
   "ABZlar": "АБЗлар",
   "ABZlarni nazorat qilish, holatini tahlil qilish va samaradorlikni boshqarish.": "АБЗларни назорат қилиш, ҳолатини таҳлил қилиш ва самарадорликни бошқариш.",
@@ -867,6 +868,7 @@ const uzCyrillic = {
   "Kelib tushgan": "Келиб тушган",
   "Kelish vaqti": "Келиш вақти",
   "Kelishilmagan to'xtash": "Келишилмаган тўхташ",
+  "Kengaytirish": "Кенгайтириш",
   "Kenglik": "Кенглик",
   "Kenglik -90 va 90 orasida bo'lishi kerak.": "Кенглик -90 ва 90 орасида бўлиши керак.",
   "Kerakli mahsulot turi, markasi va umumiy miqdorini kiriting.": "Керакли маҳсулот тури, маркаси ва умумий миқдорини киритинг.",
@@ -2464,6 +2466,7 @@ const uzCyrillic = {
   "Yanvar": "Январ",
   "Yaqin kunlarda muddat yo'q.": "Яқин кунларда муддат йўқ.",
   "Yaqin muddatlar (7 kun)": "Яқин муддатлар (7 кун)",
+  "Yaqinlashtirish uchun Ctrl bosib aylantiring": "Яқинлаштириш учун Ctrl босиб айлантиринг",
   "Yaratdi": "Яратди",
   "Yaratgan": "Яратган",
   "Yaratildi": "Яратилди",
@@ -2798,7 +2801,7 @@ const uzCyrillicPatterns = {
 
 
 const uzCyrillicPairs = [["o'", "ў"], ["O'", "Ў"], ["g'", "ғ"], ["G'", "Ғ"], ["sh", "ш"], ["Sh", "Ш"], ["SH", "Ш"], ["ch", "ч"], ["Ch", "Ч"], ["CH", "Ч"], ["ya", "я"], ["Ya", "Я"], ["YA", "Я"], ["yo", "ё"], ["Yo", "Ё"], ["YO", "Ё"], ["yu", "ю"], ["Yu", "Ю"], ["YU", "Ю"], ["ye", "е"], ["Ye", "Е"], ["YE", "Е"], ["ts", "ц"], ["Ts", "Ц"], ["a", "а"], ["b", "б"], ["d", "д"], ["e", "е"], ["f", "ф"], ["g", "г"], ["h", "ҳ"], ["i", "и"], ["j", "ж"], ["k", "к"], ["l", "л"], ["m", "м"], ["n", "н"], ["o", "о"], ["p", "п"], ["q", "қ"], ["r", "р"], ["s", "с"], ["t", "т"], ["u", "у"], ["v", "в"], ["x", "х"], ["y", "й"], ["z", "з"], ["c", "к"], ["w", "в"], ["A", "А"], ["B", "Б"], ["D", "Д"], ["E", "Е"], ["F", "Ф"], ["G", "Г"], ["H", "Ҳ"], ["I", "И"], ["J", "Ж"], ["K", "К"], ["L", "Л"], ["M", "М"], ["N", "Н"], ["O", "О"], ["P", "П"], ["Q", "Қ"], ["R", "Р"], ["S", "С"], ["T", "Т"], ["U", "У"], ["V", "В"], ["X", "Х"], ["Y", "Й"], ["Z", "З"], ["C", "К"], ["W", "В"]];
-const uzCyrillicProtected = ["UzYolButlash", "Bitum ERP", "MAN TGS", "Hikvision", "Telegram", "ERP", "PDF", "CSV", "XLSX", "Excel", "API", "ID", "SMS", "URL", "Email", "UZS", "USD", "EUR", "RUB", "KZT", "Didox", "Rouming", "MXIK", "IKPU", "STIR", "GPS"];
+const uzCyrillicProtected = ["UzYolButlash", "Bitum ERP", "MAN TGS", "Hikvision", "Telegram", "ERP", "PDF", "CSV", "XLSX", "Excel", "API", "ID", "SMS", "URL", "Email", "UZS", "USD", "EUR", "RUB", "KZT", "Didox", "Rouming", "MXIK", "IKPU", "STIR", "GPS", "Ctrl"];
 // Oddiy o'girish xato qiladigan alohida so'zlar. Python tomonidagi
 // scripts/uz_translit.py WORD_FIXES bilan bir xil bo'lishi shart.
 const uzCyrillicWordFixes = {"тиккет": "тикет", "Тиккет": "Тикет", "ТИККЕТ": "ТИКЕТ"};
