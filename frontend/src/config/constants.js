@@ -61,6 +61,7 @@ const sourceTypes = [
   ["russia_direct", "Rossiyadan to'g'ridan-to'g'ri"],
   ["uzbekistan_local", "O'zbekiston ichki bozor"],
   ["jarkurgan", "Jarqo'rg'on"],
+  ["sherobod", "Sherobod"],
   ["supplier_held_stock", "Ta'minotchi omboridagi zaxira"],
   ["other", "Boshqa"],
 ];

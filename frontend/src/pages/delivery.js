@@ -1050,7 +1050,7 @@ async function batchForm(batch = null) {
           <h3>Logistika xulosasi</h3>
           ${logisticsSummary}
           <h3>Yetkazish nuqtasi</h3>
-          <div class="grid">${deliveryPointField("ABZ nuqtasi", batch?.delivery_point_id ?? order?.delivery_point_id, deliveryPoints)}</div>
+          <div class="grid">${deliveryPointField("Yetkazish nuqtasi", batch?.delivery_point_id ?? order?.delivery_point_id, deliveryPoints)}</div>
           <p class="form-hint">Nuqta tanlansa, yetkazish manzili uning kartochkasidan olinadi.</p>
           <h3>Transport biriktirish</h3>
           <div class="grid">

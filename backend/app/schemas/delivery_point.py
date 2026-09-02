@@ -21,6 +21,7 @@ class DeliveryPointBase(BaseModel):
     region: str | None = None
     district: str | None = None
     address: str | None = None
+    station_code: str | None = Field(default=None, max_length=16)
     latitude: str | None = Field(default=None, max_length=64)
     longitude: str | None = Field(default=None, max_length=64)
     responsible_name: str | None = None
@@ -71,6 +72,7 @@ class DeliveryPointUpdate(BaseModel):
     region: str | None = None
     district: str | None = None
     address: str | None = None
+    station_code: str | None = Field(default=None, max_length=16)
     latitude: str | None = Field(default=None, max_length=64)
     longitude: str | None = Field(default=None, max_length=64)
     responsible_name: str | None = None
@@ -126,6 +128,7 @@ class DeliveryPointSummary(BaseModel):
     region: str | None = None
     district: str | None = None
     address: str | None = None
+    station_code: str | None = None
     full_address: str | None = None
     responsible_name: str | None = None
     responsible_phone: str | None = None

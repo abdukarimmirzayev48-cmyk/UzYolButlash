@@ -36,6 +36,7 @@ class SourceType(str, Enum):
     russia_direct = "russia_direct"
     uzbekistan_local = "uzbekistan_local"
     jarkurgan = "jarkurgan"
+    sherobod = "sherobod"
     supplier_held_stock = "supplier_held_stock"
     other = "other"
 

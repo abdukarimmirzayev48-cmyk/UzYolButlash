@@ -24,6 +24,7 @@ const deliveryPointTypes = [
   ["abz", "ABZ"],
   ["warehouse", "Ombor"],
   ["object_site", "Ob'ekt"],
+  ["railway_station", "Temiryo'l stansiyasi"],
   ["other", "Boshqa"],
 ];
 
@@ -423,6 +424,10 @@ async function renderDeliveryPointForm(id = null) {
         ${geoRegionField(point.region || "")}
         ${geoDistrictField(point.region || "", point.district || "")}
         ${textArea("address", "To'liq manzil", point.address || "")}
+      </div>
+      <div data-station-only ${point.point_type === "railway_station" ? "" : "hidden"}>
+        <div class="grid">${textField("station_code", "Stansiya kodi", point.station_code || "", "text", { maxlength: 16, inputmode: "numeric", placeholder: "739401" })}</div>
+        <div class="form-hint">Temiryo'l nakladnoyida stansiya aynan kod bilan yoziladi. Nomi bo'yicha izlash ishonchsiz: bir xil nomli stansiyalar bor.</div>
       </div>`)}
      ${section("Xaritadagi joyi", mapPickerField(point.latitude || "", point.longitude || "", {
        hint: "Nuqtani xaritadan belgilang yoki manzilni qidiring. Xaritadagi belgi to'liq manzilga mos bo'lishi kerak.",
@@ -459,6 +464,13 @@ async function renderDeliveryPointForm(id = null) {
   bindGeoFields(app);
   bindSelectSearch(app);
   pointMapPicker = bindMapPicker(app);
+  // Stansiya kodi faqat stansiyaga tegishli: ABZ kartochkasida u
+  // to'ldirilmaydigan ortiqcha maydon bo'lib turardi.
+  const typeSelect = app.querySelector('#delivery-point-form [name="point_type"]');
+  const stationBlock = app.querySelector("[data-station-only]");
+  typeSelect?.addEventListener("change", () => {
+    if (stationBlock) stationBlock.hidden = typeSelect.value !== "railway_station";
+  });
 
   const wizard = bindWizard("delivery-point-form", {
     steps: POINT_WIZARD_STEPS.map((step, index) => (index === 1
@@ -499,6 +511,7 @@ async function renderDeliveryPointForm(id = null) {
         responsible_phone: field(form, "responsible_phone"),
         responsible_email: field(form, "responsible_email"),
         working_hours: field(form, "working_hours"),
+        station_code: field(form, "station_code"),
         notes: field(form, "notes"),
       };
       try {
@@ -567,6 +580,7 @@ function renderPointSummary(form) {
       ${row("Mijoz", choice("client_id"))}
       ${row("Holati", choice("status"))}
       ${row("To'liq manzil", address)}
+      ${text("station_code") ? row("Stansiya kodi", text("station_code")) : ""}
       ${row("Koordinata", point)}
       ${row("Kunlik quvvati", text("daily_capacity_tons"))}
       ${row("Mas'ul shaxs", text("responsible_name"))}

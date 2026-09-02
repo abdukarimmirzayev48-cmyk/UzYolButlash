@@ -545,7 +545,7 @@ function contractWizardTransportPanel(state) {
   return `<div class="grid">
     ${selectField("transport_payment_type", "Transport to'lovi turi", transportPaymentTypes, state.transportPaymentType || "separate_invoice", { required: true })}
     ${selectField("delivery_method", "Yetkazib berish usuli", deliveryMethods, state.deliveryMethod || "auto", { required: true })}
-    ${deliveryPointField("ABZ nuqtasi", state.deliveryPointId, state.deliveryPointOptions || "")}
+    ${deliveryPointField("Yetkazish nuqtasi", state.deliveryPointId, state.deliveryPointOptions || "")}
     ${textArea("transport_notes", "Izoh", state.transportNotes || "")}
   </div><div class="empty compact">Transport bo'yicha aniq tashuvchi, haydovchi va sana ma'lumotlari partiya yaratilgandan keyin kiritiladi.</div>`;
 }

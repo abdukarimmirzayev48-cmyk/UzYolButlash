@@ -50,6 +50,10 @@ class DeliveryPointType(str, Enum):
     abz = "abz"
     warehouse = "warehouse"
     object_site = "object_site"
+    # Temiryo'l stansiyasi: texnik tuz vagonlarda shu yerga keladi.
+    # Alohida ma'lumotnoma emas, chunki stansiyaning ham manzili,
+    # koordinatasi va mas'ul shaxsi bor -- ABZ bilan bir xil kartochka.
+    railway_station = "railway_station"
     other = "other"
 
 
@@ -69,6 +73,9 @@ class DeliveryPoint(Base, TimestampMixin):
     region: Mapped[str | None] = mapped_column(String(255), index=True)
     district: Mapped[str | None] = mapped_column(String(255), index=True)
     address: Mapped[str | None] = mapped_column(Text)
+    # Temiryo'l nakladnoyida stansiya aynan shu kod bilan yoziladi
+    # («739401 - Болдыр»), nomi bo'yicha izlash esa ishonchsiz.
+    station_code: Mapped[str | None] = mapped_column(String(16), index=True)
     latitude: Mapped[str | None] = mapped_column(String(64))
     longitude: Mapped[str | None] = mapped_column(String(64))
 

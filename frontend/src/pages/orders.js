@@ -166,7 +166,7 @@ async function orderForm(order = null) {
             ${readonlyField("order_number", "Buyurtma raqami", order?.order_number || generatedOrderNumber())}
             ${textField("order_date", "Buyurtma sanasi", order?.order_date || today, "date")}
             ${textField("required_date", "Talab qilingan sana", order?.required_date || "", "date")}
-            ${deliveryPointField("ABZ nuqtasi", order?.delivery_point_id ?? contract?.delivery_point_id, points)}
+            ${deliveryPointField("Yetkazish nuqtasi", order?.delivery_point_id ?? contract?.delivery_point_id, points)}
             ${readonlyField("status_label", "Status", optionLabel(orderStatuses, order?.status || "created"))}
             ${textField("created_by", "Yaratgan", order?.created_by)}
             ${textArea("notes", "Izoh", order?.notes)}
@@ -624,7 +624,7 @@ function orderRequiredDateField(state) {
 
 function orderWizardBody(state) {
   if (state.step === 1) return section("Shartnoma tanlash", `${selectField("contract_id", "Shartnoma", [["", "Shartnomani tanlang"]], "", { required: true }).replace("</select>", `${state.contractOptions || ""}</select>`)}${orderWizardContractSummary(state)}`);
-  if (state.step === 2) return section("Mahsulot va miqdor", `${orderRequiredDateField(state)}<div class="grid">${deliveryPointField("ABZ nuqtasi", state.deliveryPointId, state.deliveryPointOptions || "")}</div><p class="form-hint">Bitum qayerga yetkaziladi. Shartnomada ko'rsatilgan bo'lsa, oldindan tanlangan turadi.</p>${orderWizardProductsTable(state)}`);
+  if (state.step === 2) return section("Mahsulot va miqdor", `${orderRequiredDateField(state)}<div class="grid">${deliveryPointField("Yetkazish nuqtasi", state.deliveryPointId, state.deliveryPointOptions || "")}</div><p class="form-hint">Mahsulot qayerga yetkaziladi. Shartnomada ko'rsatilgan bo'lsa, oldindan tanlangan turadi.</p>${orderWizardProductsTable(state)}`);
   if (state.step === 3) return section("Manba va yetkazib berish modeli", orderWizardSourcePanel(state));
   if (state.step === 4) return section("Zaxira / Xarid", orderWizardStockPanel(state));
   if (state.step === 5) return section("Narx va logistika", orderWizardPricePanel(state));
