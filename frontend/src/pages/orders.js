@@ -159,6 +159,16 @@ async function orderForm(order = null) {
         <div class="actions"><button class="btn" data-nav="${order ? `/orders/${order.id}` : "/orders"}">Orqaga</button></div>
       </div>
       <form id="order-form">
+        ${section("Mahsulotlar", `
+          <div id="order-items">${contract ? items.map((item, index) => orderItemRow(contract.items, item, index, balances)).join("") : `<div class="empty">Avval shartnomani tanlang.</div>`}</div>
+          <button type="button" class="btn" id="add-order-item" ${contract ? "" : "disabled"}>Mahsulot qo'shish</button>
+          <div class="totals-bar">
+            <div class="total-box"><span>Jami miqdor</span><strong data-order-quantity>${dash}</strong></div>
+            <div class="total-box"><span>Mahsulot summasi</span><strong data-order-subtotal>${dash}</strong></div>
+            <div class="total-box"><span>QQS</span><strong data-order-vat>${dash}</strong></div>
+            <div class="total-box"><span>Jami summa</span><strong data-order-total>${dash}</strong></div>
+          </div>
+        `)}
         ${section("Asosiy ma'lumotlar", `
           <div class="grid">
             <label>Shartnoma<select name="contract_id"><option value="">Shartnomani tanlang</option>${contracts}</select></label>
@@ -172,17 +182,7 @@ async function orderForm(order = null) {
             ${textArea("notes", "Izoh", order?.notes)}
           </div>
         `)}
-        ${section("Mahsulotlar", `
-          <div id="order-items">${contract ? items.map((item, index) => orderItemRow(contract.items, item, index, balances)).join("") : `<div class="empty">Avval shartnomani tanlang.</div>`}</div>
-          <button type="button" class="btn" id="add-order-item" ${contract ? "" : "disabled"}>Mahsulot qo'shish</button>
-          <div class="totals-bar">
-            <div class="total-box"><span>Jami miqdor</span><strong data-order-quantity>${dash}</strong></div>
-            <div class="total-box"><span>Mahsulot summasi</span><strong data-order-subtotal>${dash}</strong></div>
-            <div class="total-box"><span>QQS</span><strong data-order-vat>${dash}</strong></div>
-            <div class="total-box"><span>Jami summa</span><strong data-order-total>${dash}</strong></div>
-          </div>
-        `)}
-        ${section("Manba va yetkazib berish", `
+${section("Manba va yetkazib berish", `
           <div class="grid">
             ${selectField("source_type", "Manba", sourceTypes, sourceDefault)}
             ${selectField("fulfillment_type", "Yetkazib berish modeli", fulfillmentTypes, order?.fulfillment_type || "direct_supplier_to_customer")}
@@ -627,7 +627,9 @@ function orderRequiredDateField(state) {
 
 function orderWizardBody(state) {
   if (state.step === 1) return section("Shartnoma tanlash", `${selectField("contract_id", "Shartnoma", [["", "Shartnomani tanlang"]], "", { required: true }).replace("</select>", `${state.contractOptions || ""}</select>`)}${orderWizardContractSummary(state)}`);
-  if (state.step === 2) return section("Mahsulot va miqdor", `${orderRequiredDateField(state)}<div class="grid">${deliveryPointField("Yetkazish nuqtasi", state.deliveryPointId, state.deliveryPointOptions || "")}</div><p class="form-hint">Mahsulot qayerga yetkaziladi. Shartnomada ko'rsatilgan bo'lsa, oldindan tanlangan turadi.</p>${orderWizardProductsTable(state)}`);
+  // Mahsulot manzildan oldin: nima jo'natilayotgani qayerga jo'natish
+  // mumkinligini belgilaydi -- tuzga stansiya, bitumga ABZ.
+  if (state.step === 2) return section("Mahsulot va miqdor", `${orderRequiredDateField(state)}${orderWizardProductsTable(state)}<div class="grid">${deliveryPointField("Yetkazish nuqtasi", state.deliveryPointId, state.deliveryPointOptions || "")}</div><p class="form-hint">Mahsulot qayerga yetkaziladi. Ro'yxat shartnomadagi yetkazish usuliga qarab filtrlanadi.</p>`);
   if (state.step === 3) return section("Manba va yetkazib berish modeli", orderWizardSourcePanel(state));
   if (state.step === 4) return section("Zaxira / Xarid", orderWizardStockPanel(state));
   if (state.step === 5) return section("Narx va logistika", orderWizardPricePanel(state));

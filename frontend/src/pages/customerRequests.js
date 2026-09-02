@@ -127,8 +127,6 @@ async function renderCustomerRequestDetail(id) {
       ${section("Mijoz turi va to'lov manbasi", detailList([["Mijoz turi", request.customer_type_label], ["To'lov manbasi", request.payment_source_label]]))}
       ${section("Korxona ma'lumotlari", detailList([["Korxona nomi", request.company_name], ["STIR", request.inn], ["Hudud", request.region], ["Yuridik manzil", request.legal_address], ["Asosiy faoliyat turi", request.activity_type], ["Funksiyasi va vazifalari", request.function_description], ["OKED", request.oked], ["Direktor F.I.Sh.", request.director_full_name]]))}
       ${section("Rekvizitlar", detailList([["Hisob raqami", request.bank_account], ["Bank nomi", request.bank_name], ["MFO", request.mfo]]))}
-      ${section("Yetkazish nuqtasi", detailList([["ABZ nuqtasi", deliveryPointDetail(request.delivery_point)]]))}
-      ${section("Kontakt ma'lumotlari", detailList([["Telefon raqami", request.phone], ["Kontakt shaxs F.I.Sh.", request.contact_full_name], ["Kontakt telefon raqami", request.contact_phone]]))}
       ${section("Mahsulot talabi", detailList([["Mahsulot nomi", request.product?.name], ["Marka", request.product?.brand], ["O'lchov birligi", request.unit], ["Umumiy miqdor", fmtQty(request.total_quantity, request.unit)]]))}
       ${section("Kalendar grafik", `
         ${tableOrEmpty(request.schedule, ["Yil", "Oy", "Miqdor"], (item) => `<tr><td>${fmt(item.year)}</td><td>${fmt(optionLabel(monthLabels.map(([k, l]) => [String(k), l]), String(item.month)))}</td><td>${fmtQty(item.quantity, request.unit)}</td></tr>`, "Kalendar grafik kiritilmagan.")}
@@ -137,6 +135,8 @@ async function renderCustomerRequestDetail(id) {
           <div class="total-box"><span>Umumiy miqdor</span><strong>${fmtQty(request.total_quantity, request.unit)}</strong></div>
         </div>
       `)}
+      ${section("Yetkazish nuqtasi", detailList([["Yetkazish nuqtasi", deliveryPointDetail(request.delivery_point)]]))}
+      ${section("Kontakt ma'lumotlari", detailList([["Telefon raqami", request.phone], ["Kontakt shaxs F.I.Sh.", request.contact_full_name], ["Kontakt telefon raqami", request.contact_phone]]))}
       ${section("Status tarixi", tableOrEmpty(request.status_history, ["Sana", "Oldingi status", "Yangi status", "Izoh", "Foydalanuvchi"], (item) => `<tr><td>${fmtDate(item.created_at)}</td><td>${fmt(item.old_status_label)}</td><td>${fmt(item.new_status_label)}</td><td>${fmt(item.comment)}</td><td>${fmt(item.changed_by)}</td></tr>`, "Status tarixi mavjud emas."))}
     </div>
   `;
@@ -441,12 +441,12 @@ function renderRequestSummary(form) {
       ${row("Korxona", choice("client_id"))}
       ${row("STIR", text("inn"))}
       ${row("Direktor F.I.Sh.", text("director_full_name"))}
-      ${row("ABZ nuqtasi", choice("delivery_point_id"))}
-      ${row("Telefon raqami", text("phone"))}
-      ${row("Kontakt shaxs F.I.Sh.", text("contact_full_name"))}
       ${row("Mahsulot nomi", choice("product_id"))}
       ${row("Umumiy miqdor", withUnit(total))}
       ${row("Kalendar grafik jami", withUnit(scheduleTotal))}
+      ${row("Yetkazish nuqtasi", choice("delivery_point_id"))}
+      ${row("Telefon raqami", text("phone"))}
+      ${row("Kontakt shaxs F.I.Sh.", text("contact_full_name"))}
     </div>
     ${scheduleTotal && scheduleTotal !== total ? `<div class="empty warning">Kalendar grafikdagi jami miqdor umumiy miqdorga teng bo'lishi kerak.</div>` : ""}`;
   localizeDom(holder);
