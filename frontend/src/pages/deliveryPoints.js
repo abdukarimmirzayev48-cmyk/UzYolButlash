@@ -284,13 +284,14 @@ const POINT_SCOPES = {
     showCapacity: true,
     kpiTotal: "Jami ABZ",
     kpiActive: "Faol ABZ",
+    showResponsible: true,
     mapEmpty: "Koordinatasi kiritilgan ABZ yo'q.",
   },
   station: {
     basePath: "/railway-stations",
     crumb: "Temiryo'l stansiyalari",
     title: "Temiryo'l stansiyalari",
-    subtitle: "Texnik tuz vagonlarda keladigan stansiyalar: kodi, manzili va mas'ul shaxsi.",
+    subtitle: "O'zbekiston yuk stansiyalari: ESR kodi, joylashuvi va koordinatasi.",
     createLabel: "Yangi stansiya",
     formTitle: "Yangi stansiya",
     formSubtitle: "Vagon keladigan temiryo'l stansiyasi ma'lumotlarini kiriting",
@@ -302,6 +303,9 @@ const POINT_SCOPES = {
     showCapacity: false,
     kpiTotal: "Jami stansiya",
     kpiActive: "Faol stansiya",
+    // Stansiyada mas'ul shaxs yo'q: vagon stansiyaga keladi, uni temir
+    // yo'l qabul qiladi. Mas'ul shaxs mijoz korxonasida, stansiyada emas.
+    showResponsible: false,
     mapEmpty: "Koordinatasi kiritilgan stansiya yo'q.",
   },
 };
@@ -368,7 +372,7 @@ async function renderDeliveryPointsList(scopeKey = "abz") {
           <th>${pointSortHead("Joylashuv", "region", params)}</th>
           <th>Mijoz</th>
           <th>${scope.showCapacity ? pointSortHead("Quvvati", "capacity", params) : "Stansiya kodi"}</th>
-          <th>${pointSortHead("Mas'ul shaxs", "responsible", params)}</th>
+          ${scope.showResponsible ? `<th>${pointSortHead("Mas'ul shaxs", "responsible", params)}</th>` : ""}
           <th>${pointSortHead("Holati", "status", params)}</th>
           <th>${pointSortHead("Yangilangan", "updated", params)}</th>
           <th>Amallar</th>
@@ -379,11 +383,11 @@ async function renderDeliveryPointsList(scopeKey = "abz") {
           <td class="${scope.showCapacity ? "ops-money" : ""}">${scope.showCapacity
             ? (point.daily_capacity_tons ? `<span data-noloc>${fmtQty(point.daily_capacity_tons)}</span> <span>t/kun</span>` : dash)
             : (point.station_code ? `<span data-noloc>${esc(point.station_code)}</span>` : dash)}</td>
-          <td><span class="person-cell">${personIcon()}${fmt(point.responsible_name)}</span></td>
+          ${scope.showResponsible ? `<td><span class="person-cell">${personIcon()}${fmt(point.responsible_name)}</span></td>` : ""}
           <td>${deliveryPointStatusChip(point.status)}</td>
           <td data-noloc>${fmtDate(point.updated_at)}</td>
           <td>${pointRowMenu(point.id, editable, scope.basePath)}</td>
-        </tr>`).join("") : `<tr><td colspan="8"><div class="empty">${esc(scope.emptyText)}</div></td></tr>`}</tbody></table></section>`}
+        </tr>`).join("") : `<tr><td colspan="${scope.showResponsible ? 8 : 7}"><div class="empty">${esc(scope.emptyText)}</div></td></tr>`}</tbody></table></section>`}
 
     <div class="ops-footer points-footer">
       <span><span>Jami</span> <span data-noloc>${fmt(data.total)}</span> <span>ta yozuv</span></span>
@@ -454,6 +458,13 @@ const POINT_WIZARD_STEPS = [
   { title: "Tekshirish", onEnter: (form) => renderPointSummary(form) },
 ];
 
+// Stansiyada mas'ul shaxs qadami yo'q -- uch qadam qoladi.
+const STATION_WIZARD_STEPS = POINT_WIZARD_STEPS.filter((step) => step.title !== "Mas'ul shaxs");
+
+function pointWizardSteps(scope) {
+  return scope.showResponsible ? POINT_WIZARD_STEPS : STATION_WIZARD_STEPS;
+}
+
 let pointMapPicker = null;
 
 async function renderDeliveryPointForm(id = null, scopeKey = "abz") {
@@ -495,13 +506,13 @@ async function renderDeliveryPointForm(id = null, scopeKey = "abz") {
        hint: "Nuqtani xaritadan belgilang yoki manzilni qidiring. Xaritadagi belgi to'liq manzilga mos bo'lishi kerak.",
      }))}`,
 
-    `${section("Mas'ul shaxs", `<div class="grid">
+    ...(scope.showResponsible ? [`${section("Mas'ul shaxs", `<div class="grid">
         ${textField("responsible_name", "F.I.Sh.", point.responsible_name || "")}
         ${textField("responsible_position", "Lavozimi", point.responsible_position || "")}
         ${textField("responsible_phone", "Telefon", point.responsible_phone || "", "text", { maxlength: 64 })}
         ${textField("responsible_email", "Email", point.responsible_email || "", "email")}
         ${textField("working_hours", "Ish vaqti", point.working_hours || "", "text", { maxlength: 255 })}
-      </div>`)}`,
+      </div>`)}`] : []),
 
     `${section("Nuqta xulosasi", `<div data-point-summary></div>`)}
      ${section("Izoh", textArea("notes", "Izoh", point.notes || ""))}`,
@@ -517,7 +528,7 @@ async function renderDeliveryPointForm(id = null, scopeKey = "abz") {
     // Tahrirlash yo'li ham `/delivery-points/{id}`, ya'ni nuqtaning alohida
     // kartochkasi yo'q. Shuning uchun «Yopish» har doim ro'yxatga qaytaradi.
     closePath: scope.basePath,
-    steps: POINT_WIZARD_STEPS.map((step, index) => ({ ...step, body: bodies[index] })),
+    steps: pointWizardSteps(scope).map((step, index) => ({ ...step, body: bodies[index] })),
     submitLabel: id ? "Saqlash" : scope.createLabel,
     canSubmit: editable,
     withDraft: isNew,
@@ -536,7 +547,7 @@ async function renderDeliveryPointForm(id = null, scopeKey = "abz") {
   bindStationLookup(app);
 
   const wizard = bindWizard("delivery-point-form", {
-    steps: POINT_WIZARD_STEPS.map((step, index) => (index === 1
+    steps: pointWizardSteps(scope).map((step, index) => (index === 1
       // Xarita yashirin bo'lganda o'lchamini bilmaydi va kulrang bo'lib
       // qoladi. Shuning uchun u qadam ochilganda yaratiladi.
       ? { ...step, onEnter: () => pointMapPicker?.ensureMap() }
@@ -646,8 +657,8 @@ function renderPointSummary(form) {
       ${text("station_code") ? row("Stansiya kodi", text("station_code")) : ""}
       ${row("Koordinata", point)}
       ${row("Kunlik quvvati", text("daily_capacity_tons"))}
-      ${row("Mas'ul shaxs", text("responsible_name"))}
-      ${row("Telefon", text("responsible_phone"))}
+      ${form.elements.responsible_name ? row("Mas'ul shaxs", text("responsible_name")) : ""}
+      ${form.elements.responsible_phone ? row("Telefon", text("responsible_phone")) : ""}
     </div>
     ${point ? "" : `<div class="empty warning">Koordinata belgilanmagan. Haydovchi nuqtani telefonida topa olmaydi.</div>`}`;
   localizeDom(holder);

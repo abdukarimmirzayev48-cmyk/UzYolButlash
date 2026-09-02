@@ -32,7 +32,6 @@ MSG_NO_RESPONSIBLE = "Mas'ul shaxsi ko'rsatilmagan ABZ bor"
 MSG_NO_STATIONS = "Hali birorta temiryo'l stansiyasi kiritilmagan"
 MSG_STATION_ATTENTION = "E'tibor talab qiladigan stansiya bor"
 MSG_STATION_NO_COORDINATES = "Koordinatasi kiritilmagan stansiya bor"
-MSG_STATION_NO_RESPONSIBLE = "Mas'ul shaxsi ko'rsatilmagan stansiya bor"
 
 STATUS_ORDER = (S.active, S.attention, S.inactive, S.planned)
 
@@ -139,6 +138,8 @@ def build_dashboard(
         board.warnings.append(MSG_STATION_ATTENTION if station else MSG_ATTENTION)
     if missing_coordinates:
         board.warnings.append(MSG_STATION_NO_COORDINATES if station else MSG_NO_COORDINATES)
-    if missing_responsible:
-        board.warnings.append(MSG_STATION_NO_RESPONSIBLE if station else MSG_NO_RESPONSIBLE)
+    # Stansiyada mas'ul shaxs so'ralmaydi: vagon stansiyaga keladi, uni
+    # temir yo'l qabul qiladi. Mas'ul shaxs mijoz korxonasida.
+    if missing_responsible and not station:
+        board.warnings.append(MSG_NO_RESPONSIBLE)
     return board
