@@ -66,17 +66,23 @@ function kpiCard({ icon, tone, label, value, delta }) {
   </article>`;
 }
 
-function deliveryPointKpis(board) {
+function deliveryPointKpis(board, scope = POINT_SCOPES.abz) {
+  // Kunlik quvvat stansiyaga tegishli emas -- vagon kelib tushadi, zavod
+  // emas. Uning o'rniga koordinatasi belgilangan stansiyalar sanaladi:
+  // koordinatasiz stansiyani haydovchi xaritada topa olmaydi.
+  const third = scope.showCapacity
+    ? kpiCard({ icon: "gauge", tone: "info", label: "Umumiy quvvat", value: `<span data-noloc>${fmtQty(board.daily_capacity)}</span> <span>t/kun</span>`, delta: kpiDelta(board.capacity_added, "t/kun") })
+    : kpiCard({ icon: "gauge", tone: "info", label: "Koordinatasi belgilangan", value: `<span data-noloc>${fmt(board.with_coordinates)}</span> <span>/</span> <span data-noloc>${fmt(board.total)}</span>` });
   return `<div class="kpi-grid">
-    ${kpiCard({ icon: "plant", tone: "info", label: "Jami ABZ", value: `<span data-noloc>${fmt(board.total)}</span>`, delta: kpiDelta(board.total_delta) })}
-    ${kpiCard({ icon: "check", tone: "success", label: "Faol ABZ", value: `<span data-noloc>${fmt(board.active)}</span>`, delta: kpiDelta(board.active_delta) })}
-    ${kpiCard({ icon: "gauge", tone: "info", label: "Umumiy quvvat", value: `<span data-noloc>${fmtQty(board.daily_capacity)}</span> <span>t/kun</span>`, delta: kpiDelta(board.capacity_added, "t/kun") })}
+    ${kpiCard({ icon: "plant", tone: "info", label: scope.kpiTotal, value: `<span data-noloc>${fmt(board.total)}</span>`, delta: kpiDelta(board.total_delta) })}
+    ${kpiCard({ icon: "check", tone: "success", label: scope.kpiActive, value: `<span data-noloc>${fmt(board.active)}</span>`, delta: kpiDelta(board.active_delta) })}
+    ${third}
     ${kpiCard({ icon: "alert", tone: "warning", label: "E'tibor talab qiladi", value: `<span data-noloc>${fmt(board.attention)}</span>`, delta: kpiDelta(board.attention_delta) })}
   </div>`;
 }
 
 // Holat bo'yicha taqsimot -- mockupdagi o'ng ustun.
-function deliveryPointStatusPanel(board) {
+function deliveryPointStatusPanel(board, scope = POINT_SCOPES.abz) {
   const rows = (board.by_status || []).map((row) => `<div class="status-share-row">
     <span class="status-share-icon ${row.key}">${kpiIcon(row.key === "active" ? "check" : row.key === "attention" ? "alert" : "plant")}</span>
     <span class="status-share-label">${fmt(row.label)}</span>
@@ -84,7 +90,7 @@ function deliveryPointStatusPanel(board) {
     <span class="status-share-percent ${row.key}" data-noloc>${fmtQty(row.percent)}%</span>
   </div>`).join("");
   return section("Holat bo'yicha taqsimot", `<div class="status-share">${rows}
-    <div class="status-share-total"><span>Jami ABZ</span><strong data-noloc>${fmt(board.total)}</strong></div>
+    <div class="status-share-total"><span>${esc(scope.kpiTotal)}</span><strong data-noloc>${fmt(board.total)}</strong></div>
   </div>`);
 }
 
@@ -113,12 +119,12 @@ function bindPointSort() {
 
 // Qatordagi amallar menyusi. Uchta havolani yonma-yon qo'yish jadvalni
 // kengaytirib yuboradi va ular ma'lumotdan ko'ra ko'proq joy egallaydi.
-function pointRowMenu(id, editable) {
-  if (!editable) return `<button class="link-btn" data-nav="/delivery-points/${id}">Ochish</button>`;
+function pointRowMenu(id, editable, basePath = "/delivery-points") {
+  if (!editable) return `<button class="link-btn" data-nav="${basePath}/${id}">Ochish</button>`;
   return `<div class="row-menu">
     <button class="row-menu-trigger" type="button" data-row-menu aria-label="Amallar" data-noloc>\u22ef</button>
     <div class="row-menu-panel" hidden>
-      <button type="button" data-nav="/delivery-points/${id}">Ochish</button>
+      <button type="button" data-nav="${basePath}/${id}">Ochish</button>
       <button type="button" data-point-map="${id}">Xaritada ochish</button>
       <button type="button" class="danger" data-delete-point="${id}">O'chirish</button>
     </div>
@@ -198,8 +204,8 @@ function addPointMarkers(map, points, { full = true } = {}) {
 
 // To'liq ekranda orqa fon surilmaydi, shuning uchun oddiy g'ildirak ham
 // yaqinlashtiraveradi -- Ctrl shart emas.
-function openPointsMapModal(points) {
-  openMapModal("ABZ nuqtalari xaritasi", (holder) => {
+function openPointsMapModal(points, title = "ABZ nuqtalari xaritasi") {
+  openMapModal(title, (holder) => {
     const map = L.map(holder).setView(MAP_CENTER, MAP_ZOOM);
     L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, attribution: "&copy; OpenStreetMap" }).addTo(map);
     addPointMarkers(map, points);
@@ -207,7 +213,7 @@ function openPointsMapModal(points) {
   });
 }
 
-function drawPointsMap(points) {
+function drawPointsMap(points, emptyText = "Koordinatasi kiritilgan ABZ yo'q.") {
   const holder = document.querySelector("#points-map");
   if (!holder) return;
   if (typeof L === "undefined") {
@@ -230,16 +236,16 @@ function drawPointsMap(points) {
   const located = points.filter((point) => point.latitude && point.longitude);
   addPointMarkers(pointsMap, points);
   if (!located.length) {
-    holder.insertAdjacentHTML("beforeend", `<div class="map-empty">Koordinatasi kiritilgan ABZ yo'q.</div>`);
+    holder.insertAdjacentHTML("beforeend", `<div class="map-empty">${esc(emptyText)}</div>`);
   }
 }
 
-function pointsViewToggle(view) {
+function pointsViewToggle(view, basePath = "/delivery-points") {
   const link = (key, label) => {
     const next = new URLSearchParams(location.search);
     if (key === "table") next.delete("view");
     else next.set("view", key);
-    return `<button type="button" class="view-toggle-btn ${view === key ? "active" : ""}" data-nav="/delivery-points${next.toString() ? `?${next}` : ""}">${label}</button>`;
+    return `<button type="button" class="view-toggle-btn ${view === key ? "active" : ""}" data-nav="${basePath}${next.toString() ? `?${next}` : ""}">${label}</button>`;
   };
   return `<div class="view-toggle">${link("table", "Jadval")}${link("map", "Xarita")}</div>`;
 }
@@ -254,11 +260,63 @@ function pointsPageSize(current) {
   return `<label class="page-size"><select name="page_size" data-point-page-size>${options}</select><span data-noloc>/</span><span>Sahifada</span></label>`;
 }
 
-async function renderDeliveryPointsList() {
+// ABZ va temiryo'l stansiyasi -- bitta jadval, chunki kartochka bir xil:
+// manzil, koordinata, mas'ul shaxs, holat. Lekin ular bir ro'yxatda
+// turmasligi kerak: bitum ABZ ga texnikada boradi, tuz esa stansiyaga
+// vagonda keladi, va ularni birga ko'rsatish faqat chalkashtiradi.
+//
+// Shuning uchun jadval bitta, bo'lim ikkita. Farqi shu yerda yig'ilgan.
+const POINT_SCOPES = {
+  abz: {
+    basePath: "/delivery-points",
+    crumb: "ABZlar",
+    title: "ABZ boshqaruvi",
+    subtitle: "ABZlarni nazorat qilish, holatini tahlil qilish va samaradorlikni boshqarish.",
+    createLabel: "Yangi ABZ",
+    formTitle: "Yangi ABZ",
+    formSubtitle: "Yangi asfalt-beton zavodi ma'lumotlarini kiriting",
+    nameColumn: "ABZ",
+    emptyText: "Nuqtalar topilmadi.",
+    mapTitle: "ABZ nuqtalari xaritasi",
+    defaultType: "abz",
+    // Ro'yxat stansiyalarni ko'rsatmaydi.
+    apiFilter: { exclude_type: "railway_station" },
+    showCapacity: true,
+    kpiTotal: "Jami ABZ",
+    kpiActive: "Faol ABZ",
+    mapEmpty: "Koordinatasi kiritilgan ABZ yo'q.",
+  },
+  station: {
+    basePath: "/railway-stations",
+    crumb: "Temiryo'l stansiyalari",
+    title: "Temiryo'l stansiyalari",
+    subtitle: "Texnik tuz vagonlarda keladigan stansiyalar: kodi, manzili va mas'ul shaxsi.",
+    createLabel: "Yangi stansiya",
+    formTitle: "Yangi stansiya",
+    formSubtitle: "Vagon keladigan temiryo'l stansiyasi ma'lumotlarini kiriting",
+    nameColumn: "Stansiya",
+    emptyText: "Stansiyalar topilmadi.",
+    mapTitle: "Temiryo'l stansiyalari xaritasi",
+    defaultType: "railway_station",
+    apiFilter: { point_type: "railway_station" },
+    showCapacity: false,
+    kpiTotal: "Jami stansiya",
+    kpiActive: "Faol stansiya",
+    mapEmpty: "Koordinatasi kiritilgan stansiya yo'q.",
+  },
+};
+
+function pointScope(key = "abz") {
+  return POINT_SCOPES[key] || POINT_SCOPES.abz;
+}
+
+async function renderDeliveryPointsList(scopeKey = "abz") {
+  const scope = pointScope(scopeKey);
   const params = new URLSearchParams(location.search);
   const view = params.get("view") === "map" ? "map" : "table";
   const query = new URLSearchParams(params);
   query.delete("view");
+  Object.entries(scope.apiFilter).forEach(([key, value]) => query.set(key, value));
   const [data, board, clients] = await Promise.all([
     api(`/api/delivery-points?${query.toString()}`),
     api(`/api/delivery-points/dashboard?${query.toString()}`),
@@ -273,24 +331,24 @@ async function renderDeliveryPointsList() {
   const exportQuery = query.toString();
 
   app.innerHTML = `<div class="page ops-page delivery-points-ops-page">
-    ${detailBreadcrumb(["Sotuv", "ABZlar"])}
+    ${detailBreadcrumb(["Sotuv", scope.crumb])}
     <div class="page-head-row">
       <div class="page-title">
-        <h1>ABZ boshqaruvi</h1>
-        <p>ABZlarni nazorat qilish, holatini tahlil qilish va samaradorlikni boshqarish.</p>
+        <h1>${esc(scope.title)}</h1>
+        <p>${esc(scope.subtitle)}</p>
       </div>
       <div class="actions">
         <a class="btn" href="/api/delivery-points/export.xlsx?${esc(exportQuery)}${exportQuery ? "&" : ""}lang=${esc(currentLang())}">Eksport</a>
-        ${editable ? `<button class="btn primary" type="button" data-nav="/delivery-points/new">Yangi ABZ</button>` : ""}
+        ${editable ? `<button class="btn primary" type="button" data-nav="${scope.basePath}/new">${esc(scope.createLabel)}</button>` : ""}
       </div>
     </div>
 
-    ${deliveryPointKpis(board)}
+    ${deliveryPointKpis(board, scope)}
     ${workflowWarningsPanel(board.warnings || [])}
 
     <div class="map-row">
       <section class="card map-card"><div id="points-map" class="points-map"></div>${mapExpandButton("points")}</section>
-      ${deliveryPointStatusPanel(board)}
+      ${deliveryPointStatusPanel(board, scope)}
     </div>
 
     <form class="ops-search points-filter" id="delivery-point-search-form">
@@ -299,31 +357,33 @@ async function renderDeliveryPointsList() {
       ${opsFilterField("Holat", `<select name="status"><option value="">Barchasi</option>${deliveryPointStatuses.map(([key, label]) => `<option value="${key}" ${params.get("status") === key ? "selected" : ""}>${label}</option>`).join("")}</select>`)}
       ${opsFilterField("Mijoz", `<select name="client_id"><option value="">Barchasi</option>${clientOptions}</select>`)}
       <button class="ops-tool-btn primary" type="submit">Qidirish</button>
-      <button class="btn" type="button" data-nav="/delivery-points">Tozalash</button>
-      ${pointsViewToggle(view)}
+      <button class="btn" type="button" data-nav="${scope.basePath}">Tozalash</button>
+      ${pointsViewToggle(view, scope.basePath)}
     </form>
 
     ${view === "map"
       ? `<section class="card map-card tall"><div id="points-map-large" class="points-map"></div>${mapExpandButton("points")}</section>`
       : `<section class="ops-table-card"><table class="ops-table"><thead><tr>
-          <th>${pointSortHead("ABZ", "name", params)}</th>
+          <th>${pointSortHead(scope.nameColumn, "name", params)}</th>
           <th>${pointSortHead("Joylashuv", "region", params)}</th>
           <th>Mijoz</th>
-          <th>${pointSortHead("Quvvati", "capacity", params)}</th>
+          <th>${scope.showCapacity ? pointSortHead("Quvvati", "capacity", params) : "Stansiya kodi"}</th>
           <th>${pointSortHead("Mas'ul shaxs", "responsible", params)}</th>
           <th>${pointSortHead("Holati", "status", params)}</th>
           <th>${pointSortHead("Yangilangan", "updated", params)}</th>
           <th>Amallar</th>
         </tr></thead><tbody>${data.items.length ? data.items.map((point) => `<tr>
-          <td><button class="ops-primary-link accent" data-nav="/delivery-points/${point.id}">${fmt(point.name)}</button></td>
+          <td><button class="ops-primary-link accent" data-nav="${scope.basePath}/${point.id}">${fmt(point.name)}</button></td>
           <td>${fmt(point.full_address)}</td>
           <td>${fmt(point.client?.name)}</td>
-          <td class="ops-money">${point.daily_capacity_tons ? `<span data-noloc>${fmtQty(point.daily_capacity_tons)}</span> <span>t/kun</span>` : dash}</td>
+          <td class="${scope.showCapacity ? "ops-money" : ""}">${scope.showCapacity
+            ? (point.daily_capacity_tons ? `<span data-noloc>${fmtQty(point.daily_capacity_tons)}</span> <span>t/kun</span>` : dash)
+            : (point.station_code ? `<span data-noloc>${esc(point.station_code)}</span>` : dash)}</td>
           <td><span class="person-cell">${personIcon()}${fmt(point.responsible_name)}</span></td>
           <td>${deliveryPointStatusChip(point.status)}</td>
           <td data-noloc>${fmtDate(point.updated_at)}</td>
-          <td>${pointRowMenu(point.id, editable)}</td>
-        </tr>`).join("") : `<tr><td colspan="8"><div class="empty">Nuqtalar topilmadi.</div></td></tr>`}</tbody></table></section>`}
+          <td>${pointRowMenu(point.id, editable, scope.basePath)}</td>
+        </tr>`).join("") : `<tr><td colspan="8"><div class="empty">${esc(scope.emptyText)}</div></td></tr>`}</tbody></table></section>`}
 
     <div class="ops-footer points-footer">
       <span><span>Jami</span> <span data-noloc>${fmt(data.total)}</span> <span>ta yozuv</span></span>
@@ -332,21 +392,21 @@ async function renderDeliveryPointsList() {
     </div>
   </div>`;
 
-  bindOpsSearch("delivery-point-search-form", "/delivery-points", ["search", "client_id", "region", "status", "view", "page_size"]);
-  bindOpsPagination("deliverypoint", "/delivery-points");
+  bindOpsSearch("delivery-point-search-form", scope.basePath, ["search", "client_id", "region", "status", "view", "page_size"]);
+  bindOpsPagination("deliverypoint", scope.basePath);
   bindPointSort();
   bindRowMenus();
-  drawPointsMap(data.items);
+  drawPointsMap(data.items, scope.mapEmpty);
   if (view === "map") drawLargePointsMap(data.items);
   app.querySelectorAll('[data-map-expand="points"]').forEach((button) => {
-    button.addEventListener("click", () => openPointsMapModal(data.items));
+    button.addEventListener("click", () => openPointsMapModal(data.items, scope.mapTitle));
   });
 
   document.querySelector("[data-point-page-size]")?.addEventListener("change", (event) => {
     const next = new URLSearchParams(location.search);
     next.set("page_size", event.target.value);
     next.delete("page");
-    navigate(`/delivery-points?${next}`);
+    navigate(`${scope.basePath}?${next}`);
   });
   document.querySelectorAll("[data-point-map]").forEach((button) => button.addEventListener("click", () => {
     const point = data.items.find((item) => item.id === Number(button.dataset.pointMap));
@@ -396,7 +456,8 @@ const POINT_WIZARD_STEPS = [
 
 let pointMapPicker = null;
 
-async function renderDeliveryPointForm(id = null) {
+async function renderDeliveryPointForm(id = null, scopeKey = "abz") {
+  const scope = pointScope(scopeKey);
   app.innerHTML = `<div class="page"><div class="empty">Yuklanmoqda...</div></div>`;
   const [point, clients] = await Promise.all([
     id ? api(`/api/delivery-points/${id}`) : Promise.resolve({}),
@@ -413,11 +474,11 @@ async function renderDeliveryPointForm(id = null) {
     `${section("Nuqta", `<div class="grid">
         ${textField("name", "Nuqta nomi", point.name || "", "text", { required: true, maxlength: 255 })}
         ${textField("code", "Kodi", point.code || "", "text", { maxlength: 64 })}
-        ${selectField("point_type", "Turi", deliveryPointTypes, point.point_type || "abz")}
+        ${selectField("point_type", "Turi", deliveryPointTypes, point.point_type || scope.defaultType)}
         <label class="form-field"><span class="field-label-text">Mijoz</span>${selectSearch("client_id", "Mijoz nomi yoki STIR bo'yicha qidiring")}<select name="client_id"><option value="">Bog'lanmagan</option>${clientOptions}</select></label>
         ${selectField("status", "Holati", deliveryPointStatuses, point.status || "active")}
-        ${textField("daily_capacity_tons", "Kunlik quvvati, t/kun", point.daily_capacity_tons ?? "", "number")}
-        ${textField("tank_capacity_tons", "Sisterna sig'imi, t", point.tank_capacity_tons ?? "", "number")}
+        ${scope.showCapacity ? `${textField("daily_capacity_tons", "Kunlik quvvati, t/kun", point.daily_capacity_tons ?? "", "number")}
+        ${textField("tank_capacity_tons", "Sisterna sig'imi, t", point.tank_capacity_tons ?? "", "number")}` : ""}
       </div>`)}`,
 
     `${section("Manzil", `<div class="grid">
@@ -425,7 +486,7 @@ async function renderDeliveryPointForm(id = null) {
         ${geoDistrictField(point.region || "", point.district || "")}
         ${textArea("address", "To'liq manzil", point.address || "")}
       </div>
-      <div data-station-only ${point.point_type === "railway_station" ? "" : "hidden"}>
+      <div data-station-only ${(point.point_type || scope.defaultType) === "railway_station" ? "" : "hidden"}>
         <div class="grid">${textField("station_code", "Stansiya kodi", point.station_code || "", "text", { maxlength: 16, inputmode: "numeric", placeholder: "739401" })}</div>
         <div class="form-hint">Temiryo'l nakladnoyida stansiya aynan kod bilan yoziladi. Nomi bo'yicha izlash ishonchsiz: bir xil nomli stansiyalar bor.</div>
       </div>`)}
@@ -447,16 +508,16 @@ async function renderDeliveryPointForm(id = null) {
 
   app.innerHTML = wizardPage({
     formId: "delivery-point-form",
-    title: id ? point.name : "Yangi ABZ",
+    title: id ? point.name : scope.formTitle,
     subtitle: id
       ? [optionLabel(deliveryPointTypes, point.point_type || "abz"), point.full_address].filter(Boolean).join(" · ")
-      : "Yangi asfalt-beton zavodi ma'lumotlarini kiriting",
-    breadcrumb: [["ABZ nuqtalari", "/delivery-points"], [id ? "Tahrirlash" : "Yangi ABZ", ""]],
+      : scope.formSubtitle,
+    breadcrumb: [[scope.crumb, scope.basePath], [id ? "Tahrirlash" : scope.createLabel, ""]],
     // Tahrirlash yo'li ham `/delivery-points/{id}`, ya'ni nuqtaning alohida
     // kartochkasi yo'q. Shuning uchun «Yopish» har doim ro'yxatga qaytaradi.
-    closePath: "/delivery-points",
+    closePath: scope.basePath,
     steps: POINT_WIZARD_STEPS.map((step, index) => ({ ...step, body: bodies[index] })),
-    submitLabel: id ? "Saqlash" : "Nuqta qo'shish",
+    submitLabel: id ? "Saqlash" : scope.createLabel,
     canSubmit: editable,
     withDraft: isNew,
   });
@@ -478,7 +539,7 @@ async function renderDeliveryPointForm(id = null) {
       // qoladi. Shuning uchun u qadam ochilganda yaratiladi.
       ? { ...step, onEnter: () => pointMapPicker?.ensureMap() }
       : step)),
-    draftKey: id ? "" : "delivery-point",
+    draftKey: id ? "" : `delivery-point-${scopeKey}`,
     unlocked: Boolean(id),
     prepareDraft: async (values) => {
       // Tuman ro'yxati viloyatga bog'liq: viloyat oldin qo'yilmasa,
@@ -518,12 +579,12 @@ async function renderDeliveryPointForm(id = null) {
         if (id) {
           await api(`/api/delivery-points/${id}`, { method: "PATCH", body: JSON.stringify(payload) });
           showToast("Nuqta saqlandi.");
-          await renderDeliveryPointForm(id);
+          await renderDeliveryPointForm(id, scopeKey);
         } else {
           const saved = await api("/api/delivery-points", { method: "POST", body: JSON.stringify(payload) });
           wizard?.clearDraft();
           showToast("Nuqta qo'shildi.");
-          navigate(`/delivery-points/${saved.id}`);
+          navigate(`${scope.basePath}/${saved.id}`);
         }
       } catch (error) {
         showToast(error.message, true);

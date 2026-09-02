@@ -13,7 +13,12 @@ from sqlalchemy.orm import Session, selectinload
 
 from backend.app.db.session import get_db
 from backend.app.models.client import Client
-from backend.app.models.delivery_point import SELECTABLE_STATUSES, DeliveryPoint, DeliveryPointStatusHistory
+from backend.app.models.delivery_point import (
+    SELECTABLE_STATUSES,
+    DeliveryPoint,
+    DeliveryPointStatusHistory,
+    DeliveryPointType,
+)
 from backend.app.schemas.client import Page
 from backend.app.models.user import User
 from backend.app.schemas.delivery_point import (
@@ -94,9 +99,16 @@ def apply_point_sort(stmt, sort: str | None, order: str | None):
     return stmt.order_by(column.desc() if (order or "asc") == "desc" else column.asc())
 
 
-def point_filters(search, client_id, region, point_type, status_filter, active_only):
-    """Ro'yxat, panel va eksport aynan bir xil filtrlangan bo'lishi kerak."""
+def point_filters(search, client_id, region, point_type, status_filter, active_only, exclude_type=None):
+    """Ro'yxat, panel va eksport aynan bir xil filtrlangan bo'lishi kerak.
+
+    `exclude_type` -- bo'lim ajratish uchun: ABZ ro'yxati stansiyalarni
+    ko'rsatmaydi, stansiyalar ro'yxati esa faqat ularni ko'rsatadi. Jadval
+    bitta, chunki kartochka bir xil: manzil, koordinata, mas'ul shaxs.
+    """
     conditions = []
+    if exclude_type:
+        conditions.append(DeliveryPoint.point_type != exclude_type)
     if client_id:
         conditions.append(DeliveryPoint.client_id == client_id)
     if region:
@@ -132,13 +144,14 @@ def delivery_points_dashboard(
     point_type: str | None = None,
     status_filter: str | None = Query(default=None, alias="status"),
     active_only: bool = False,
+    exclude_type: str | None = None,
 ):
     stmt = select(DeliveryPoint).options(selectinload(DeliveryPoint.status_history))
-    conditions = point_filters(search, client_id, region, point_type, status_filter, active_only)
+    conditions = point_filters(search, client_id, region, point_type, status_filter, active_only, exclude_type)
     if conditions:
         stmt = stmt.where(*conditions)
     points = list(db.scalars(stmt).unique())
-    board = delivery_point_stats.build_dashboard(points, status_labels=STATUS_LABELS)
+    board = delivery_point_stats.build_dashboard(points, status_labels=STATUS_LABELS, station=point_type == DeliveryPointType.railway_station.value)
     return DeliveryPointDashboard(**asdict(board))
 
 
@@ -151,21 +164,23 @@ def export_delivery_points(
     point_type: str | None = None,
     status_filter: str | None = Query(default=None, alias="status"),
     active_only: bool = False,
+    exclude_type: str | None = None,
     sort: str | None = None,
     order: str | None = None,
     lang: str = "cyr",
 ):
     """Ekranda nima ko'rinsa, o'sha eksport qilinadi -- filtr ham, tartib ham."""
     stmt = select(DeliveryPoint).options(selectinload(DeliveryPoint.client))
-    conditions = point_filters(search, client_id, region, point_type, status_filter, active_only)
+    conditions = point_filters(search, client_id, region, point_type, status_filter, active_only, exclude_type)
     if conditions:
         stmt = stmt.where(*conditions)
     points = list(db.scalars(apply_point_sort(stmt, sort, order)).unique())
-    stream = delivery_point_export.build_workbook(points, lang)
+    station = point_type == DeliveryPointType.railway_station.value
+    stream = delivery_point_export.build_workbook(points, lang, station=station)
     return StreamingResponse(
         stream,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={"Content-Disposition": 'attachment; filename="abz-nuqtalari.xlsx"'},
+        headers={"Content-Disposition": f'attachment; filename="{"temiryol-stansiyalari" if station else "abz-nuqtalari"}.xlsx"'},
     )
 
 
@@ -180,11 +195,12 @@ def list_delivery_points(
     point_type: str | None = None,
     status_filter: str | None = Query(default=None, alias="status"),
     active_only: bool = False,
+    exclude_type: str | None = None,
     sort: str | None = None,
     order: str | None = None,
 ):
     stmt = select(DeliveryPoint).options(selectinload(DeliveryPoint.client))
-    conditions = point_filters(search, client_id, region, point_type, status_filter, active_only)
+    conditions = point_filters(search, client_id, region, point_type, status_filter, active_only, exclude_type)
     if conditions:
         stmt = stmt.where(*conditions)
     total = db.scalar(select(func.count()).select_from(stmt.subquery())) or 0

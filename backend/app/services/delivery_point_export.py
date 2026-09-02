@@ -25,6 +25,8 @@ LABELS = {
     "lat": {
         "title": "ABZ nuqtalari",
         "sheet": "ABZ",
+        "station_title": "Temiryo'l stansiyalari",
+        "station_sheet": "Stansiyalar",
         "name": "ABZ",
         "code": "Kodi",
         "client": "Mijoz",
@@ -50,6 +52,8 @@ LABELS = {
     "cyr": {
         "title": "АБЗ нуқталари",
         "sheet": "АБЗ",
+        "station_title": "Темирйўл стансиялари",
+        "station_sheet": "Стансиялар",
         "name": "АБЗ",
         "code": "Коди",
         "client": "Мижоз",
@@ -98,13 +102,13 @@ def _num(value) -> float | None:
     return None if value is None else float(Decimal(value))
 
 
-def build_workbook(points: list, lang: str = "cyr") -> BytesIO:
+def build_workbook(points: list, lang: str = "cyr", station: bool = False) -> BytesIO:
     words = LABELS.get(lang, LABELS["cyr"])
     book = Workbook()
     sheet = book.active
-    sheet.title = words["sheet"]
+    sheet.title = words["station_sheet"] if station else words["sheet"]
 
-    sheet["A1"] = words["title"]
+    sheet["A1"] = words["station_title"] if station else words["title"]
     sheet["A1"].font = TITLE_FONT
 
     header_row = 3

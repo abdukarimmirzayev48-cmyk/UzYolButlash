@@ -26,6 +26,14 @@ MSG_ATTENTION = "E'tibor talab qiladigan ABZ bor"
 MSG_NO_COORDINATES = "Koordinatasi kiritilmagan ABZ bor"
 MSG_NO_RESPONSIBLE = "Mas'ul shaxsi ko'rsatilmagan ABZ bor"
 
+# Stansiyalar bo'limi uchun aynan shu ogohlantirishlar, boshqacha yozilgan.
+# Ular «{label} bor» ko'rinishida yig'ilmaydi: yig'ilgan gap lug'atda kalit
+# bo'lmaydi va kirillchada lotincha bo'lib qolardi.
+MSG_NO_STATIONS = "Hali birorta temiryo'l stansiyasi kiritilmagan"
+MSG_STATION_ATTENTION = "E'tibor talab qiladigan stansiya bor"
+MSG_STATION_NO_COORDINATES = "Koordinatasi kiritilmagan stansiya bor"
+MSG_STATION_NO_RESPONSIBLE = "Mas'ul shaxsi ko'rsatilmagan stansiya bor"
+
 STATUS_ORDER = (S.active, S.attention, S.inactive, S.planned)
 
 
@@ -69,7 +77,13 @@ class PointDashboard:
     warnings: list[str] = field(default_factory=list)
 
 
-def build_dashboard(points: list, *, today: date | None = None, status_labels: dict | None = None) -> PointDashboard:
+def build_dashboard(
+    points: list,
+    *,
+    today: date | None = None,
+    status_labels: dict | None = None,
+    station: bool = False,
+) -> PointDashboard:
     today = today or date.today()
     labels = status_labels or {}
     # Chegara -- shu oyning birinchi kuni: undan oldingisi «o'tgan oy».
@@ -120,11 +134,11 @@ def build_dashboard(points: list, *, today: date | None = None, status_labels: d
         )
 
     if not board.total:
-        board.warnings.append(MSG_NO_POINTS)
+        board.warnings.append(MSG_NO_STATIONS if station else MSG_NO_POINTS)
     if board.attention:
-        board.warnings.append(MSG_ATTENTION)
+        board.warnings.append(MSG_STATION_ATTENTION if station else MSG_ATTENTION)
     if missing_coordinates:
-        board.warnings.append(MSG_NO_COORDINATES)
+        board.warnings.append(MSG_STATION_NO_COORDINATES if station else MSG_NO_COORDINATES)
     if missing_responsible:
-        board.warnings.append(MSG_NO_RESPONSIBLE)
+        board.warnings.append(MSG_STATION_NO_RESPONSIBLE if station else MSG_NO_RESPONSIBLE)
     return board

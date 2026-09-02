@@ -81,6 +81,14 @@ async function render() {
       await renderDeliveryPointForm(Number(location.pathname.split("/")[2]));
     } else if (location.pathname === "/delivery-points") {
       await renderDeliveryPointsList();
+    // Stansiyalar bitta jadvalda saqlanadi, lekin alohida bo'lim: bitum ABZ ga
+    // texnikada boradi, tuz stansiyaga vagonda keladi.
+    } else if (location.pathname === "/railway-stations/new") {
+      await renderDeliveryPointForm(null, "station");
+    } else if (/^\/railway-stations\/\d+$/.test(location.pathname)) {
+      await renderDeliveryPointForm(Number(location.pathname.split("/")[2]), "station");
+    } else if (location.pathname === "/railway-stations") {
+      await renderDeliveryPointsList("station");
     } else if (location.pathname === "/customer-requests/new") {
       await renderNewCustomerRequest();
     } else if (/^\/customer-requests\/\d+\/edit$/.test(location.pathname)) {
