@@ -489,6 +489,7 @@ async function renderDeliveryPointForm(id = null, scopeKey = "abz") {
       <div data-station-only ${(point.point_type || scope.defaultType) === "railway_station" ? "" : "hidden"}>
         <div class="grid">${textField("station_code", "Stansiya kodi", point.station_code || "", "text", { maxlength: 16, inputmode: "numeric", placeholder: "739401" })}</div>
         <div class="form-hint">Temiryo'l nakladnoyida stansiya aynan kod bilan yoziladi. Nomi bo'yicha izlash ishonchsiz: bir xil nomli stansiyalar bor.</div>
+        <div data-station-lookup></div>
       </div>`)}
      ${section("Xaritadagi joyi", mapPickerField(point.latitude || "", point.longitude || "", {
        hint: "Nuqtani xaritadan belgilang yoki manzilni qidiring. Xaritadagi belgi to'liq manzilga mos bo'lishi kerak.",
@@ -532,6 +533,7 @@ async function renderDeliveryPointForm(id = null, scopeKey = "abz") {
   typeSelect?.addEventListener("change", () => {
     if (stationBlock) stationBlock.hidden = typeSelect.value !== "railway_station";
   });
+  bindStationLookup(app);
 
   const wizard = bindWizard("delivery-point-form", {
     steps: POINT_WIZARD_STEPS.map((step, index) => (index === 1
@@ -649,4 +651,57 @@ function renderPointSummary(form) {
     </div>
     ${point ? "" : `<div class="empty warning">Koordinata belgilanmagan. Haydovchi nuqtani telefonida topa olmaydi.</div>`}`;
   localizeDom(holder);
+}
+
+// Stansiya kodi kiritilganda ma'lumotnomadan nomi va koordinatasi olinadi.
+// Kod nakladnoydan ko'chiriladi, koordinatani esa qo'lda yozish -- xato
+// manbai: u faqat yo'lda, haydovchi nuqtani qidirayotganda bilinadi.
+//
+// To'ldirilgan maydon ustidan yozilmaydi: xodim ataylab o'zgartirgan
+// bo'lishi mumkin.
+async function bindStationLookup(root = app) {
+  const form = root.querySelector("#delivery-point-form");
+  const codeInput = form?.elements.station_code;
+  const holder = root.querySelector("[data-station-lookup]");
+  if (!codeInput || !holder) return;
+
+  async function lookup() {
+    const code = codeInput.value.trim();
+    if (code.length < 3) {
+      holder.innerHTML = "";
+      return;
+    }
+    let rows = [];
+    try {
+      rows = await api(`/api/delivery-points/station-reference?q=${encodeURIComponent(code)}&limit=1`);
+    } catch (error) {
+      holder.innerHTML = "";
+      return;
+    }
+    const station = rows[0];
+    if (!station || station.code !== code) {
+      holder.innerHTML = `<div class="form-hint warning">Bu kod ma'lumotnomada yo'q. Kodni tekshiring yoki nuqtani xaritadan belgilang.</div>`;
+      localizeDom(holder);
+      return;
+    }
+    const nameInput = form.elements.name;
+    if (nameInput && !nameInput.value.trim()) {
+      nameInput.value = `${station.name} stansiyasi`;
+      nameInput.dispatchEvent(new Event("input", { bubbles: true }));
+    }
+    const lat = form.elements.latitude;
+    const lng = form.elements.longitude;
+    if (lat && lng && !(lat.value.trim() && lng.value.trim())) {
+      lat.value = station.latitude;
+      lng.value = station.longitude;
+      lng.dispatchEvent(new Event("change", { bubbles: true }));
+    }
+    holder.innerHTML = `<div class="form-hint"><span>Ma'lumotnomadan</span>: <strong data-noloc>${esc(station.name)}</strong><span data-noloc>, ${esc(station.nearby)}</span></div>`;
+    localizeDom(holder);
+    markWizardFields(form);
+  }
+
+  codeInput.addEventListener("change", lookup);
+  codeInput.addEventListener("blur", lookup);
+  if (codeInput.value.trim()) lookup();
 }

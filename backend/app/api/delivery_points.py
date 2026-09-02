@@ -30,7 +30,7 @@ from backend.app.schemas.delivery_point import (
     DeliveryPointSummary,
     DeliveryPointUpdate,
 )
-from backend.app.services import delivery_point_export, delivery_point_stats
+from backend.app.services import delivery_point_export, delivery_point_stats, railway_stations
 from backend.app.services.auth import get_current_user, require_edit
 
 router = APIRouter(prefix="/api/delivery-points", tags=["delivery-points"])
@@ -133,6 +133,18 @@ def point_filters(search, client_id, region, point_type, status_filter, active_o
             )
         )
     return conditions
+
+
+# `/{point_id}` dan OLDIN turishi shart: aks holda FastAPI «station-reference»
+# ni id deb o'qishga urinadi.
+@router.get("/station-reference")
+def station_reference(q: str = "", limit: int = Query(20, ge=1, le=220)):
+    """Temiryo'l stansiyalari ma'lumotnomasi -- kod, nom, koordinata.
+
+    Kartochka ochilmaydi, faqat qidiriladi: 220 ta stansiyaning hammasini
+    yozuv qilib qo'yish panelni ishlatib bo'lmaydigan holga keltirardi.
+    """
+    return railway_stations.search(q, limit)
 
 
 @router.get("/dashboard", response_model=DeliveryPointDashboard)
