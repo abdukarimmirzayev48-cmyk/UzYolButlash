@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>UzYolButlash ERP</title>
     <link rel="stylesheet" href="/static/vendor/leaflet.css?v=1.9.4" />
-    <link rel="stylesheet" href="/static/styles.css?v=20260902-reqstatus" />
+    <link rel="stylesheet" href="/static/styles.css?v=20260902-references" />
   </head>
   <body>
     <header class="app-topbar">
@@ -25,7 +25,6 @@
         <div class="top-nav-group">
           <button type="button">Xodimlar</button>
           <div class="top-nav-menu">
-            <a href="/employees">Xodimlar</a>
             <a href="/attendance">Davomat</a>
             <a href="/tasks">Ijro</a>
             <a href="/audit-log">Amallar tarixi</a>
@@ -34,13 +33,9 @@
         <div class="top-nav-group">
           <button type="button">Sotuv</button>
           <div class="top-nav-menu">
-            <a href="/clients">Mijozlar</a>
             <a href="/customer-requests">Talabnomalar</a>
-            <a href="/delivery-points">ABZ nuqtalari</a>
-            <a href="/railway-stations">Temiryo'l stansiyalari</a>
             <a href="/contracts">Shartnomalar</a>
             <a href="/orders">Buyurtmalar</a>
-            <a href="/products">Mahsulotlar</a>
           </div>
         </div>
         <div class="top-nav-group">
@@ -49,7 +44,6 @@
             <a href="/delivery">Umumiy ko'rinish</a>
             <a href="/delivery-batches">Partiyalar</a>
             <a href="/logistics">Logistika</a>
-            <a href="/transports">Transportlar</a>
             <a href="/transport-events">Yoqilg'i va hodisalar</a>
             <a href="/transport-repairs">TO va ta'mir</a>
             <a href="/fleet-summary">Park xulosasi</a>
@@ -58,10 +52,25 @@
         <div class="top-nav-group">
           <button type="button">Ta'minot</button>
           <div class="top-nav-menu">
-            <a href="/suppliers">Ta'minotchilar</a>
             <a href="/procurements">Xaridlar</a>
             <a href="/exchange-tickets">Birja ticketlari</a>
             <a href="/stock">Zaxira</a>
+          </div>
+        </div>
+        <div class="top-nav-group">
+          <button type="button" data-nav-module="/references">Ma'lumotnomalar</button>
+          <div class="top-nav-menu">
+            <a href="/references">Barcha ma'lumotnomalar</a>
+            <a href="/clients">Mijozlar</a>
+            <a href="/suppliers">Ta'minotchilar</a>
+            <a href="/company-registry">Korxonalar reyestri</a>
+            <a href="/products">Mahsulotlar</a>
+            <a href="/delivery-points">ABZ nuqtalari</a>
+            <a href="/railway-stations">Temiryo'l stansiyalari</a>
+            <a href="/stock-locations">Ombor joylari</a>
+            <a href="/regions">Viloyat va tumanlar</a>
+            <a href="/employees">Xodimlar</a>
+            <a href="/transports">Transportlar</a>
           </div>
         </div>
         <div class="top-nav-group">
@@ -143,6 +152,20 @@
           <a href="/cashflow" data-short="OP" title="Pul oqimi"><span>Pul oqimi</span></a>
         </section>
         <section class="nav-section">
+          <h2>Ma'lumotnomalar</h2>
+          <a href="/references" data-short="ML" title="Barcha ma'lumotnomalar"><span>Barcha ma'lumotnomalar</span></a>
+          <a href="/clients" data-short="M" title="Mijozlar"><span>Mijozlar</span></a>
+          <a href="/suppliers" data-short="T" title="Ta'minotchilar"><span>Ta'minotchilar</span></a>
+          <a href="/company-registry" data-short="KR" title="Korxonalar reyestri"><span>Korxonalar reyestri</span></a>
+          <a href="/products" data-short="MH" title="Mahsulotlar"><span>Mahsulotlar</span></a>
+          <a href="/delivery-points" data-short="AB" title="ABZ nuqtalari"><span>ABZ nuqtalari</span></a>
+          <a href="/railway-stations" data-short="TS" title="Temiryo'l stansiyalari"><span>Temiryo'l stansiyalari</span></a>
+          <a href="/stock-locations" data-short="OJ" title="Ombor joylari"><span>Ombor joylari</span></a>
+          <a href="/regions" data-short="VT" title="Viloyat va tumanlar"><span>Viloyat va tumanlar</span></a>
+          <a href="/employees" data-short="XO" title="Xodimlar"><span>Xodimlar</span></a>
+          <a href="/transports" data-short="TR" title="Transportlar"><span>Transportlar</span></a>
+        </section>
+        <section class="nav-section">
           <h2>Moliya</h2>
           <a href="/receivables" data-short="QD" title="Debitorlik"><span>Debitorlik</span></a>
           <a href="/payables" data-short="KQ" title="Kreditorlik"><span>Kreditorlik</span></a>
@@ -153,34 +176,27 @@
         </section>
         <section class="nav-section">
           <h2>Sotuv</h2>
-          <a class="active" href="/clients" data-short="M" title="Mijozlar"><span>Mijozlar</span></a>
           <a href="/customer-requests" data-short="T" title="Talabnomalar"><span>Talabnomalar</span></a>
-          <a href="/delivery-points" data-short="AB" title="ABZ nuqtalari"><span>ABZ nuqtalari</span></a>
-          <a href="/railway-stations" data-short="TS" title="Temiryo'l stansiyalari"><span>Temiryo'l stansiyalari</span></a>
           <a href="/contracts" data-short="SH" title="Shartnomalar"><span>Shartnomalar</span></a>
           <a href="/orders" data-short="B" title="Buyurtmalar"><span>Buyurtmalar</span></a>
-          <a href="/products" data-short="MH" title="Mahsulotlar"><span>Mahsulotlar</span></a>
         </section>
         <section class="nav-section">
           <h2>Yetkazib berish</h2>
           <a href="/delivery" data-short="UK" title="Umumiy ko'rinish"><span>Umumiy ko'rinish</span></a>
           <a href="/delivery-batches" data-short="PB" title="Partiyalar"><span>Partiyalar</span></a>
           <a href="/logistics" data-short="L" title="Logistika"><span>Logistika</span></a>
-          <a href="/transports" data-short="TR" title="Transportlar"><span>Transportlar</span></a>
           <a href="/transport-events" data-short="YH" title="Yoqilg'i va hodisalar"><span>Yoqilg'i va hodisalar</span></a>
           <a href="/transport-repairs" data-short="TT" title="TO va ta'mir"><span>TO va ta'mir</span></a>
           <a href="/fleet-summary" data-short="PX" title="Park xulosasi"><span>Park xulosasi</span></a>
         </section>
         <section class="nav-section">
           <h2>Ta'minot</h2>
-          <a href="/suppliers" data-short="T" title="Ta'minotchilar"><span>Ta'minotchilar</span></a>
           <a href="/procurements" data-short="X" title="Xaridlar"><span>Xaridlar</span></a>
           <a href="/exchange-tickets" data-short="BT" title="Birja ticketlari"><span>Birja ticketlari</span></a>
           <a href="/stock" data-short="Z" title="Zaxira"><span>Zaxira</span></a>
         </section>
         <section class="nav-section">
           <h2>Xodimlar</h2>
-          <a href="/employees" data-short="XO" title="Xodimlar"><span>Xodimlar</span></a>
           <a href="/attendance" data-short="DV" title="Davomat"><span>Davomat</span></a>
           <a href="/tasks" data-short="IJ" title="Ijro"><span>Ijro</span></a>
           <a href="/audit-log" data-short="AT" title="Amallar tarixi"><span>Amallar tarixi</span></a>
@@ -218,9 +234,10 @@
     <script src="/static/src/components/Panels.js?v=20260629-frontend-refactor" defer></script>
     <script src="/static/src/index.js?v=20260629-frontend-refactor" defer></script>
     <script src="/static/src/config/constants.js?v=20260902-station-v1" defer></script>
-    <script src="/static/src/config/cyrillic.js?v=20260902-reqstatus" defer></script>
+    <script src="/static/src/config/cyrillic.js?v=20260902-references" defer></script>
     <script src="/static/src/core/runtime.js?v=20260902-map-v3" defer></script>
     <script src="/static/src/pages/clients.js?v=20260824-links" defer></script>
+    <script src="/static/src/pages/references.js?v=20260902-references" defer></script>
     <script src="/static/src/pages/deliveryPoints.js?v=20260902-allstations" defer></script>
     <script src="/static/src/pages/customerRequests.js?v=20260902-reqstatus" defer></script>
     <script src="/static/src/pages/publicTalabnoma.js?v=20260819-geo-tz" defer></script>
@@ -237,6 +254,6 @@
     <script src="/static/src/pages/tasks.js?v=20260819-dialog" defer></script>
     <script src="/static/src/pages/auditLog.js?v=20260819-clients-ux" defer></script>
     <script src="/static/src/pages/auth.js?v=20260819-audit" defer></script>
-    <script src="/static/src/router.js?v=20260902-stations-v2" defer></script>
+    <script src="/static/src/router.js?v=20260902-references" defer></script>
   </body>
 </html>

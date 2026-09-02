@@ -82,6 +82,7 @@ textarea {
   overflow: visible;
 }
 
+
 .top-nav-group {
   position: relative;
   display: flex;
@@ -97,7 +98,30 @@ textarea {
   font-weight: 500;
   padding: 14px 22px;
   margin: 8px 2px;
+  white-space: nowrap;
   cursor: pointer;
+}
+
+/* Bo'limlar soni yettitaga yetgach menyu qidiruv qatorining ustiga chiqib
+   ketdi. Avval bo'shliq, keyin harf kichrayadi. Eng torida esa menyu ikkinchi
+   qatorga o'tadi -- surilib ketsa ochiladigan ro'yxatlar kesilib qolardi. */
+@media (max-width: 1620px) {
+  .top-nav-group > button {
+    padding: 14px 10px;
+    font-size: 14px;
+  }
+}
+
+@media (max-width: 1400px) {
+  .top-nav {
+    flex-wrap: wrap;
+  }
+
+  .top-nav-group > button {
+    padding: 10px 10px;
+    font-size: 13px;
+    margin: 4px 1px;
+  }
 }
 
 .top-nav-group > button:hover,
@@ -9059,4 +9083,160 @@ body.map-modal-open {
 .request-status-moves > .form-hint {
   flex: 1 1 100%;
   margin: 0;
+}
+
+/* ---- Ma'lumotnomalar ----------------------------------------------------- */
+
+.reference-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 14px;
+}
+
+.reference-card {
+  display: grid;
+  gap: 6px;
+  align-content: start;
+  text-align: left;
+  padding: 16px 18px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+  cursor: pointer;
+  font: inherit;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.reference-card:hover {
+  border-color: var(--accent);
+  box-shadow: 0 2px 10px rgba(16, 24, 40, 0.08);
+}
+
+.reference-card-title {
+  font-weight: 650;
+  color: var(--text, #101828);
+}
+
+.reference-card-count {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.reference-card-count strong {
+  font-size: 24px;
+  color: var(--accent);
+  line-height: 1;
+}
+
+.reference-card-count span {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.reference-card-extra {
+  padding-left: 8px;
+  border-left: 1px solid var(--line);
+}
+
+.reference-card-hint {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.reference-card-updated {
+  font-size: 12px;
+  color: var(--muted);
+  display: flex;
+  gap: 4px;
+}
+
+.reference-group + .reference-group {
+  margin-top: 16px;
+}
+
+/* ---- Viloyat va tumanlar -------------------------------------------------- */
+
+.region-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 320px) minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.region-list {
+  display: grid;
+  gap: 2px;
+  max-height: 560px;
+  overflow-y: auto;
+}
+
+.region-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  padding: 9px 12px;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  color: var(--text, #101828);
+}
+
+.region-row:hover {
+  background: var(--surface-soft);
+}
+
+.region-row.active {
+  background: #eaf3f0;
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.region-count {
+  flex: none;
+  min-width: 30px;
+  text-align: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--surface-soft);
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.region-row.active .region-count {
+  background: var(--accent);
+  color: #fff;
+}
+
+.district-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 2px 16px;
+  margin-bottom: 14px;
+}
+
+.district-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 7px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+@media (max-width: 980px) {
+  .region-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .region-list {
+    max-height: 320px;
+  }
 }

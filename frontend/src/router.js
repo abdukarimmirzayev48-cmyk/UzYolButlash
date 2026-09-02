@@ -75,6 +75,15 @@ async function render() {
       await renderSupplierPaymentDetail(getSupplierPaymentIdFromPath());
     } else if (location.pathname === "/supplier-payments") {
       await renderSupplierPaymentsList();
+    // ---- Ma'lumotnomalar ----
+    } else if (location.pathname === "/references") {
+      await renderReferencesHome();
+    } else if (location.pathname === "/regions") {
+      await renderRegionsPage();
+    } else if (location.pathname === "/company-registry") {
+      await renderCompanyRegistryPage();
+    } else if (location.pathname === "/stock-locations") {
+      await renderStockLocationsPage();
     } else if (location.pathname === "/delivery-points/new") {
       await renderDeliveryPointForm();
     } else if (/^\/delivery-points\/\d+$/.test(location.pathname)) {
