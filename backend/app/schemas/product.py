@@ -2,10 +2,15 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from backend.app.models.contract import DeliveryMethod
+
 
 class ProductCategoryBase(BaseModel):
     name: str = Field(min_length=1, max_length=255)
     notes: str | None = None
+    # Bu turkumdagi mahsulot odatda qanday yetkaziladi. Partiya yaratilganda
+    # oldindan tanlab qo'yiladi, operator almashtira oladi.
+    default_delivery_method: DeliveryMethod | None = None
 
 
 class ProductCategoryCreate(ProductCategoryBase):
@@ -15,6 +20,7 @@ class ProductCategoryCreate(ProductCategoryBase):
 class ProductCategoryUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=255)
     notes: str | None = None
+    default_delivery_method: DeliveryMethod | None = None
 
 
 class ProductCategoryRead(ProductCategoryBase):

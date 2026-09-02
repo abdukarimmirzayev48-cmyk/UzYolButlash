@@ -4,7 +4,7 @@ from decimal import Decimal
 from pydantic import BaseModel, ConfigDict, Field
 
 from backend.app.models.delivery import (
-    AutoDeliveryMethod,
+    DeliveryMethod,
     BatchDocumentType,
     BatchStatus,
     LogisticsDocumentType,
@@ -204,7 +204,7 @@ class LogisticsRead(LogisticsBase):
     id: int
     delivery_batch_id: int
     logistics_number: str | None = None
-    delivery_method: AutoDeliveryMethod
+    delivery_method: DeliveryMethod
     created_at: datetime
     updated_at: datetime
     transport: LogisticsTransportSummary | None = None
@@ -322,6 +322,8 @@ class DeliveryBatchBase(BaseModel):
 
 
 class DeliveryBatchCreate(DeliveryBatchBase):
+    # Berilmasa, mahsulot turkumlarining sukut usulidan chiqariladi.
+    delivery_method: DeliveryMethod | None = None
     items: list[DeliveryBatchItemCreate] = Field(min_length=1)
     logistics: LogisticsCreate | None = None
     documents: list[DeliveryBatchDocumentCreate] = Field(default_factory=list)
@@ -329,6 +331,7 @@ class DeliveryBatchCreate(DeliveryBatchBase):
 
 
 class DeliveryBatchUpdate(BaseModel):
+    delivery_method: DeliveryMethod | None = None
     delivery_point_id: int | None = None
     order_id: int | None = None
     batch_number: str | None = Field(default=None, min_length=1, max_length=128)
@@ -428,7 +431,7 @@ class DeliveryBatchRead(BaseModel):
     status: BatchStatus
     fulfillment_type: str
     source_type: str
-    delivery_method: AutoDeliveryMethod
+    delivery_method: DeliveryMethod
     supplier_id: int | None
     supplier_name: str | None
     notes: str | None

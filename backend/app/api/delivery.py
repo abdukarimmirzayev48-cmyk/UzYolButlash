@@ -34,6 +34,7 @@ from backend.app.models.order import Order, OrderItem
 from backend.app.models.procurement import SupplierAddress, SupplierAddressType
 from backend.app.models.transport import Transport, TransportEvent, TransportEventCheckResult, TransportEventType
 from backend.app.services import delivery_stats
+from backend.app.services.delivery_method import default_method_for
 from backend.app.services.auth import get_current_user, require_edit
 from backend.app.services.order_status import sync_order_status
 from backend.app.services.telegram_bot import notify_driver_of_trip
@@ -760,6 +761,13 @@ def ensure_order_has_source(order, payload) -> None:
     )
 
 
+def category_of_order_item(order_item):
+    """Buyurtma qatoridan mahsulot turkumigacha. Topilmasa None."""
+    contract_item = getattr(order_item, "contract_item", None)
+    product = getattr(contract_item, "product", None)
+    return getattr(product, "category", None)
+
+
 @router.post("", response_model=DeliveryBatchDetail, status_code=201, dependencies=[Depends(require_edit("yetkazib_berish"))])
 def create_batch(payload: DeliveryBatchCreate, db: Session = Depends(get_db)):
     order = get_order_or_400(db, payload.order_id)
@@ -770,6 +778,16 @@ def create_batch(payload: DeliveryBatchCreate, db: Session = Depends(get_db)):
     data["contract_id"] = order.contract_id
     data["fulfillment_type"] = order.fulfillment_type.value
     data["source_type"] = order.source_type.value
+    # Yetkazish usuli ko'rsatilmagan bo'lsa, mahsulot turkumlaridan
+    # chiqariladi -- operator uni partiya oynasida almashtira oladi.
+    if not data.get("delivery_method"):
+        data["delivery_method"] = default_method_for(
+            # Mahsulot kartochkasi shartnoma qatorida turadi: buyurtma va
+            # partiya qatorlarida faqat nomi saqlanadi. Zanjirning har bir
+            # bo'g'ini bo'sh bo'lishi mumkin -- eski yozuvlarda mahsulot
+            # kartochkasi biriktirilmagan.
+            [category_of_order_item(order_items[item.order_item_id]) for item in payload.items]
+        )
     # Yetkazish nuqtasi buyurtmadan meros bo'ladi.
     if not data.get("delivery_point_id"):
         data["delivery_point_id"] = order.delivery_point_id

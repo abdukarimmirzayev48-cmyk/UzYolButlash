@@ -1,8 +1,10 @@
+from sqlalchemy import Enum as SAEnum
 from sqlalchemy import ForeignKey, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from backend.app.db.session import Base
 from backend.app.models.client import TimestampMixin
+from backend.app.models.contract import DeliveryMethod
 
 
 class ProductCategory(Base, TimestampMixin):
@@ -11,6 +13,12 @@ class ProductCategory(Base, TimestampMixin):
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
     name: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
     notes: Mapped[str | None] = mapped_column(Text)
+    # Bu turkumdagi mahsulot odatda qanday yetkaziladi. Faqat SUKUT qiymat:
+    # partiya yaratilganda oldindan tanlab qo'yiladi, lekin operator uni
+    # almashtira oladi. Qattiq bog'lansa, birinchi istisnoda -- masalan katta
+    # bitum partiyasi temiryo'l sisternasida ketganda -- tizimni aylanib
+    # o'tishga to'g'ri kelardi.
+    default_delivery_method: Mapped[DeliveryMethod | None] = mapped_column(SAEnum(DeliveryMethod, length=16))
 
     products: Mapped[list["Product"]] = relationship(back_populates="category", cascade="all, delete-orphan")
 

@@ -613,6 +613,9 @@ async function enrichBatchWizardState(state, orderId) {
   state.plannedDeliveryDate ||= state.order.required_date || state.plannedLoadingDate;
   state.supplierName = state.order.supplier_name || "";
   state.supplierId = state.order.supplier_id || null;
+  // Server mahsulot turkumlaridan chiqarib beradi; operator keyin
+  // 3-qadamda o'zgartira oladi.
+  state.deliveryMethod ||= state.order.suggested_delivery_method || "auto";
   try {
     const client = await api(`/api/clients/${state.order.client_id}`);
     const deliveryAddress = (client.addresses || []).find((item) => item.address_type === "delivery") || (client.addresses || [])[0];
@@ -676,10 +679,11 @@ function batchWizardSourcePanel(state) {
   return `${missingSupplier ? `<div class="workflow-warning"><strong>Ta'minotchi kerak</strong><ul><li>Partiya yaratish uchun avval ta'minotchini tanlang.</li></ul></div>` : ""}${summaryCards([
     ["Manba", fmt(optionLabel(sourceTypes, state.order.source_type))],
     ["Yetkazib berish modeli", fmt(optionLabel(fulfillmentTypes, state.order.fulfillment_type))],
-    ["Yetkazish usuli", "Avto"],
     ["Ta'minotchi", fmt(state.supplierName)],
     ["Ta'minotchi holati", fmt(optionLabel(supplierStatuses, state.order.supplier_status))],
-  ])}<div class="empty compact">${companyManaged ? "Bu partiya kompaniya tomonidan boshqariladigan logistika orqali yetkaziladi. Partiya yaratilgandan so'ng logistika yozuvi avtomatik ochiladi." : "Bu partiya ta'minotchidan mijozga to'g'ridan-to'g'ri yetkaziladi. Logistika ma'lumotlari minimal ko'rinishda yuritiladi."}</div>`;
+  ])}
+  <div class="grid">${selectField("delivery_method", "Yetkazish usuli", deliveryMethods, state.deliveryMethod || "auto", { required: true })}</div>
+  <p class="form-hint">Mahsulot turkumidan oldindan tanlangan. Bu partiya boshqacha ketayotgan bo'lsa, o'zgartiring.</p><div class="empty compact">${companyManaged ? "Bu partiya kompaniya tomonidan boshqariladigan logistika orqali yetkaziladi. Partiya yaratilgandan so'ng logistika yozuvi avtomatik ochiladi." : "Bu partiya ta'minotchidan mijozga to'g'ridan-to'g'ri yetkaziladi. Logistika ma'lumotlari minimal ko'rinishda yuritiladi."}</div>`;
 }
 
 function batchWizardPlanPanel(state) {
@@ -765,6 +769,7 @@ function collectBatchWizardPayload(state) {
     planned_loading_date: state.plannedLoadingDate,
     planned_delivery_date: state.plannedDeliveryDate,
     status: "planned",
+    delivery_method: state.deliveryMethod || null,
     supplier_id: state.order.supplier_id || null,
     supplier_name: state.supplierName || null,
     notes: state.notes || null,
@@ -799,6 +804,7 @@ function syncBatchWizardInputs(state) {
   if (form.elements.loading_address) state.loadingAddress = form.elements.loading_address.value.trim();
   if (form.elements.delivery_address) state.deliveryAddress = form.elements.delivery_address.value.trim();
   if (form.elements.notes) state.notes = form.elements.notes.value.trim();
+  if (form.elements.delivery_method) state.deliveryMethod = form.elements.delivery_method.value;
 }
 
 function renderBatchWizard(state) {
@@ -2142,7 +2148,7 @@ async function renderLogisticsDetail(id) {
           ["Buyurtma raqami", row.order?.order_number],
           ["Mijoz", row.client?.name],
           ["Yetkazib berish modeli", optionLabel(fulfillmentTypes, batch.fulfillment_type)],
-          ["Yetkazish usuli", row.delivery_method === "auto" ? "Auto" : row.delivery_method],
+          ["Yetkazish usuli", optionLabel(deliveryMethods, row.delivery_method)],
         ]),
       })}
 

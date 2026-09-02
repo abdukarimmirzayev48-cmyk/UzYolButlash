@@ -32,6 +32,7 @@ from backend.app.models.order import (
 )
 from backend.app.schemas.client import Page
 from backend.app.services import order_contract_check, order_source_check
+from backend.app.services.delivery_method import default_method_for
 from backend.app.schemas.order import (
     ContractItemBalance,
     OrderCreate,
@@ -738,6 +739,11 @@ def get_order_detail(order_id: int, db: Session = Depends(get_db)):
             "contract_item_balances": balances_for_order(db, order),
             "contract_check": contract_check_for(db, order),
             "source_warnings": source_warnings_for(db, order),
+            "suggested_delivery_method": default_method_for(
+                # Mahsulot kartochkasi shartnoma qatorida turadi: buyurtma
+                # qatorida faqat nomi saqlanadi.
+                [getattr(getattr(item.contract_item, "product", None), "category", None) for item in order.items]
+            ).value,
         }
     )
 

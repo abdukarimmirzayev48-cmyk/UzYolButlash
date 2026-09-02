@@ -319,3 +319,6 @@ class OrderDetail(OrderRead):
     # Tanlangan ta'minotchi manba turiga mos keladimi -- bloklamaydi, faqat
     # ogohlantiradi.
     source_warnings: list[str] = Field(default_factory=list)
+    # Saqlanmaydi: mahsulot turkumlarining sukut usulidan chiqariladi va
+    # partiya yaratishda oldindan tanlab qo'yiladi.
+    suggested_delivery_method: str | None = None

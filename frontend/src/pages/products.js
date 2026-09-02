@@ -69,22 +69,23 @@ async function _renderCategoriesTab() {
     ],
     createPath: null,
     counter: `${data.length} ta kategoriya`,
-    headers: ["#", "Kategoriya nomi", "Izoh", ""],
+    headers: ["#", "Kategoriya nomi", "Yetkazish usuli", "Izoh", ""],
     rows: data.map((cat, idx) => `
       <tr>
         <td class="muted">${idx + 1}</td>
         <td><strong>${fmt(cat.name)}</strong></td>
+        <td>${cat.default_delivery_method ? esc(optionLabel(deliveryMethods, cat.default_delivery_method)) : dash}</td>
         <td class="muted">${fmt(cat.notes)}</td>
         <td>
           <div class="ops-row-actions">
-            ${editable ? `<button class="link-btn" data-category-edit="${cat.id}" data-category-name="${esc(cat.name)}" data-category-notes="${esc(cat.notes || "")}">Tahrirlash</button>
+            ${editable ? `<button class="link-btn" data-category-edit="${cat.id}" data-category-name="${esc(cat.name)}" data-category-notes="${esc(cat.notes || "")}" data-category-method="${esc(cat.default_delivery_method || "")}">Tahrirlash</button>
             <button class="link-btn" style="color:var(--danger)" data-category-delete="${cat.id}">O'chirish</button>` : ""}
           </div>
         </td>
       </tr>
     `).join(""),
     emptyText: "Kategoriyalar topilmadi.",
-    colspan: 4,
+    colspan: 5,
   });
 
   if (editable) {
@@ -100,7 +101,7 @@ async function _renderCategoriesTab() {
 
   document.querySelectorAll("[data-category-edit]").forEach((btn) => {
     btn.addEventListener("click", () =>
-      _showCategoryModal(Number(btn.dataset.categoryEdit), btn.dataset.categoryName, btn.dataset.categoryNotes)
+      _showCategoryModal(Number(btn.dataset.categoryEdit), btn.dataset.categoryName, btn.dataset.categoryNotes, btn.dataset.categoryMethod)
     );
   });
 
@@ -118,7 +119,7 @@ async function _renderCategoriesTab() {
   });
 }
 
-function _showCategoryModal(id = null, name = "", notes = "") {
+function _showCategoryModal(id = null, name = "", notes = "", method = "") {
   document.querySelector("#category-modal-backdrop")?.remove();
 
   const backdrop = document.createElement("div");
@@ -133,6 +134,8 @@ function _showCategoryModal(id = null, name = "", notes = "") {
       <form id="category-modal-form">
         <div class="modal-body">
           ${textField("name", "Kategoriya nomi", name, "text", { required: true })}
+          ${selectField("default_delivery_method", "Yetkazish usuli", [["", "Ko'rsatilmagan"], ...deliveryMethods], method)}
+          <div class="form-hint">Bu turkumdagi mahsulot odatda qanday yetkaziladi. Partiya yaratilganda oldindan tanlanadi, keyin almashtirish mumkin.</div>
           ${textArea("notes", "Izoh", notes)}
         </div>
         <div class="modal-footer">
@@ -144,6 +147,7 @@ function _showCategoryModal(id = null, name = "", notes = "") {
   `;
 
   document.body.appendChild(backdrop);
+  localizeDom(backdrop);
   backdrop.querySelector("input[name=name]")?.focus();
 
   const close = () => backdrop.remove();
@@ -154,7 +158,7 @@ function _showCategoryModal(id = null, name = "", notes = "") {
   backdrop.querySelector("#category-modal-form").addEventListener("submit", async (e) => {
     e.preventDefault();
     const form = e.currentTarget;
-    const payload = { name: field(form, "name"), notes: field(form, "notes") };
+    const payload = { name: field(form, "name"), notes: field(form, "notes"), default_delivery_method: field(form, "default_delivery_method") };
     if (!payload.name) { showToast("Kategoriya nomi kiritilishi shart.", true); return; }
     try {
       if (id) {

@@ -6,6 +6,10 @@ from sqlalchemy import Date, DateTime, Enum as SAEnum, ForeignKey, Numeric, Stri
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from backend.app.db.session import Base
+# Yetkazish usuli shartnomada ham, partiyada ham bir xil ma'noni bildiradi.
+# Ikkita ro'yxat bo'lsa, «shartnomada temiryo'l deyilgan, partiya avto bilan
+# ketibdi» degan taqqoslash imkonsiz bo'lib qolardi.
+from backend.app.models.contract import DeliveryMethod
 from backend.app.models.delivery_point import DeliveryPoint
 from backend.app.models.client import TimestampMixin
 from backend.app.models.transport import Transport
@@ -27,10 +31,6 @@ class BatchStatus(str, Enum):
     completed = "completed"
     cancelled = "cancelled"
     issue = "issue"
-
-
-class AutoDeliveryMethod(str, Enum):
-    auto = "auto"
 
 
 class LogisticsStatus(str, Enum):
@@ -102,7 +102,7 @@ class DeliveryBatch(Base, TimestampMixin):
     status: Mapped[BatchStatus] = mapped_column(SAEnum(BatchStatus), default=BatchStatus.planned, nullable=False, index=True)
     fulfillment_type: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
     source_type: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
-    delivery_method: Mapped[AutoDeliveryMethod] = mapped_column(SAEnum(AutoDeliveryMethod), default=AutoDeliveryMethod.auto, nullable=False)
+    delivery_method: Mapped[DeliveryMethod] = mapped_column(SAEnum(DeliveryMethod, length=16), default=DeliveryMethod.auto, nullable=False)
     # Bitum qayerga yetkaziladi. Nuqta ma'lumotnomasidan tanlanadi va
     # manzil bu yerda qayta yozilmaydi.
     delivery_point_id: Mapped[int | None] = mapped_column(ForeignKey("delivery_points.id", ondelete="SET NULL"), index=True)
@@ -153,7 +153,7 @@ class Logistics(Base, TimestampMixin):
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
     delivery_batch_id: Mapped[int] = mapped_column(ForeignKey("delivery_batches.id", ondelete="CASCADE"), unique=True, index=True)
     logistics_number: Mapped[str | None] = mapped_column(String(128), unique=True, index=True)
-    delivery_method: Mapped[AutoDeliveryMethod] = mapped_column(SAEnum(AutoDeliveryMethod), default=AutoDeliveryMethod.auto, nullable=False)
+    delivery_method: Mapped[DeliveryMethod] = mapped_column(SAEnum(DeliveryMethod, length=16), default=DeliveryMethod.auto, nullable=False)
     status: Mapped[LogisticsStatus] = mapped_column(SAEnum(LogisticsStatus), default=LogisticsStatus.not_assigned, nullable=False, index=True)
     carrier_id: Mapped[int | None] = mapped_column(index=True)
     carrier_name: Mapped[str | None] = mapped_column(String(255), index=True)
