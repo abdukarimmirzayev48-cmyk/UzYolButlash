@@ -123,7 +123,6 @@ async function renderCustomerRequestDetail(id) {
         </div>
       </div>
       ${requestStatusCard(request)}
-      ${requestDocumentsSection(request)}
       ${section("Mijoz turi va to'lov manbasi", detailList([["Mijoz turi", request.customer_type_label], ["To'lov manbasi", request.payment_source_label]]))}
       ${section("Korxona ma'lumotlari", detailList([["Korxona nomi", request.company_name], ["STIR", request.inn], ["Hudud", request.region], ["Yuridik manzil", request.legal_address], ["Asosiy faoliyat turi", request.activity_type], ["Funksiyasi va vazifalari", request.function_description], ["OKED", request.oked], ["Direktor F.I.Sh.", request.director_full_name]]))}
       ${section("Rekvizitlar", detailList([["Hisob raqami", request.bank_account], ["Bank nomi", request.bank_name], ["MFO", request.mfo]]))}
@@ -727,27 +726,52 @@ const REQUEST_STATUS_HELP = {
   rejected: "Talabnoma rad etilgan.",
 };
 
+// Talabnoma qaysi bosqichda ekani -- ketma-ketlik ko'rinishida. Ilgari
+// faqat joriy status nishoni turardi: undan oldin nima bo'lgani va keyin
+// nima kutilayotgani ko'rinmasdi.
+const REQUEST_STATUS_FLOW = ["new", "reviewing", "contract_preparation", "contract_signed", "converted_to_order"];
+
+function requestStatusFlow(request) {
+  const titles = REQUEST_STATUS_FLOW.map((key) => optionLabel(customerRequestStatuses, key));
+  if (request.status === "rejected") {
+    // Rad etilgan talabnoma oqimdan chiqib ketgan -- uni bosqichlar
+    // orasiga qo'yish yolg'on bo'lardi. Sababi esa aynan shu yerda kerak.
+    return `<div class="request-flow-rejected">
+      <strong>Rad etildi</strong>
+      ${request.rejection_reason ? `<span data-noloc>${esc(request.rejection_reason)}</span>` : ""}
+    </div>`;
+  }
+  const active = REQUEST_STATUS_FLOW.indexOf(request.status) + 1;
+  return window.BitumFrontend?.components?.stepper
+    ? window.BitumFrontend.components.stepper(titles, active)
+    : "";
+}
+
 function requestStatusCard(request) {
   const editable = canEdit("sotuv");
   const help = REQUEST_STATUS_HELP[request.status] || "";
   // Xat yo'q bo'lsa, shartnoma tayyorlashga o'tish tugmasi ishlamaydi.
   // Buni tugma bosilgandan keyin xato bilan aytish o'rniga, oldindan
-  // aytamiz -- va nima qilish kerakligini ham.
+  // aytamiz -- va hujjat yuklash aynan shu yerda turadi.
   const blocked = !request.has_letter
     && (request.available_transitions || []).some((move) => move.status === "contract_preparation" && move.direction === "forward");
   return `<section class="card request-status-card">
-    <div class="request-status-now">
-      <span class="eyebrow">Joriy status</span>
-      <div class="request-status-badge">${requestStatusBadge(request)}</div>
-      ${help ? `<p class="request-status-help">${help}</p>` : ""}
+    <div class="request-flow">${requestStatusFlow(request)}</div>
+    <div class="request-status-body">
+      <div class="request-status-now">
+        <span class="eyebrow">Joriy status</span>
+        <div class="request-status-badge">${requestStatusBadge(request)}</div>
+        ${help ? `<p class="request-status-help">${help}</p>` : ""}
+      </div>
+      <div class="request-status-moves">
+        ${blocked ? `<div class="request-status-block">
+          <strong>Mijozning xati kerak</strong>
+          <span>Shartnoma tayyorlashga o'tish uchun avval xatni biriktiring.</span>
+        </div>` : ""}
+        ${editable ? requestTransitionsHtml(request, { blocked }) : `<div class="empty compact">Statusni o'zgartirish uchun ruxsat yo'q.</div>`}
+      </div>
     </div>
-    <div class="request-status-moves">
-      ${blocked ? `<div class="request-status-block">
-        <strong>Mijozning xati kerak</strong>
-        <span>Shartnoma tayyorlashga o'tish uchun avval xatni biriktiring.</span>
-      </div>` : ""}
-      ${editable ? requestTransitionsHtml(request, { blocked }) : `<div class="empty compact">Statusni o'zgartirish uchun ruxsat yo'q.</div>`}
-    </div>
+    ${requestDocumentsBlock(request, { required: blocked })}
   </section>`;
 }
 
@@ -762,24 +786,35 @@ const REQUEST_DOCUMENT_TYPES = [
   ["other", "Boshqa"],
 ];
 
-function requestDocumentsSection(request) {
+// Hujjatlar status blokining ichida: shartnoma mijozning xati asosida
+// tayyorlanadi, ya'ni ular alohida narsa emas -- statusni ilgaritishning
+// sharti. Ilgari ular pastda alohida bo'lim bo'lib turardi va nima uchun
+// kerakligi ko'rinmasdi.
+function requestDocumentsBlock(request, { required = false } = {}) {
   const editable = canEdit("sotuv");
-  const rows = (request.documents || []).map((doc) => `<tr>
-    <td>${fmt(optionLabel(REQUEST_DOCUMENT_TYPES, doc.document_type))}</td>
-    <td>${doc.file_url ? `<a href="${esc(doc.file_url)}" target="_blank" rel="noopener">${fmt(doc.title)}</a>` : fmt(doc.title)}</td>
-    <td data-noloc>${fmtDate(doc.uploaded_at)}</td>
-    <td>${fmt(doc.uploaded_by)}</td>
-    <td>${editable ? `<button class="link-btn danger" type="button" data-delete-request-doc="${doc.id}">O'chirish</button>` : ""}</td>
-  </tr>`).join("");
-  const upload = editable ? `<form id="request-document-form" class="grid inline-edit">
-    ${selectField("document_type", "Hujjat turi", REQUEST_DOCUMENT_TYPES, "letter")}
-    ${textField("title", "Nomi", "", "text", { required: true, placeholder: "Mijoz xati" })}
-    <label><span class="field-label-text">Fayl <span class="required-mark">*</span></span><input type="file" name="file" required /></label>
-    <button class="btn primary" type="submit">Yuklash</button>
-  </form>` : "";
-  return section("Hujjatlar", `${rows
-    ? `<table class="ops-table"><thead><tr><th>Turi</th><th>Nomi</th><th>Sana</th><th>Yuklagan</th><th></th></tr></thead><tbody>${rows}</tbody></table>`
-    : `<div class="empty">Hujjat biriktirilmagan.</div>`}${upload}`);
+  const documents = request.documents || [];
+  const rows = documents.map((doc) => `<div class="request-doc-row">
+    <span class="request-doc-type">${fmt(optionLabel(REQUEST_DOCUMENT_TYPES, doc.document_type))}</span>
+    <span class="request-doc-name">${doc.file_url ? `<a href="${esc(doc.file_url)}" target="_blank" rel="noopener" data-noloc>${esc(doc.title)}</a>` : `<span data-noloc>${esc(doc.title)}</span>`}</span>
+    <span class="request-doc-meta" data-noloc>${fmtDate(doc.uploaded_at)}${doc.uploaded_by ? ` · ${esc(doc.uploaded_by)}` : ""}</span>
+    ${editable ? `<button class="link-btn danger" type="button" data-delete-request-doc="${doc.id}">O'chirish</button>` : ""}
+  </div>`).join("");
+
+  return `<div class="request-docs ${required ? "is-required" : ""}">
+    <div class="request-docs-head">
+      <h3>Hujjatlar</h3>
+      ${required
+        ? `<span class="request-docs-flag">Hozir kerak</span>`
+        : `<span class="request-docs-count"><span data-noloc>${documents.length}</span> <span>ta hujjat</span></span>`}
+    </div>
+    ${rows || `<div class="empty compact">Hujjat biriktirilmagan.</div>`}
+    ${editable ? `<form id="request-document-form" class="request-doc-form">
+      ${selectField("document_type", "Turi", REQUEST_DOCUMENT_TYPES, "letter")}
+      ${textField("title", "Nomi", "", "text", { required: true, placeholder: "Mijoz xati" })}
+      <label><span class="field-label-text">Fayl <span class="required-mark">*</span></span><input type="file" name="file" required /></label>
+      <button class="btn ${required ? "primary" : ""}" type="submit">Yuklash</button>
+    </form>` : ""}
+  </div>`;
 }
 
 function bindRequestDocuments(request, reload) {
