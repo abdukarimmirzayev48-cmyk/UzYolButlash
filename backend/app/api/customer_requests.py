@@ -52,6 +52,7 @@ from backend.app.models.user import User
 from backend.app.api.delivery_points import point_summary
 from backend.app.services import request_prefill, request_stats
 from backend.app.services.auth import get_current_user, require_edit
+from backend.app.services.delivery_method import default_method_for
 
 
 router = APIRouter(prefix="/api/customer-requests", tags=["customer-requests"])
@@ -192,6 +193,7 @@ def serialize_detail(request: CustomerRequest) -> CustomerRequestDetail:
         activity_type=request.activity_type,
         function_description=request.function_description,
         privatization_project_name=request.privatization_project_name,
+        delivery_method=request.delivery_method,
         oked=request.oked,
         director_full_name=request.director_full_name,
         legal_address=request.legal_address,
@@ -273,6 +275,10 @@ def create_public_customer_request(payload: CustomerRequestCreate, db: Session =
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=MSG_PHONE_REQUIRED)
     validate_schedule_total(payload.total_quantity, payload.schedule)
     data = payload.model_dump(exclude={"schedule"})
+    # Usul ko'rsatilmagan bo'lsa -- mahsulot turkumidan. Ochiq portalda bu
+    # savol so'ralmaydi, ichki formada esa oldindan tanlab qo'yiladi.
+    if not data.get("delivery_method"):
+        data["delivery_method"] = default_method_for([getattr(product, "category", None)])
     data["phone"] = data.get("phone") or data.get("contact_phone") or ""
     request = CustomerRequest(
         request_number=next_request_number(db),
@@ -363,6 +369,8 @@ def create_customer_request(payload: CustomerRequestInternalCreate, db: Session 
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=MSG_COMPANY_REQUIRED)
     validate_schedule_total(payload.total_quantity, payload.schedule)
     data = payload.model_dump(exclude={"schedule"})
+    if not data.get("delivery_method"):
+        data["delivery_method"] = default_method_for([getattr(product, "category", None)])
     data["company_name"] = data.get("company_name") or ""
     data["phone"] = data.get("phone") or data.get("contact_phone") or ""
     request = CustomerRequest(request_number=next_request_number(db), **data)

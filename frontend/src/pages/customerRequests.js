@@ -135,7 +135,7 @@ async function renderCustomerRequestDetail(id) {
           <div class="total-box"><span>Umumiy miqdor</span><strong>${fmtQty(request.total_quantity, request.unit)}</strong></div>
         </div>
       `)}
-      ${section("Yetkazish nuqtasi", detailList([["Yetkazish nuqtasi", deliveryPointDetail(request.delivery_point)]]))}
+      ${section("Yetkazish nuqtasi", detailList([["Yetkazish usuli", optionLabel(deliveryMethods, request.delivery_method)], ["Yetkazish nuqtasi", deliveryPointDetail(request.delivery_point)]]))}
       ${section("Kontakt ma'lumotlari", detailList([["Telefon raqami", request.phone], ["Kontakt shaxs F.I.Sh.", request.contact_full_name], ["Kontakt telefon raqami", request.contact_phone]]))}
       ${section("Status tarixi", tableOrEmpty(request.status_history, ["Sana", "Oldingi status", "Yangi status", "Izoh", "Foydalanuvchi"], (item) => `<tr><td>${fmtDate(item.created_at)}</td><td>${fmt(item.old_status_label)}</td><td>${fmt(item.new_status_label)}</td><td>${fmt(item.comment)}</td><td>${fmt(item.changed_by)}</td></tr>`, "Status tarixi mavjud emas."))}
     </div>
@@ -399,7 +399,12 @@ function customerRequestForm(request, products, clients = "", points = "") {
     `${section("Mahsulot talabi", `<div class="grid">${selectField("product_id", "Mahsulot nomi", products, String(request.product?.id || request.product_id || ""), { required: true })}${textField("total_quantity", "Umumiy miqdor", request.total_quantity, "number", { required: true })}${textField("unit", "O'lchov birligi", request.unit || "t", "text", { required: true })}</div>`)}
      ${section("Kalendar grafik", customerRequestScheduleEditor(request.schedule || [], request.unit))}`,
 
-    `${section("Yetkazish nuqtasi", `<div class="grid">${deliveryPointPicker("Yetkazish nuqtasi", request.delivery_point_id, points)}</div><div class="form-hint">Mahsulot qayerga yetkaziladi. Ro'yxat tanlangan mahsulotning yetkazish usuliga qarab filtrlanadi.</div><div data-request-method-hint></div>`)}
+    `${section("Yetkazish nuqtasi", `<div class="grid">
+        ${selectField("delivery_method", "Yetkazish usuli", deliveryMethods, request.delivery_method || "auto", { required: true })}
+      </div>
+      <div class="form-hint">Avval qanday yetkazilishini tanlang: temiryo'lda stansiyalar, avtotransportda ABZ nuqtalari ro'yxati chiqadi.</div>
+      <div class="grid">${deliveryPointPicker("Yetkazish nuqtasi", request.delivery_point_id, points)}</div>
+      <div data-request-method-hint></div>`)}
      ${section("Kontakt ma'lumotlari", `<div class="grid">${textField("phone", "Telefon raqami", request.phone, "text", { required: true })}${textField("contact_full_name", "Kontakt shaxs F.I.Sh.", request.contact_full_name)}${textField("contact_phone", "Kontakt telefon raqami", request.contact_phone)}</div>`)}`,
 
     `${section("Talabnoma xulosasi", `<div data-request-summary></div>`)}
@@ -442,6 +447,7 @@ function renderRequestSummary(form) {
       ${row("STIR", text("inn"))}
       ${row("Direktor F.I.Sh.", text("director_full_name"))}
       ${row("Mahsulot nomi", choice("product_id"))}
+      ${row("Yetkazish usuli", choice("delivery_method"))}
       ${row("Umumiy miqdor", withUnit(total))}
       ${row("Kalendar grafik jami", withUnit(scheduleTotal))}
       ${row("Yetkazish nuqtasi", choice("delivery_point_id"))}
@@ -504,7 +510,14 @@ function bindCustomerRequestForm(request) {
   const form = app.querySelector("#customer-request-form");
   if (!form) return;
   form.elements.client_id?.addEventListener("change", () => applyRequestClient(form));
-  form.elements.product_id?.addEventListener("change", () => refreshRequestPoints(form));
+  form.elements.product_id?.addEventListener("change", () => {
+    // Mahsulot almashsa, usul sukut bo'yicha unga moslanadi -- lekin
+    // keyin xodim uni qo'lda o'zgartira oladi.
+    const suggested = requestProductMethods[form.elements.product_id.value];
+    if (suggested && form.elements.delivery_method) form.elements.delivery_method.value = suggested;
+    refreshRequestPoints(form);
+  });
+  form.elements.delivery_method?.addEventListener("change", () => refreshRequestPoints(form));
   // Yangi talabnomada mijoz oldindan tanlanmagan; tahrirlashda esa
   // maydonlar allaqachon to'ldirilgan va ularni qayta so'rash shart emas.
   if (!request?.id && form.elements.client_id?.value) applyRequestClient(form);
@@ -549,6 +562,7 @@ function bindCustomerRequestForm(request) {
       const payload = {
         client_id: Number(field(submitted, "client_id")),
         delivery_point_id: field(submitted, "delivery_point_id") ? Number(field(submitted, "delivery_point_id")) : null,
+        delivery_method: field(submitted, "delivery_method"),
         payment_source: field(submitted, "payment_source"),
         company_name: field(submitted, "company_name"),
         inn: field(submitted, "inn"),
@@ -809,7 +823,9 @@ async function refreshRequestPoints(form) {
   const select = form.elements.delivery_point_id;
   const hint = form.querySelector("[data-request-method-hint]");
   if (!select) return;
-  const method = requestProductMethods[form.elements.product_id?.value] || "";
+  const method = form.elements.delivery_method?.value
+    || requestProductMethods[form.elements.product_id?.value]
+    || "";
   const current = select.value;
   try {
     deliveryPickerItems = await deliveryPointList(null, null, method);
@@ -817,22 +833,21 @@ async function refreshRequestPoints(form) {
     showToast(error.message, true);
     return;
   }
-  // Viloyat ro'yxati ham yangilanadi: tuzda stansiyalar boshqa
-  // viloyatlarda joylashgan.
+  // Viloyat ro'yxati ham yangilanadi -- yonidagi sonlar yangi usulga
+  // qarab o'zgaradi. Ro'yxatning o'zi ma'lumotnomadan, ya'ni to'liq.
   const holder = form.querySelector("[data-point-picker]");
   const regionSelect = holder?.querySelector("[data-point-region]");
   if (regionSelect) {
-    const regions = [...new Set(deliveryPickerItems.map((item) => item.region).filter(Boolean))].sort();
-    regionSelect.innerHTML = `<option value="">Barchasi</option>${regions.map((region) => `<option value="${esc(region)}">${esc(region)}</option>`).join("")}`;
+    regionSelect.innerHTML = `<option value="">Barchasi</option>${pickerRegionOptions("")}`;
   }
   select.setAttribute("data-selected", "");
   bindDeliveryPointPicker(app);
   const stillThere = deliveryPickerItems.some((item) => String(item.id) === current);
   select.value = stillThere ? current : "";
   if (hint) {
-    hint.innerHTML = method
-      ? `<div class="form-hint"><span>Yetkazish usuli</span>: <strong>${esc(optionLabel(deliveryMethods, method))}</strong></div>`
-      : "";
+    // Ro'yxatda nima borligini aytamiz: bo'sh ro'yxat sabab bilan
+    // ko'rsatilsa, xodim usulni o'zgartirish kerakligini tushunadi.
+    hint.innerHTML = `<div class="form-hint"><span>Ro'yxatda</span> <span data-noloc>${deliveryPickerItems.length}</span> <span>ta nuqta bor</span></div>`;
     localizeDom(hint);
   }
   if (!stillThere && current) showToast("Tanlangan nuqta bu mahsulotga to'g'ri kelmadi, qaytadan tanlang.", true);

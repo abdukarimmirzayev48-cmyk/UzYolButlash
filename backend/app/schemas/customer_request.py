@@ -3,6 +3,7 @@ from decimal import Decimal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from backend.app.models.contract import DeliveryMethod
 from backend.app.models.customer_request import CustomerRequestDocumentType, CustomerRequestStatus, CustomerType, PaymentSource
 from backend.app.schemas.delivery_point import DeliveryPointSummary
 from backend.app.schemas.client import Page
@@ -175,6 +176,7 @@ class RequestPrefillRead(BaseModel):
 
 class CustomerRequestCreate(CustomerRequestBase):
     delivery_point_id: int | None = None
+    delivery_method: DeliveryMethod | None = None
     # Ichkaridan kiritilganda korxona mijozlar ro'yxatidan tanlanadi.
     # Portaldan kelganda mijoz hali ro'yxatda bo'lmasligi mumkin.
     client_id: int | None = None
@@ -203,6 +205,7 @@ class CustomerRequestInternalCreate(CustomerRequestCreate):
 
 class CustomerRequestUpdate(BaseModel):
     delivery_point_id: int | None = None
+    delivery_method: DeliveryMethod | None = None
     client_id: int | None = None
     customer_type: CustomerType | None = None
     payment_source: PaymentSource | None = None
@@ -295,6 +298,7 @@ class CustomerRequestDocumentRead(BaseModel):
 
 class CustomerRequestDetail(CustomerRequestListItem):
     delivery_point_id: int | None = None
+    delivery_method: DeliveryMethod | None = None
     delivery_point: DeliveryPointSummary | None = None
     client_id: int | None = None
     region: str | None = None

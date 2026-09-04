@@ -714,6 +714,7 @@ async function bindStationLookup(root = app) {
 let deliveryPickerItems = [];
 
 async function deliveryPointList(selectedId = null, clientId = null, method = null) {
+  await loadGeoRegions();
   const query = new URLSearchParams({ page_size: "500", active_only: "true" });
   if (clientId) query.set("client_id", String(clientId));
   if (method) query.set("method", method);
@@ -735,11 +736,10 @@ function pointOptionLabel(item) {
 function deliveryPointPicker(label, selectedId, items, { required = false } = {}) {
   deliveryPickerItems = items || [];
   const selected = deliveryPickerItems.find((item) => item.id === Number(selectedId)) || null;
-  const regions = [...new Set(deliveryPickerItems.map((item) => item.region).filter(Boolean))].sort();
   const option = (value, text, active) => `<option value="${esc(value)}" ${active ? "selected" : ""}>${esc(text)}</option>`;
   return `<div class="point-picker" data-point-picker>
     <label><span class="field-label-text">Viloyat</span>
-      <select data-point-region>${option("", "Barchasi", !selected?.region)}${regions.map((region) => option(region, region, selected?.region === region)).join("")}</select>
+      <select data-point-region>${option("", "Barchasi", !selected?.region)}${pickerRegionOptions(selected?.region)}</select>
     </label>
     <label><span class="field-label-text">Tuman</span>
       <select data-point-district>${option("", "Barchasi", true)}</select>
@@ -751,6 +751,36 @@ function deliveryPointPicker(label, selectedId, items, { required = false } = {}
   </div>`;
 }
 
+// Ro'yxat ma'lumotnomadan quriladi, nuqtalardan emas: Andijonda 16 ta
+// tuman bor, nuqtasi esa faqat 6 tasida. Ilgari qolgan 10 tasi umuman
+// ko'rinmasdi va ro'yxat chala bo'lib tuyulardi.
+//
+// Yonidagi son -- shu yerda nechta nuqta borligi. U bo'lmasa, xodim bo'sh
+// tumanni tanlab, nima uchun ro'yxat bo'shligini tushunmasdi.
+function pickerCount(items) {
+  return `<span data-noloc> (${items})</span>`;
+}
+
+function pickerRegionOptions(current) {
+  return (geoRegionsCache || [])
+    .map((region) => {
+      const count = deliveryPickerItems.filter((item) => item.region === region.name).length;
+      return `<option value="${esc(region.name)}" ${region.name === current ? "selected" : ""}>${esc(region.name)} (${count})</option>`;
+    })
+    .join("");
+}
+
+function pickerDistrictOptions(regionName, current) {
+  const region = (geoRegionsCache || []).find((item) => item.name === regionName);
+  if (!region) return "";
+  return region.districts
+    .map((district) => {
+      const count = deliveryPickerItems.filter((item) => item.region === regionName && item.district === district.name).length;
+      return `<option value="${esc(district.name)}" ${district.name === current ? "selected" : ""}>${esc(district.name)} (${count})</option>`;
+    })
+    .join("");
+}
+
 function bindDeliveryPointPicker(root = app) {
   const holder = root.querySelector("[data-point-picker]");
   if (!holder) return;
@@ -759,12 +789,6 @@ function bindDeliveryPointPicker(root = app) {
   const pointSelect = holder.querySelector('[name="delivery_point_id"]');
   const wanted = Number(pointSelect.getAttribute("data-selected") || 0)
     || Number(deliveryPickerItems.find((item) => item.id === Number(pointSelect.value))?.id || 0);
-
-  function fill(select, values, keep) {
-    const current = keep && values.includes(keep) ? keep : "";
-    select.innerHTML = `<option value="">Barchasi</option>${values.map((value) => `<option value="${esc(value)}" ${value === current ? "selected" : ""}>${esc(value)}</option>`).join("")}`;
-    return current;
-  }
 
   function visible() {
     const region = regionSelect.value;
@@ -785,10 +809,10 @@ function bindDeliveryPointPicker(root = app) {
 
   function paintDistricts(keepDistrict, keepId) {
     const region = regionSelect.value;
-    const districts = [...new Set(
-      deliveryPickerItems.filter((item) => !region || item.region === region).map((item) => item.district).filter(Boolean),
-    )].sort();
-    fill(districtSelect, districts, keepDistrict);
+    districtSelect.innerHTML = `<option value="">Barchasi</option>${region ? pickerDistrictOptions(region, keepDistrict) : ""}`;
+    // Viloyat tanlanmaganda tuman ham tanlanmaydi: 209 ta tumanni bitta
+    // ro'yxatda ko'rsatish foydasiz.
+    districtSelect.disabled = !region;
     paintPoints(keepId);
   }
 

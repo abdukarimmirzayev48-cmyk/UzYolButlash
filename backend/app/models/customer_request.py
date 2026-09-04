@@ -6,6 +6,7 @@ from sqlalchemy import DateTime, Enum as SAEnum, ForeignKey, Numeric, String, Te
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from backend.app.db.session import Base
+from backend.app.models.contract import DeliveryMethod
 from backend.app.models.delivery_point import DeliveryPoint
 from backend.app.models.client import TimestampMixin
 
@@ -71,6 +72,10 @@ class CustomerRequest(Base, TimestampMixin):
     activity_type: Mapped[str | None] = mapped_column(Text)
     function_description: Mapped[str | None] = mapped_column(Text)
     privatization_project_name: Mapped[str | None] = mapped_column(String(255))
+    # Talabnomada usul ATAYLAB tanlanadi: mahsulotdan sukut qiymat keladi,
+    # lekin xodim uni o'zgartira oladi. Shu tanlov yetkazish nuqtalari
+    # ro'yxatini belgilaydi -- temiryo'lda stansiyalar, avtoda ABZ.
+    delivery_method: Mapped[DeliveryMethod | None] = mapped_column(SAEnum(DeliveryMethod, length=16))
     oked: Mapped[str | None] = mapped_column(String(32))
     director_full_name: Mapped[str | None] = mapped_column(String(255))
     legal_address: Mapped[str | None] = mapped_column(Text)
