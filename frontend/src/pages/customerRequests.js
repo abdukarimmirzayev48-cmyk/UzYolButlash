@@ -316,7 +316,7 @@ async function customerRequestClientOptions(selectedId = null) {
 const REQUEST_PREFILL_FIELDS = [
   "inn", "region", "oked", "director_full_name", "legal_address",
   "bank_name", "mfo", "bank_account", "activity_type", "function_description",
-  "contact_full_name", "contact_phone", "phone",
+  "contact_full_name", "phone",
 ];
 
 async function applyRequestClient(form) {
@@ -335,7 +335,7 @@ async function applyRequestClient(form) {
       if (!input) return;
       // Kontakt maydonlari qo'lda o'zgartirilishi mumkin: har talabnomada
       // boshqa odam bo'lishi mumkin. Yozilgani ustidan yozilmaydi.
-      const keepTyped = ["contact_full_name", "contact_phone"].includes(name) && input.value.trim();
+      const keepTyped = name === "contact_full_name" && input.value.trim();
       if (!keepTyped) input.value = prefill[name] ?? "";
     });
     if (holder) {
@@ -405,7 +405,7 @@ function customerRequestForm(request, products, clients = "", points = "") {
       <div class="form-hint">Avval qanday yetkazilishini tanlang: temiryo'lda stansiyalar, avtotransportda ABZ nuqtalari ro'yxati chiqadi.</div>
       <div class="grid">${deliveryPointPicker("Yetkazish nuqtasi", request.delivery_point_id, points)}</div>
       <div data-request-method-hint></div>`)}
-     ${section("Kontakt ma'lumotlari", `<div class="grid">${textField("phone", "Telefon raqami", request.phone, "text", { required: true })}${textField("contact_full_name", "Kontakt shaxs F.I.Sh.", request.contact_full_name)}${textField("contact_phone", "Kontakt telefon raqami", request.contact_phone)}</div>`)}`,
+     ${section("Kontakt ma'lumotlari", `<div class="grid">${textField("phone", "Telefon raqami", request.phone, "text", { required: true })}${textField("contact_full_name", "Kontakt shaxs F.I.Sh.", request.contact_full_name)}</div>`)}`,
 
     `${section("Talabnoma xulosasi", `<div data-request-summary></div>`)}
      ${section("Ichki izoh", `<div class="grid">${textArea("internal_comment", "Izoh", request.internal_comment)}</div>`)}`,
@@ -577,7 +577,6 @@ function bindCustomerRequestForm(request) {
         mfo: field(submitted, "mfo"),
         phone: field(submitted, "phone"),
         contact_full_name: field(submitted, "contact_full_name"),
-        contact_phone: field(submitted, "contact_phone"),
         product_id: Number(field(submitted, "product_id")),
         total_quantity: normalizeNumberInputValue(field(submitted, "total_quantity")),
         unit: field(submitted, "unit"),
