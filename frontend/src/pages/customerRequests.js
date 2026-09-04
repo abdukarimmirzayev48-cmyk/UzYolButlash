@@ -316,7 +316,7 @@ async function customerRequestClientOptions(selectedId = null) {
 const REQUEST_PREFILL_FIELDS = [
   "inn", "region", "oked", "director_full_name", "legal_address",
   "bank_name", "mfo", "bank_account", "activity_type", "function_description",
-  "privatization_project_name", "contact_full_name", "contact_phone", "phone",
+  "contact_full_name", "contact_phone", "phone",
 ];
 
 async function applyRequestClient(form) {
@@ -394,7 +394,7 @@ function customerRequestForm(request, products, clients = "", points = "") {
         ${readonlyField("mfo", "MFO", request.mfo)}
         ${readonlyField("bank_account", "Hisob raqami", request.bank_account)}
       </div><div class="form-hint">Bu maydonlar mijoz kartochkasidan olinadi. O'zgartirish kerak bo'lsa, mijoz kartochkasida to'g'rilang.</div><div id="request-client-warnings"></div>`)}
-     ${section("Qo'shimcha ma'lumotlar", `<div class="grid">${textArea("activity_type", "Asosiy faoliyat turi", request.activity_type)}${textArea("function_description", "Funksiyasi va vazifalari", request.function_description)}${textField("privatization_project_name", "205 xususiylashtirish loyiha", request.privatization_project_name)}</div>`)}`,
+     ${section("Qo'shimcha ma'lumotlar", `<div class="grid">${textArea("activity_type", "Asosiy faoliyat turi", request.activity_type)}${textArea("function_description", "Funksiyasi va vazifalari", request.function_description)}</div>`)}`,
 
     `${section("Mahsulot talabi", `<div class="grid">${selectField("product_id", "Mahsulot nomi", products, String(request.product?.id || request.product_id || ""), { required: true })}${textField("total_quantity", "Umumiy miqdor", request.total_quantity, "number", { required: true })}${textField("unit", "O'lchov birligi", request.unit || "t", "text", { required: true })}</div>`)}
      ${section("Kalendar grafik", customerRequestScheduleEditor(request.schedule || [], request.unit))}`,
@@ -558,7 +558,6 @@ function bindCustomerRequestForm(request) {
         legal_address: field(submitted, "legal_address"),
         activity_type: field(submitted, "activity_type"),
         function_description: field(submitted, "function_description"),
-        privatization_project_name: field(submitted, "privatization_project_name"),
         bank_account: field(submitted, "bank_account"),
         bank_name: field(submitted, "bank_name"),
         mfo: field(submitted, "mfo"),
