@@ -331,7 +331,9 @@ async function renderDeliveryPointsList(scopeKey = "abz") {
   const clientOptions = clients
     .map((client) => `<option value="${client.id}" ${params.get("client_id") === String(client.id) ? "selected" : ""}>${esc(client.name)}</option>`)
     .join("");
-  const regions = [...new Set(data.items.map((item) => item.region).filter(Boolean))].sort();
+  await loadGeoRegions();
+  const selectedRegion = params.get("region") || "";
+  const districts = (geoRegionsCache || []).find((item) => item.name === selectedRegion)?.districts || [];
   const exportQuery = query.toString();
 
   app.innerHTML = `<div class="page ops-page delivery-points-ops-page">
@@ -357,7 +359,8 @@ async function renderDeliveryPointsList(scopeKey = "abz") {
 
     <form class="ops-search points-filter" id="delivery-point-search-form">
       ${opsFilterField("Qidirish", `<input name="search" placeholder="Qidirish..." value="${esc(params.get("search") || "")}" />`)}
-      ${opsFilterField("Viloyat", `<select name="region"><option value="">Barchasi</option>${regions.map((region) => `<option value="${esc(region)}" ${params.get("region") === region ? "selected" : ""}>${esc(region)}</option>`).join("")}</select>`)}
+      ${opsFilterField("Viloyat", `<select name="region" data-filter-region><option value="">Barchasi</option>${(geoRegionsCache || []).map((region) => `<option value="${esc(region.name)}" ${selectedRegion === region.name ? "selected" : ""}>${esc(region.name)}</option>`).join("")}</select>`)}
+      ${opsFilterField("Tuman", `<select name="district" data-filter-district ${selectedRegion ? "" : "disabled"}><option value="">Barchasi</option>${districts.map((district) => `<option value="${esc(district.name)}" ${params.get("district") === district.name ? "selected" : ""}>${esc(district.name)}</option>`).join("")}</select>`)}
       ${opsFilterField("Holat", `<select name="status"><option value="">Barchasi</option>${deliveryPointStatuses.map(([key, label]) => `<option value="${key}" ${params.get("status") === key ? "selected" : ""}>${label}</option>`).join("")}</select>`)}
       ${opsFilterField("Mijoz", `<select name="client_id"><option value="">Barchasi</option>${clientOptions}</select>`)}
       <button class="ops-tool-btn primary" type="submit">Qidirish</button>
@@ -396,7 +399,15 @@ async function renderDeliveryPointsList(scopeKey = "abz") {
     </div>
   </div>`;
 
-  bindOpsSearch("delivery-point-search-form", scope.basePath, ["search", "client_id", "region", "status", "view", "page_size"]);
+  bindOpsSearch("delivery-point-search-form", scope.basePath, ["search", "client_id", "region", "district", "status", "view", "page_size"]);
+  app.querySelector("[data-filter-region]")?.addEventListener("change", () => {
+    const next = new URLSearchParams(location.search);
+    const value = app.querySelector("[data-filter-region]").value;
+    if (value) next.set("region", value); else next.delete("region");
+    next.delete("district");
+    next.delete("page");
+    navigate(`${scope.basePath}?${next}`);
+  });
   bindOpsPagination("deliverypoint", scope.basePath);
   bindPointSort();
   bindRowMenus();

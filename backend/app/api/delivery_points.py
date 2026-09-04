@@ -99,7 +99,7 @@ def apply_point_sort(stmt, sort: str | None, order: str | None):
     return stmt.order_by(column.desc() if (order or "asc") == "desc" else column.asc())
 
 
-def point_filters(search, client_id, region, point_type, status_filter, active_only, exclude_type=None, method=None):
+def point_filters(search, client_id, region, point_type, status_filter, active_only, exclude_type=None, method=None, district=None):
     """Ro'yxat, panel va eksport aynan bir xil filtrlangan bo'lishi kerak.
 
     `exclude_type` -- bo'lim ajratish uchun: ABZ ro'yxati stansiyalarni
@@ -115,6 +115,8 @@ def point_filters(search, client_id, region, point_type, status_filter, active_o
         conditions.append(DeliveryPoint.client_id == client_id)
     if region:
         conditions.append(DeliveryPoint.region == region)
+    if district:
+        conditions.append(DeliveryPoint.district == district)
     if point_type:
         conditions.append(DeliveryPoint.point_type == point_type)
     if status_filter:
@@ -155,6 +157,7 @@ def delivery_points_dashboard(
     search: str | None = None,
     client_id: int | None = None,
     region: str | None = None,
+    district: str | None = None,
     point_type: str | None = None,
     status_filter: str | None = Query(default=None, alias="status"),
     active_only: bool = False,
@@ -162,7 +165,7 @@ def delivery_points_dashboard(
     method: str | None = None,
 ):
     stmt = select(DeliveryPoint).options(selectinload(DeliveryPoint.status_history))
-    conditions = point_filters(search, client_id, region, point_type, status_filter, active_only, exclude_type, method)
+    conditions = point_filters(search, client_id, region, point_type, status_filter, active_only, exclude_type, method, district)
     if conditions:
         stmt = stmt.where(*conditions)
     points = list(db.scalars(stmt).unique())
@@ -176,6 +179,7 @@ def export_delivery_points(
     search: str | None = None,
     client_id: int | None = None,
     region: str | None = None,
+    district: str | None = None,
     point_type: str | None = None,
     status_filter: str | None = Query(default=None, alias="status"),
     active_only: bool = False,
@@ -187,7 +191,7 @@ def export_delivery_points(
 ):
     """Ekranda nima ko'rinsa, o'sha eksport qilinadi -- filtr ham, tartib ham."""
     stmt = select(DeliveryPoint).options(selectinload(DeliveryPoint.client))
-    conditions = point_filters(search, client_id, region, point_type, status_filter, active_only, exclude_type, method)
+    conditions = point_filters(search, client_id, region, point_type, status_filter, active_only, exclude_type, method, district)
     if conditions:
         stmt = stmt.where(*conditions)
     points = list(db.scalars(apply_point_sort(stmt, sort, order)).unique())
@@ -208,6 +212,7 @@ def list_delivery_points(
     search: str | None = None,
     client_id: int | None = None,
     region: str | None = None,
+    district: str | None = None,
     point_type: str | None = None,
     status_filter: str | None = Query(default=None, alias="status"),
     active_only: bool = False,
@@ -217,7 +222,7 @@ def list_delivery_points(
     order: str | None = None,
 ):
     stmt = select(DeliveryPoint).options(selectinload(DeliveryPoint.client))
-    conditions = point_filters(search, client_id, region, point_type, status_filter, active_only, exclude_type, method)
+    conditions = point_filters(search, client_id, region, point_type, status_filter, active_only, exclude_type, method, district)
     if conditions:
         stmt = stmt.where(*conditions)
     total = db.scalar(select(func.count()).select_from(stmt.subquery())) or 0
