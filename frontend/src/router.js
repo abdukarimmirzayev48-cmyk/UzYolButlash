@@ -78,8 +78,6 @@ async function render() {
     // ---- Ma'lumotnomalar ----
     } else if (location.pathname === "/references") {
       await renderReferencesHome();
-    } else if (location.pathname === "/regions") {
-      await renderRegionsPage();
     } else if (location.pathname === "/company-registry") {
       await renderCompanyRegistryPage();
     } else if (location.pathname === "/stock-locations") {

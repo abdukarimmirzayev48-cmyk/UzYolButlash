@@ -31,7 +31,6 @@ const REFERENCE_GROUPS = [
       { key: "delivery_points", label: "ABZ nuqtalari", path: "/delivery-points", hint: "Bitum texnikada yetkaziladigan nuqtalar" },
       { key: "railway_stations", label: "Temiryo'l stansiyalari", path: "/railway-stations", hint: "Vagon keladigan stansiyalar, ESR kodi bilan" },
       { key: "stock_locations", label: "Ombor joylari", path: "/stock-locations", hint: "Zaxira partiyasi turadigan joylar" },
-      { key: "regions", label: "Viloyat va tumanlar", path: "/regions", hint: "Manzil maydonlari shu ro'yxatdan to'ldiriladi", extraKey: "districts", extraLabel: "ta tuman" },
     ],
   },
   {
@@ -74,89 +73,6 @@ async function renderReferencesHome() {
   </div>`;
 }
 
-// ---- Viloyat va tumanlar --------------------------------------------------
-//
-// Tumanni qayta nomlash yo'q: manzil matn bo'lib saqlanadi, ya'ni nomni
-// o'zgartirish unga ishora qilgan har bir yozuvning manzilini jimgina
-// o'zgartirib yuborardi. O'chirish esa faqat hech qayerda ishlatilmagan
-// tuman uchun -- serverda tekshiriladi.
-
-async function renderRegionsPage() {
-  app.innerHTML = `<div class="page"><div class="empty">Yuklanmoqda...</div></div>`;
-  const regions = await api("/api/geo/regions");
-  const params = new URLSearchParams(location.search);
-  const selectedId = Number(params.get("region")) || regions[0]?.id || null;
-  const selected = regions.find((region) => region.id === selectedId) || regions[0] || null;
-  const editable = canEdit("sotuv");
-  const total = regions.reduce((sum, region) => sum + region.districts.length, 0);
-
-  app.innerHTML = `<div class="page">
-    ${detailBreadcrumb(["Ma'lumotnomalar", "Viloyat va tumanlar"])}
-    <div class="page-head-row">
-      <div class="page-title">
-        <h1>Viloyat va tumanlar</h1>
-        <p>Manzil maydonlari shu ro'yxatdan to'ldiriladi. Ro'yxatda yo'q tuman qo'lda yozilmaydi.</p>
-      </div>
-      <div class="actions"><button class="btn" type="button" data-nav="/references">Ma'lumotnomalar</button></div>
-    </div>
-    <div class="region-layout">
-      <section class="card">
-        <div class="card-header"><h2>Viloyatlar</h2></div>
-        <div class="card-body region-list">
-          ${regions.map((region) => `<button type="button" class="region-row ${region.id === selected?.id ? "active" : ""}" data-nav="/regions?region=${region.id}">
-            <span data-noloc>${esc(region.name)}</span>
-            <span class="region-count" data-noloc>${region.districts.length}</span>
-          </button>`).join("")}
-        </div>
-      </section>
-      <section class="card">
-        <div class="card-header"><h2>Tumanlar</h2></div>
-        <div class="card-body">
-          ${selected ? `<p class="form-hint" data-noloc>${esc(selected.name)}</p>
-          ${selected.districts.length ? `<div class="district-list">${selected.districts.map((district) => `<div class="district-row">
-            <span data-noloc>${esc(district.name)}</span>
-            ${editable ? `<button class="link-btn danger" type="button" data-delete-district="${district.id}" data-region="${selected.id}" data-name="${esc(district.name)}">O'chirish</button>` : ""}
-          </div>`).join("")}</div>` : `<div class="empty">Bu viloyatda tuman kiritilmagan.</div>`}
-          ${editable ? `<form id="district-form" class="grid inline-edit">
-            ${textField("name", "Yangi tuman", "", "text", { required: true, minlength: 2, maxlength: 120 })}
-            <button class="btn primary" type="submit">Qo'shish</button>
-          </form>` : ""}` : `<div class="empty">Viloyat topilmadi.</div>`}
-        </div>
-      </section>
-    </div>
-    <div class="ops-footer">
-      <span><span>Jami</span> <span data-noloc>${regions.length}</span> <span>ta viloyat</span><span data-noloc>, </span><span data-noloc>${total}</span> <span>ta tuman</span></span>
-    </div>
-  </div>`;
-
-  document.querySelector("#district-form")?.addEventListener("submit", async (event) => {
-    event.preventDefault();
-    const name = field(event.currentTarget, "name");
-    if (!name) return;
-    try {
-      await api(`/api/geo/regions/${selected.id}/districts`, { method: "POST", body: JSON.stringify({ name }) });
-      geoRegionsCache = null;
-      showToast("Tuman qo'shildi.");
-      await renderRegionsPage();
-    } catch (error) {
-      showToast(error.message, true);
-    }
-  });
-  app.querySelectorAll("[data-delete-district]").forEach((button) => {
-    button.addEventListener("click", async () => {
-      if (!confirmMsg(`«${button.dataset.name}» tumani ro'yxatdan o'chiriladi. Davom etasizmi?`)) return;
-      try {
-        await api(`/api/geo/regions/${button.dataset.region}/districts/${button.dataset.deleteDistrict}`, { method: "DELETE" });
-        geoRegionsCache = null;
-        showToast("Tuman o'chirildi.");
-        await renderRegionsPage();
-      } catch (error) {
-        showToast(error.message, true);
-      }
-    });
-  });
-}
-
 // ---- Korxonalar reyestri --------------------------------------------------
 //
 // Faqat o'qish uchun: reyestr tashqaridan import qilinadi. Qo'lda tuzatish
@@ -167,7 +83,10 @@ async function renderCompanyRegistryPage() {
   app.innerHTML = `<div class="page"><div class="empty">Yuklanmoqda...</div></div>`;
   const params = new URLSearchParams(location.search);
   const data = await api(`/api/references/company-registry?${params.toString()}`);
-  const regions = [...new Set(data.items.map((item) => item.region).filter(Boolean))].sort();
+  // Hudud ro'yxati ma'lumotnomadan: joriy sahifadan qurilsa, 267 ta
+  // korxona 50 tadan bo'lingach filtr o'zi ko'rsatayotgan narsaga bog'liq
+  // bo'lib qolardi.
+  await loadGeoRegions();
 
   app.innerHTML = opsListPage({
     className: "company-registry-page",
@@ -179,7 +98,7 @@ async function renderCompanyRegistryPage() {
     formId: "company-registry-search-form",
     filters: `
       ${opsFilterField("Qidirish", `<input name="search" placeholder="Nomi, STIR yoki direktor" value="${esc(params.get("search") || "")}" />`)}
-      ${opsFilterField("Hudud", `<select name="region"><option value="">Barchasi</option>${regions.map((region) => `<option value="${esc(region)}" ${params.get("region") === region ? "selected" : ""}>${esc(region)}</option>`).join("")}</select>`)}
+      ${opsFilterField("Hudud", `<select name="region"><option value="">Barchasi</option>${(geoRegionsCache || []).map((region) => `<option value="${esc(region.name)}" ${params.get("region") === region.name ? "selected" : ""}>${esc(region.name)}</option>`).join("")}</select>`)}
     `,
     headers: ["Korxona", "STIR", "Hudud", "Direktor", "Bank", "MFO"],
     rows: data.items.map((row) => `<tr>
