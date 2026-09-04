@@ -482,10 +482,14 @@ function comboOptionRows(select) {
 }
 
 function buildCombobox(holder, search, select) {
-  const rows = comboOptionRows(select);
-  const real = rows.filter((row) => row.value).length;
+  // Variantlar HAR SAFAR qaytadan o'qiladi, bir marta emas. Ilgari ular
+  // qurilish paytida bir marta olinardi: yetkazish nuqtasi kaskadida
+  // (viloyat -> tuman -> nuqta) `<select>` ning variantlari almashadi, va
+  // ro'yxat eski holicha qolib ketardi -- qidiruv boshqa nuqtalar ichidan
+  // qidirardi, tanlangani esa ro'yxatda ko'rinmasdi.
+  const currentRows = () => comboOptionRows(select);
   const placeholder = search.getAttribute("placeholder") || "Qidirish";
-  const emptyLabel = rows.find((row) => !row.value)?.label || "Tanlang";
+  const emptyLabel = currentRows().find((row) => !row.value)?.label || "Tanlang";
 
   const combo = document.createElement("div");
   combo.className = "combo";
@@ -516,7 +520,7 @@ function buildCombobox(holder, search, select) {
   let active = -1;
 
   const showValue = () => {
-    const chosen = rows.find((row) => row.value === select.value);
+    const chosen = currentRows().find((row) => row.value === select.value);
     const text = chosen && chosen.value ? chosen.label : emptyLabel;
     trigger.querySelector(".combo-value").textContent = text;
     trigger.classList.toggle("is-empty", !(chosen && chosen.value));
@@ -524,7 +528,7 @@ function buildCombobox(holder, search, select) {
 
   const matches = () => {
     const query = input.value.trim().toLowerCase();
-    return rows.filter((row) => row.value && (!query || row.haystack.includes(query)));
+    return currentRows().filter((row) => row.value && (!query || row.haystack.includes(query)));
   };
 
   const draw = () => {
@@ -537,7 +541,8 @@ function buildCombobox(holder, search, select) {
       const chosen = row.value === select.value;
       return `${head}<button type="button" class="combo-option${chosen ? " is-chosen" : ""}" role="option" aria-selected="${chosen}" data-combo-value="${esc(row.value)}">${esc(row.label)}</button>`;
     }).join("") || `<div class="empty">Topilmadi.</div>`;
-    count.textContent = input.value.trim() ? `${found.length} / ${real}` : `${real} ta`;
+    const total = currentRows().filter((row) => row.value).length;
+    count.textContent = input.value.trim() ? `${found.length} / ${total}` : `${total} ta`;
     more.hidden = found.length <= limit;
     active = -1;
   };
@@ -573,7 +578,7 @@ function buildCombobox(holder, search, select) {
 
   trigger.addEventListener("click", () => (panel.hidden ? open() : close()));
   input.addEventListener("input", () => { limit = COMBO_PAGE; draw(); });
-  more.addEventListener("click", () => { limit = rows.length; draw(); });
+  more.addEventListener("click", () => { limit = currentRows().length; draw(); });
   list.addEventListener("click", (event) => {
     const option = event.target.closest("[data-combo-value]");
     if (option) choose(option.dataset.comboValue);

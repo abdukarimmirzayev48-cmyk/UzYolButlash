@@ -803,7 +803,10 @@ function bindDeliveryPointPicker(root = app) {
       .map((item) => `<option value="${item.id}" ${item.id === current ? "selected" : ""}>${esc(pointOptionLabel(item))}</option>`)
       .join("")}`;
     pointSelect.value = current ? String(current) : "";
+    // Birinchi marta kombo qurilади, keyingilarida esa faqat xabar
+    // beriladi: kombo variantlarni o'zi qaytadan o'qiydi.
     bindSelectSearch(root);
+    pointSelect.dispatchEvent(new Event("change", { bubbles: true }));
     localizeDom(holder);
   }
 
