@@ -23,8 +23,6 @@ REQUEST_STATUS_LABELS = {
     CustomerRequestStatus.new: "Yangi",
     CustomerRequestStatus.reviewing: "Ko'rib chiqilmoqda",
     CustomerRequestStatus.contract_preparation: "Shartnoma tayyorlanmoqda",
-    CustomerRequestStatus.contract_signed: "Shartnoma imzolandi",
-    CustomerRequestStatus.converted_to_order: "Buyurtmaga o'tkazildi",
     CustomerRequestStatus.rejected: "Rad etildi",
 }
 
@@ -249,6 +247,9 @@ class CustomerRequestStatusChange(BaseModel):
 class CustomerRequestListItem(BaseModel):
     id: int
     request_number: str
+    # Shartnomalar bo'limidagi «Shartnoma yaratish» shu id bilan mijozni
+    # oldindan tanlaydi -- aks holda operator uni qaytadan qidirardi.
+    client_id: int | None = None
     customer_type: CustomerType
     customer_type_label: str
     payment_source: PaymentSource
@@ -325,11 +326,11 @@ class CustomerRequestDetail(CustomerRequestListItem):
     # one button per entry instead of a fixed list, so it cannot offer a step
     # the server would refuse.
     available_transitions: list[StatusTransition] = Field(default_factory=list)
-    can_convert_to_order: bool = False
     documents: list[CustomerRequestDocumentRead] = Field(default_factory=list)
-    # Saqlanmaydi: shartnoma tayyorlashga o'tish uchun xat biriktirilganmi.
-    # Tugmani o'chirish uchun brauzerga ham kerak.
-    has_letter: bool = False
+    # Saqlanmaydi: keyingi oldinga qadam qanday hujjat talab qiladi va u
+    # biriktirilganmi. Tugmani o'chirish uchun brauzerga ham kerak.
+    required_document: CustomerRequestDocumentType | None = None
+    required_document_ready: bool = True
 
 
 CustomerRequestPage = Page[CustomerRequestListItem]

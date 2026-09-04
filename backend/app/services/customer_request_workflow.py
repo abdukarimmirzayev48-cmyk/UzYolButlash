@@ -16,7 +16,16 @@ offering something the API then refuses.
 The flow:
 
     new -> reviewing -> contract_preparation
-        -> contract_signed -> converted_to_order
+
+Talabnoma «shartnoma tayyorlanmoqda» da tugaydi: undan keyingi ish --
+shartnoma imzolash va buyurtma yaratish -- shartnoma bo'limida davom
+etadi. Ilgari bu ikkisi ham talabnomaning holati edi, ya'ni bitta narsa
+ikki joyda yuritilardi.
+
+Har bir oldinga qadam o'z hujjatini talab qiladi: xodim talabnomani
+o'rganib, mijozga Didox orqali shartnoma namunasini yuboradi -- va uni
+biriktirmaguncha talabnoma ko'rib chiqishga o'tmaydi. Shartnoma
+tayyorlashga o'tish uchun esa mijozning xati kerak.
 
 «Muzokara» alohida holat edi. Amalda ko'rib chiqish va muzokara bir vaqtda
 ketadi -- operator qaysi biridaligini ajrata olmasdi va tugma tasodifan
@@ -33,15 +42,14 @@ mis-click is ordinary work -- but going back is a deliberate act, so it is
 labelled as such and has to carry a reason.
 """
 
+from backend.app.models.customer_request import CustomerRequestDocumentType as D
 from backend.app.models.customer_request import CustomerRequestStatus as S
 
 # Moves that advance the request. Order matters only for display.
 FORWARD: dict[S, tuple[S, ...]] = {
     S.new: (S.reviewing,),
     S.reviewing: (S.contract_preparation,),
-    S.contract_preparation: (S.contract_signed,),
-    S.contract_signed: (S.converted_to_order,),
-    S.converted_to_order: (),
+    S.contract_preparation: (),
     S.rejected: (),
 }
 
@@ -51,20 +59,15 @@ BACKWARD: dict[S, tuple[S, ...]] = {
     S.new: (),
     S.reviewing: (S.new,),
     S.contract_preparation: (S.reviewing,),
-    S.contract_signed: (S.contract_preparation,),
-    # Once an order exists the talabnoma is done; unwinding that means dealing
-    # with the order, not the talabnoma.
-    S.converted_to_order: (),
     S.rejected: (S.new,),
 }
 
 # Anything still open can be rejected. Rejection always needs a reason, which
 # the endpoint enforces separately.
-REJECTABLE = (S.new, S.reviewing, S.contract_preparation, S.contract_signed)
+REJECTABLE = (S.new, S.reviewing, S.contract_preparation)
 
-# converted_to_order is reached through the convert endpoint, which creates the
-# order. Allowing it here as well would let the status be set without one.
-STATUS_ENDPOINT_EXCLUDED = (S.converted_to_order,)
+# Endpoint orqali qo'yib bo'lmaydigan holatlar. Hozir bunday holat yo'q.
+STATUS_ENDPOINT_EXCLUDED: tuple[S, ...] = ()
 
 
 def transitions_from(current: S) -> list[dict]:
@@ -100,13 +103,19 @@ def transition_kind(current: S, target: S) -> str | None:
     return None
 
 
-# Shartnoma tayyorlashga o'tish uchun mijozning xati biriktirilgan bo'lishi
-# shart. Qoida shu yerda, chunki brauzer tugmani shu asosda o'chiradi va
-# server ham shu asosda rad etadi -- ikkisi hech qachon ajralib qolmaydi.
-REQUIRES_LETTER = (S.contract_preparation,)
+# Har bir oldinga qadam o'z hujjatini talab qiladi. Qoida shu yerda,
+# chunki brauzer tugmani shu asosda o'chiradi va server ham shu asosda rad
+# etadi -- ikkisi hech qachon ajralib qolmaydi.
+REQUIRED_DOCUMENT: dict[S, D] = {
+    S.reviewing: D.contract_sample,
+    S.contract_preparation: D.letter,
+}
 
-MSG_LETTER_REQUIRED = "Shartnoma tayyorlashga o'tish uchun mijozning xati biriktirilishi shart."
+MSG_DOCUMENT_REQUIRED = {
+    D.contract_sample: "Ko'rib chiqishga o'tish uchun Didox orqali yuborilgan shartnoma namunasi biriktirilishi shart.",
+    D.letter: "Shartnoma tayyorlashga o'tish uchun mijozning xati biriktirilishi shart.",
+}
 
 
-def needs_letter(target: S) -> bool:
-    return target in REQUIRES_LETTER
+def required_document(target: S) -> D | None:
+    return REQUIRED_DOCUMENT.get(target)

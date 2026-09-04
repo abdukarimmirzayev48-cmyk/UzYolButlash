@@ -681,6 +681,7 @@ function collectContractWizardPayload(state) {
   const totals = contractWizardTotals(state);
   return {
     client_id: Number(state.clientId),
+    customer_request_id: state.customerRequestId ? Number(state.customerRequestId) : null,
     contract_number: state.contractNumber,
     contract_date: state.contractDate,
     valid_until: state.validUntil,
@@ -817,6 +818,9 @@ async function renderContractWizard() {
   const state = {
     step: 1,
     clientId: params.get("client_id") || "",
+    // Talabnomalar ro'yxatidan kelinganda shartnoma o'sha talabnomaga
+    // bog'lanadi -- keyin qaysi talabnomadan chiqqani ko'rinib turadi.
+    customerRequestId: params.get("customer_request_id") || "",
     client: null,
     clientOptions: [],
     contractNumber: "",
@@ -890,7 +894,13 @@ function contractRowActions(contract, editable) {
 async function renderContractsList() {
   app.innerHTML = `<div class="page ops-page"><div class="empty">Shartnomalar yuklanmoqda...</div></div>`;
   const params = new URLSearchParams(location.search);
-  const data = await api(`/api/contracts?${params.toString()}`);
+  // Shartnoma tayyorlashga o'tgan talabnomalar shu yerda kutib turadi:
+  // talabnomaning ishi tugagan, keyingi qadam -- shartnoma yaratish.
+  const [data, waiting] = await Promise.all([
+    api(`/api/contracts?${params.toString()}`),
+    api("/api/customer-requests?status=contract_preparation&page_size=50").catch(() => ({ items: [] })),
+  ]);
+  const waitingRequests = waiting.items || [];
   const editable = canEdit("sotuv");
   const rows = data.items.map((contract) => `<tr>
     <td><button class="clist-number" data-nav="/contracts/${contract.id}">${fmt(contract.contract_number)}</button></td>
@@ -915,6 +925,8 @@ async function renderContractsList() {
           <button class="btn" type="button" data-nav="/contracts/upload">PDF orqali yaratish</button>
         </div>` : ""}
       </header>
+
+      ${waitingRequestsPanel(waitingRequests, editable)}
 
       <nav class="clist-tabs" aria-label="Sotuv bo'limlari">
         <button type="button" data-nav="/clients">Mijozlar</button>
@@ -2137,4 +2149,26 @@ async function renderContractDetail(id) {
 
 function optionLabel(options, value) {
   return options.find(([key]) => key === value)?.[1] || value || dash;
+}
+
+
+// Shartnoma tayyorlashga o'tgan talabnomalar. Talabnomaning o'z ishi shu
+// yerda tugaydi -- keyingi qadam shartnoma yaratish, va u shartnomalar
+// bo'limida bajariladi, talabnomada emas.
+function waitingRequestsPanel(requests, editable) {
+  if (!requests.length) return "";
+  const rows = requests.map((request) => `<div class="waiting-row">
+    <button class="waiting-number" type="button" data-nav="/customer-requests/${request.id}" data-noloc>${esc(request.request_number)}</button>
+    <span class="waiting-company" data-noloc>${esc(request.company_name || "")}</span>
+    <span class="waiting-product" data-noloc>${esc(request.product?.name || "")}</span>
+    <span class="waiting-qty" data-noloc>${esc(fmtQty(request.total_quantity, request.unit))}</span>
+    ${editable ? `<button class="btn primary" type="button" data-nav="/contracts/new?client_id=${request.client_id || ""}&customer_request_id=${request.id}">Shartnoma yaratish</button>` : ""}
+  </div>`).join("");
+  return `<section class="card waiting-requests">
+    <div class="waiting-head">
+      <h2>Shartnoma kutayotgan talabnomalar</h2>
+      <span class="waiting-count"><span data-noloc>${requests.length}</span> <span>ta talabnoma</span></span>
+    </div>
+    ${rows}
+  </section>`;
 }

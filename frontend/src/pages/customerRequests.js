@@ -2,8 +2,6 @@ const customerRequestStatuses = [
   ["new", "Yangi"],
   ["reviewing", "Ko'rib chiqilmoqda"],
   ["contract_preparation", "Shartnoma tayyorlanmoqda"],
-  ["contract_signed", "Shartnoma imzolandi"],
-  ["converted_to_order", "Buyurtmaga o'tkazildi"],
   ["rejected", "Rad etildi"],
 ];
 
@@ -118,7 +116,6 @@ async function renderCustomerRequestDetail(id) {
         <div class="actions workflow-actions">
           <button class="btn" data-nav="/customer-requests">Orqaga</button>
           ${canEdit("sotuv") ? `<button class="btn" data-nav="/customer-requests/${request.id}/edit">Tahrirlash</button>
-          ${request.can_convert_to_order ? `<button class="btn primary" data-convert-request="${request.id}">Buyurtmaga o'tkazish</button>` : ""}
           <button class="btn danger" data-delete-request="${request.id}" data-request-number="${esc(request.request_number || "")}">O'chirish</button>` : ""}
         </div>
       </div>
@@ -227,7 +224,7 @@ function requestTransitionsHtml(request, { blocked = false } = {}) {
       const prefix = move.direction === "backward"
         ? `<span>${REQUEST_BACK_LABEL}</span><span data-noloc>\u2190</span>`
         : "";
-      const off = blocked && move.status === "contract_preparation" && move.direction === "forward";
+      const off = blocked && move.direction === "forward";
       return `<button class="${cls}" type="button" data-request-status="${esc(move.status)}" data-request-direction="${esc(move.direction)}" ${off ? "disabled" : ""}>${prefix}<span>${esc(move.label)}</span></button>`;
     })
     .join("");
@@ -273,14 +270,6 @@ function bindCustomerRequestDetailActions(request) {
         showToast(error.message, true);
       }
     });
-  });
-  app.querySelector("[data-convert-request]")?.addEventListener("click", async () => {
-    try {
-      const response = await api(`/api/customer-requests/${request.id}/convert-to-order`, { method: "POST" });
-      showToast(response.data?.message || "Talabnoma buyurtmaga o'tkazildi.");
-    } catch (error) {
-      showToast(error.message, true);
-    }
   });
   bindCustomerRequestDelete(() => navigate("/customer-requests"));
 }
@@ -718,18 +707,16 @@ function requestDashboardBlocks(board) {
 // keyin nima qilish mumkin.
 
 const REQUEST_STATUS_HELP = {
-  new: "Talabnoma qabul qilindi. Uni ko'rib chiqishga oling.",
-  reviewing: "Mijoz bilan ishlanmoqda: shartlar kelishiladi va hujjat yig'iladi.",
-  contract_preparation: "Shartnoma matni tayyorlanmoqda.",
-  contract_signed: "Shartnoma imzolangan. Endi buyurtmaga o'tkazish mumkin.",
-  converted_to_order: "Buyurtma yaratilgan, talabnoma yopildi.",
+  new: "Talabnomani o'rganing va mijozga Didox orqali shartnoma namunasini yuboring.",
+  reviewing: "Shartnoma namunasi mijozda. Uning xati kelgach shartnoma tayyorlashga o'tiladi.",
+  contract_preparation: "Talabnoma tugadi. Keyingi ish shartnomalar bo'limida davom etadi.",
   rejected: "Talabnoma rad etilgan.",
 };
 
 // Talabnoma qaysi bosqichda ekani -- ketma-ketlik ko'rinishida. Ilgari
 // faqat joriy status nishoni turardi: undan oldin nima bo'lgani va keyin
 // nima kutilayotgani ko'rinmasdi.
-const REQUEST_STATUS_FLOW = ["new", "reviewing", "contract_preparation", "contract_signed", "converted_to_order"];
+const REQUEST_STATUS_FLOW = ["new", "reviewing", "contract_preparation"];
 
 function requestStatusFlow(request) {
   const titles = REQUEST_STATUS_FLOW.map((key) => optionLabel(customerRequestStatuses, key));
@@ -753,8 +740,10 @@ function requestStatusCard(request) {
   // Xat yo'q bo'lsa, shartnoma tayyorlashga o'tish tugmasi ishlamaydi.
   // Buni tugma bosilgandan keyin xato bilan aytish o'rniga, oldindan
   // aytamiz -- va hujjat yuklash aynan shu yerda turadi.
-  const blocked = !request.has_letter
-    && (request.available_transitions || []).some((move) => move.status === "contract_preparation" && move.direction === "forward");
+  // Server keyingi qadam qanday hujjat kutayotganini aytadi -- brauzer
+  // qoidani takrorlamaydi.
+  const needed = request.required_document;
+  const blocked = Boolean(needed) && request.required_document_ready === false;
   return `<section class="card request-status-card">
     <div class="request-flow">${requestStatusFlow(request)}</div>
     <div class="request-status-body">
@@ -765,13 +754,13 @@ function requestStatusCard(request) {
       </div>
       <div class="request-status-moves">
         ${blocked ? `<div class="request-status-block">
-          <strong>Mijozning xati kerak</strong>
-          <span>Shartnoma tayyorlashga o'tish uchun avval xatni biriktiring.</span>
+          <strong>${esc(optionLabel(REQUEST_DOCUMENT_TYPES, needed))}</strong>
+          <span>${REQUEST_DOCUMENT_HELP[needed] || "Keyingi bosqichga o'tish uchun hujjat biriktiring."}</span>
         </div>` : ""}
         ${editable ? requestTransitionsHtml(request, { blocked }) : `<div class="empty compact">Statusni o'zgartirish uchun ruxsat yo'q.</div>`}
       </div>
     </div>
-    ${requestDocumentsBlock(request, { required: blocked })}
+    ${requestDocumentsBlock(request, { required: blocked, needed })}
   </section>`;
 }
 
@@ -781,6 +770,7 @@ function requestStatusCard(request) {
 // qog'oz papkada qolardi: talabnomani ochgan odam uni topa olmasdi.
 
 const REQUEST_DOCUMENT_TYPES = [
+  ["contract_sample", "Shartnoma namunasi (Didox)"],
   ["letter", "Mijoz xati"],
   ["specification", "Spetsifikatsiya"],
   ["other", "Boshqa"],
@@ -790,7 +780,12 @@ const REQUEST_DOCUMENT_TYPES = [
 // tayyorlanadi, ya'ni ular alohida narsa emas -- statusni ilgaritishning
 // sharti. Ilgari ular pastda alohida bo'lim bo'lib turardi va nima uchun
 // kerakligi ko'rinmasdi.
-function requestDocumentsBlock(request, { required = false } = {}) {
+const REQUEST_DOCUMENT_HELP = {
+  contract_sample: "Mijozga Didox orqali yuborilgan shartnoma namunasini biriktiring.",
+  letter: "Shartnoma tayyorlash uchun mijozning rasmiy xatini biriktiring.",
+};
+
+function requestDocumentsBlock(request, { required = false, needed = null } = {}) {
   const editable = canEdit("sotuv");
   const documents = request.documents || [];
   const rows = documents.map((doc) => `<div class="request-doc-row">
@@ -809,7 +804,7 @@ function requestDocumentsBlock(request, { required = false } = {}) {
     </div>
     ${rows || `<div class="empty compact">Hujjat biriktirilmagan.</div>`}
     ${editable ? `<form id="request-document-form" class="request-doc-form">
-      ${selectField("document_type", "Turi", REQUEST_DOCUMENT_TYPES, "letter")}
+      ${selectField("document_type", "Turi", REQUEST_DOCUMENT_TYPES, needed || "letter")}
       ${textField("title", "Nomi", "", "text", { required: true, placeholder: "Mijoz xati" })}
       <label><span class="field-label-text">Fayl <span class="required-mark">*</span></span><input type="file" name="file" required /></label>
       <button class="btn ${required ? "primary" : ""}" type="submit">Yuklash</button>

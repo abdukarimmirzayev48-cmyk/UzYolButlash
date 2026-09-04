@@ -27,9 +27,11 @@ class CustomerRequestStatus(str, Enum):
     # va operator qaysi biridaligini ajrata olmasdi -- natijada tugma
     # tasodifan bosilardi va tarix ma'nosini yo'qotardi.
     reviewing = "reviewing"
+    # Talabnoma shu yerda tugaydi: keyingi ish shartnoma bo'limida davom
+    # etadi. Ilgari bu yerda «shartnoma imzolandi» va «buyurtmaga
+    # o'tkazildi» ham bor edi, lekin ular talabnomaning emas,
+    # shartnomaning hayoti -- va ikkinchisi umuman ishlamasdi.
     contract_preparation = "contract_preparation"
-    contract_signed = "contract_signed"
-    converted_to_order = "converted_to_order"
     rejected = "rejected"
 
 
@@ -139,12 +141,10 @@ class CustomerRequestStatusHistory(Base):
 class CustomerRequestDocumentType(str, Enum):
     # Mijozning rasmiy xati -- shartnoma tayyorlashga o'tish uchun asos.
     letter = "letter"
+    # Didox orqali mijozga yuborilgan shartnoma namunasi.
+    contract_sample = "contract_sample"
     specification = "specification"
     other = "other"
-
-
-# Shartnoma tayyorlashga o'tish uchun aynan shu tur talab qilinadi.
-REQUIRED_FOR_CONTRACT = CustomerRequestDocumentType.letter
 
 
 class CustomerRequestDocument(Base):

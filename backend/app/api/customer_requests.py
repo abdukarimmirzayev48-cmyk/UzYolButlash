@@ -14,7 +14,6 @@ from backend.app.db.session import get_db
 from backend.app.models.contract import Contract
 from backend.app.models.client import Client
 from backend.app.models.customer_request import (
-    REQUIRED_FOR_CONTRACT,
     CompanyRegistry,
     CustomerRequest,
     CustomerRequestDocument,
@@ -166,6 +165,7 @@ def serialize_list_item(request: CustomerRequest) -> CustomerRequestListItem:
     return CustomerRequestListItem(
         id=request.id,
         request_number=request.request_number,
+        client_id=request.client_id,
         customer_type=request.customer_type,
         customer_type_label=enum_label(CUSTOMER_TYPE_LABELS, request.customer_type),
         payment_source=request.payment_source,
@@ -184,8 +184,8 @@ def serialize_list_item(request: CustomerRequest) -> CustomerRequestListItem:
 
 def serialize_detail(request: CustomerRequest) -> CustomerRequestDetail:
     base = serialize_list_item(request).model_dump()
+    required_kind, ready = next_required_document(request)
     return CustomerRequestDetail(
-        client_id=request.client_id,
         delivery_point_id=request.delivery_point_id,
         delivery_point=point_summary(request.delivery_point),
         **base,
@@ -219,19 +219,28 @@ def serialize_detail(request: CustomerRequest) -> CustomerRequestDetail:
             )
             for move in customer_request_workflow.transitions_from(request.status)
         ],
-        can_convert_to_order=request.status is CustomerRequestStatus.contract_signed,
         documents=[CustomerRequestDocumentRead.model_validate(doc) for doc in request.documents],
-        has_letter=has_letter(request),
+        required_document=required_kind.value if required_kind else None,
+        required_document_ready=ready,
     )
 
 
-def has_letter(request) -> bool:
-    """Mijozning xati biriktirilganmi.
+def has_document(request, kind) -> bool:
+    return any(doc.document_type is kind for doc in request.documents)
 
-    Shartnoma aynan shu xat asosida tayyorlanadi. Brauzer tugmani shu
-    asosda o'chiradi, server ham shu asosda rad etadi -- qoida bitta.
+
+def next_required_document(request):
+    """Keyingi oldinga qadam qanday hujjat talab qiladi va u bormi.
+
+    Brauzer tugmani shu asosda o'chiradi, server ham shu asosda rad etadi.
     """
-    return any(doc.document_type is REQUIRED_FOR_CONTRACT for doc in request.documents)
+    for move in customer_request_workflow.transitions_from(request.status):
+        if move["direction"] != "forward":
+            continue
+        kind = customer_request_workflow.required_document(CustomerRequestStatus(move["status"]))
+        if kind:
+            return kind, has_document(request, kind)
+    return None, True
 
 
 @public_router.get("/company-by-inn")
@@ -505,8 +514,6 @@ def get_customer_request(request_id: int, db: Session = Depends(get_db)):
 @router.patch("/{request_id}", response_model=CustomerRequestDetail, dependencies=[Depends(require_edit("sotuv"))])
 def update_customer_request(request_id: int, payload: CustomerRequestUpdate, db: Session = Depends(get_db)):
     request = get_request_or_404(db, request_id)
-    if request.status == CustomerRequestStatus.converted_to_order:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Buyurtmaga o'tkazilgan talabnoma tahrirlanmaydi.")
     data = payload.model_dump(exclude_unset=True, exclude={"schedule"})
     if "product_id" in data and data["product_id"] is not None and not db.get(Product, data["product_id"]):
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Mahsulot majburiy.")
@@ -549,11 +556,13 @@ def update_customer_request_status(
                 "Sahifani yangilang."
             ),
         )
-    if kind == "forward" and customer_request_workflow.needs_letter(payload.status) and not has_letter(request):
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=customer_request_workflow.MSG_LETTER_REQUIRED,
-        )
+    if kind == "forward":
+        needed = customer_request_workflow.required_document(payload.status)
+        if needed and not has_document(request, needed):
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=customer_request_workflow.MSG_DOCUMENT_REQUIRED[needed],
+            )
     reason = payload.rejection_reason or payload.comment
     if kind in {"reject", "backward"} and not reason:
         raise HTTPException(
@@ -564,8 +573,6 @@ def update_customer_request_status(
     request.status = payload.status
     if payload.status == CustomerRequestStatus.reviewing and not request.reviewed_at:
         request.reviewed_at = datetime.now()
-    if payload.status == CustomerRequestStatus.contract_signed and not request.contract_signed_at:
-        request.contract_signed_at = datetime.now()
     if payload.status == CustomerRequestStatus.rejected:
         request.rejection_reason = payload.rejection_reason or payload.comment
     add_status_history(db, request, old_status, payload.status, payload.comment or payload.rejection_reason, payload.changed_by)
@@ -591,28 +598,6 @@ def delete_customer_request(request_id: int, db: Session = Depends(get_db)):
     db.delete(request)
     db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
-
-
-@router.post("/{request_id}/convert-to-order", dependencies=[Depends(require_edit("sotuv"))])
-def convert_customer_request_to_order(request_id: int, db: Session = Depends(get_db)):
-    request = get_request_or_404(db, request_id)
-    # A talabnoma with no signed contract has nothing to build an order from.
-    if request.status is not CustomerRequestStatus.contract_signed:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=(
-                "Buyurtmaga faqat shartnomasi imzolangan talabnoma o'tkaziladi. "
-                f"Joriy holat: «{REQUEST_STATUS_LABELS.get(request.status, request.status.value)}»."
-            ),
-        )
-    return {
-        "success": True,
-        "data": {
-            "id": request.id,
-            "request_number": request.request_number,
-            "message": "Talabnomani buyurtmaga o'tkazish keyingi bosqichda ulanadi.",
-        },
-    }
 
 
 # ---- Talabnoma hujjatlari -------------------------------------------------
