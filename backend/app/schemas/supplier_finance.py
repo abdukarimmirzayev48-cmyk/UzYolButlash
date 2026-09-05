@@ -90,9 +90,17 @@ class SupplierFinanceNoteRead(SupplierFinanceNoteCreate):
     created_at: datetime
 
 
+class ExchangeTicketSummary(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    ticket_number: str
+
+
 class SupplierInvoiceBase(BaseModel):
     supplier_id: int
-    procurement_id: int
+    procurement_id: int | None = None
+    ticket_id: int | None = None
     supplier_offer_id: int | None = None
     delivery_batch_id: int | None = None
     logistics_id: int | None = None
@@ -153,14 +161,16 @@ class SupplierInvoiceRead(SupplierInvoiceBase):
 
 class SupplierInvoiceListItem(SupplierInvoiceRead):
     supplier: SupplierRead
-    procurement: ProcurementRead
+    procurement: ProcurementRead | None = None
+    ticket: ExchangeTicketSummary | None = None
     supplier_offer: SupplierOfferRead | None = None
     delivery_batch: DeliveryBatchRead | None = None
 
 
 class SupplierInvoiceDetail(SupplierInvoiceRead):
     supplier: SupplierRead
-    procurement: ProcurementRead
+    procurement: ProcurementRead | None = None
+    ticket: ExchangeTicketSummary | None = None
     supplier_offer: SupplierOfferRead | None = None
     delivery_batch: DeliveryBatchRead | None = None
     logistics: LogisticsRead | None = None

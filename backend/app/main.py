@@ -40,6 +40,7 @@ from backend.app.services.auth import get_current_user
 from backend.app.services.notifications import (
     run_reminder_sweep,
     sweep_expired_contracts,
+    sweep_exchange_ticket_payments,
     sweep_overdue_contract_payments,
     sweep_transport_documents,
 )
@@ -136,6 +137,7 @@ def _run_reminder_sweep_job() -> None:
     try:
         run_reminder_sweep(db)
         sweep_overdue_contract_payments(db)
+        sweep_exchange_ticket_payments(db)
         sweep_expired_contracts(db)
         sweep_transport_documents(db)
     finally:

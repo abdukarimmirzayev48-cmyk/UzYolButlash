@@ -55,7 +55,12 @@ class SupplierInvoice(Base, TimestampMixin):
 
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
     supplier_id: Mapped[int] = mapped_column(ForeignKey("suppliers.id", ondelete="RESTRICT"), index=True)
-    procurement_id: Mapped[int] = mapped_column(ForeignKey("procurements.id", ondelete="RESTRICT"), index=True)
+    # Xarid ixtiyoriy: birja ticketi orqali olingan molning xaridi yo'q,
+    # hisob-fakturasi esa bo'lishi kerak.
+    procurement_id: Mapped[int | None] = mapped_column(ForeignKey("procurements.id", ondelete="RESTRICT"), index=True)
+    # Ticket bo'yicha hisob. Bog'langan hisob paydo bo'lgach, Kreditorlikda
+    # qarzni ticket emas, hisob ko'rsatadi -- ikki marta sanalmaydi.
+    ticket_id: Mapped[int | None] = mapped_column(ForeignKey("exchange_tickets.id", ondelete="SET NULL"), index=True)
     supplier_offer_id: Mapped[int | None] = mapped_column(ForeignKey("supplier_offers.id", ondelete="SET NULL"), index=True)
     delivery_batch_id: Mapped[int | None] = mapped_column(ForeignKey("delivery_batches.id", ondelete="SET NULL"), index=True)
     logistics_id: Mapped[int | None] = mapped_column(ForeignKey("logistics.id", ondelete="SET NULL"), index=True)
@@ -76,7 +81,8 @@ class SupplierInvoice(Base, TimestampMixin):
     created_by: Mapped[str | None] = mapped_column(String(255))
 
     supplier: Mapped["Supplier"] = relationship()
-    procurement: Mapped["Procurement"] = relationship()
+    procurement: Mapped["Procurement | None"] = relationship()
+    ticket: Mapped["ExchangeTicket | None"] = relationship()
     supplier_offer: Mapped["SupplierOffer | None"] = relationship()
     delivery_batch: Mapped["DeliveryBatch | None"] = relationship()
     logistics: Mapped["Logistics | None"] = relationship()

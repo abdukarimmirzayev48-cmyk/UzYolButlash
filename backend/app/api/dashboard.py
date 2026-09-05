@@ -8,6 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
 from backend.app.db.session import get_db
+from backend.app.models.inventory import ExchangeTicket, ExchangeTicketStatus
 from backend.app.models.client import Client
 from backend.app.models.contract import Contract, ContractStatus
 from backend.app.models.delivery import BatchStatus, DeliveryBatch, DeliveryBatchItem, Logistics
@@ -445,6 +446,8 @@ def payables(db: Session = Depends(get_db), overdue_only: bool = False, supplier
     for invoice in invoices:
         overdue_days = max((today - invoice.due_date).days, 0) if invoice.remaining_amount > 0 else 0
         rows.append({
+            "source": "invoice",
+            "ticket_id": invoice.ticket_id,
             "supplier_invoice_id": invoice.id,
             "supplier_name": invoice.supplier.name if invoice.supplier else None,
             "invoice_number": invoice.invoice_number,
@@ -461,11 +464,65 @@ def payables(db: Session = Depends(get_db), overdue_only: bool = False, supplier
             "delivery_batch_id": invoice.delivery_batch_id,
             "batch_number": invoice.delivery_batch.batch_number if invoice.delivery_batch else None,
         })
-    total_payables = money(sum((i.remaining_amount for i in invoices), Decimal("0")))
-    overdue_payables = money(sum((i.remaining_amount for i in invoices if i.due_date < today), Decimal("0")))
+    # Ochiq birja ticketlari ham kreditorlik: forward shartida mol olingan,
+    # puli hali to'lanmagan. Ticket bo'yicha hisob-faktura yaratilgach qarzni
+    # hisob ko'rsatadi va ticket ro'yxatdan chiqadi -- ikki marta sanalmaydi.
+    invoiced_tickets = {
+        i.ticket_id
+        for i in ctx["supplier_invoices"]
+        if i.ticket_id and i.status != SupplierInvoiceStatus.cancelled
+    }
+    open_tickets = [
+        t for t in db.scalars(
+            select(ExchangeTicket).where(
+                ExchangeTicket.status.in_([
+                    ExchangeTicketStatus.opened,
+                    ExchangeTicketStatus.partially_paid,
+                    ExchangeTicketStatus.overdue,
+                ])
+            ).options(selectinload(ExchangeTicket.supplier))
+        )
+        if t.id not in invoiced_tickets
+    ]
+    if supplier_id:
+        open_tickets = [t for t in open_tickets if t.supplier_id == supplier_id]
+    if overdue_only:
+        open_tickets = [t for t in open_tickets if t.due_date < today]
+    if status:
+        open_tickets = [t for t in open_tickets if enum_value(t.status) == status]
+    for ticket in open_tickets:
+        rows.append({
+            "source": "ticket",
+            "ticket_id": ticket.id,
+            "supplier_invoice_id": None,
+            "supplier_name": ticket.supplier_name,
+            "invoice_number": ticket.ticket_number,
+            "invoice_type": "exchange_ticket",
+            "invoice_date": ticket.ticket_date,
+            "due_date": ticket.due_date,
+            "total_amount": ticket.total_amount,
+            # Ticketda to'langan summa yuritilmaydi -- qisman to'lov hisob
+            # orqali rasmiylashtiriladi. Hisobsiz ticket butun summasi bilan
+            # qarz hisoblanadi.
+            "paid_amount": Decimal("0"),
+            "remaining_amount": ticket.total_amount,
+            "overdue_days": max((today - ticket.due_date).days, 0),
+            "status": enum_value(ticket.status),
+            "procurement_id": None,
+            "procurement_number": None,
+            "delivery_batch_id": None,
+            "batch_number": None,
+        })
+    rows.sort(key=lambda r: (r["due_date"], r["supplier_name"] or ""))
+    ticket_total = sum((t.total_amount for t in open_tickets), Decimal("0"))
+    ticket_overdue = sum((t.total_amount for t in open_tickets if t.due_date < today), Decimal("0"))
+    total_payables = money(sum((i.remaining_amount for i in invoices), Decimal("0")) + ticket_total)
+    overdue_payables = money(sum((i.remaining_amount for i in invoices if i.due_date < today), Decimal("0")) + ticket_overdue)
     by_supplier: dict[str, Decimal] = defaultdict(Decimal)
     for invoice in invoices:
         by_supplier[invoice.supplier.name if invoice.supplier else "Unknown"] += invoice.remaining_amount
+    for ticket in open_tickets:
+        by_supplier[ticket.supplier_name] += ticket.total_amount
     first_day = today.replace(day=1)
     paid_this_month = money(sum((p.amount for p in ctx["supplier_payments"] if p.status != SupplierPaymentStatus.cancelled and p.payment_date >= first_day), Decimal("0")))
     return {

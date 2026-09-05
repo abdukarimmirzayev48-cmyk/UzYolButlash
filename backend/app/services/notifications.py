@@ -285,3 +285,79 @@ def run_reminder_sweep(db: Session) -> None:
             _notify_once(db, task, assignee_user_ids, "reminder_1h", f"1 soatdan keyin muddati tugaydi: {task.title}")
         elif task.deadline <= now + timedelta(hours=24):
             _notify_once(db, task, assignee_user_ids, "reminder_1d", f"Ertaga muddati tugaydi: {task.title}")
+
+
+MSG_TICKET_OVERDUE = "Birja ticketi to'lov muddati o'tdi"
+MSG_TICKET_DUE_SOON = "Birja ticketi to'lov muddati yaqin"
+
+# Necha kun oldin ogohlantirish. Forward shartida odatda 90 kun beriladi,
+# lekin 5 kunlik ticketlar ham uchraydi -- shuning uchun muddat kunlarga
+# emas, qolgan kunlarga qaraladi.
+TICKET_DUE_SOON_DAYS = 5
+
+
+def sweep_exchange_ticket_payments(db: Session) -> int:
+    """Ticket to'lov muddatini kalendar bilan solishtirish.
+
+    Ticketda muddat bor edi («forward, 90 kun»), lekin uni hech narsa
+    kuzatmasdi: «muddati o'tdi» holatini kimdir qo'lda qo'yishi kerak edi,
+    eslatma esa umuman yo'q edi. Endi muddat o'tgan ticket avtomatik
+    «overdue» ga o'tadi va ta'minot huquqi borlarga bir marta xabar boradi;
+    muddatga 5 kun qolganda ham xuddi shunday.
+
+    Idempotent: holat allaqachon overdue bo'lsa tegilmaydi, xabar esa
+    link bo'yicha dedup qilinadi.
+    """
+    from datetime import date
+
+    from backend.app.models.inventory import ExchangeTicket, ExchangeTicketStatus
+    from backend.app.models.user import User
+
+    recipients = [
+        user.id
+        for user in db.query(User).filter(User.is_active.is_(True)).all()
+        if user.is_admin or "taminot" in (user.edit_modules or [])
+    ]
+
+    today = date.today()
+    open_statuses = (ExchangeTicketStatus.opened, ExchangeTicketStatus.partially_paid)
+    sent = 0
+
+    overdue_tickets = (
+        db.query(ExchangeTicket)
+        .filter(ExchangeTicket.status.in_(open_statuses), ExchangeTicket.due_date < today)
+        .all()
+    )
+    for ticket in overdue_tickets:
+        ticket.status = ExchangeTicketStatus.overdue
+        link = f"/exchange-tickets/{ticket.id}"
+        days = (today - ticket.due_date).days
+        body = f"{ticket.ticket_number} · {ticket.supplier_name} — {days} kun"
+        for user_id in recipients:
+            if _has_link_notification(db, user_id, "ticket_payment_overdue", link):
+                continue
+            notify(db, user_id, MSG_TICKET_OVERDUE, body, "ticket_payment_overdue", None, link)
+            sent += 1
+
+    due_soon = (
+        db.query(ExchangeTicket)
+        .filter(
+            ExchangeTicket.status.in_(open_statuses),
+            ExchangeTicket.due_date >= today,
+        )
+        .all()
+    )
+    for ticket in due_soon:
+        left = (ticket.due_date - today).days
+        if left > TICKET_DUE_SOON_DAYS:
+            continue
+        link = f"/exchange-tickets/{ticket.id}"
+        body = f"{ticket.ticket_number} · {ticket.supplier_name} — {left} kun qoldi"
+        for user_id in recipients:
+            if _has_link_notification(db, user_id, "ticket_payment_due_soon", link):
+                continue
+            notify(db, user_id, MSG_TICKET_DUE_SOON, body, "ticket_payment_due_soon", None, link)
+            sent += 1
+
+    db.commit()
+    return sent
