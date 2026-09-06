@@ -9438,3 +9438,44 @@ body.map-modal-open {
     gap: 4px;
   }
 }
+
+/* Buyurtma sehrgarida zaxira taklifi. Tanlangach yashil holatga o'tadi --
+   foydalanuvchi bosgani natija berganini ko'rishi kerak. */
+.stock-suggest {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  border: 1px solid #d8c79a;
+  border-radius: 8px;
+  background: #fdf8ec;
+  color: #4a3a12;
+  padding: 16px;
+  margin-bottom: 16px;
+}
+
+.stock-suggest.is-on {
+  border-color: #bedbd4;
+  background: #effaf7;
+  color: #133d35;
+}
+
+.stock-suggest p {
+  margin: 4px 0 0;
+}
+
+.stock-suggest .helper-text {
+  margin-top: 2px;
+}
+
+.stock-suggest-ok {
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+@media (max-width: 720px) {
+  .stock-suggest {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}
