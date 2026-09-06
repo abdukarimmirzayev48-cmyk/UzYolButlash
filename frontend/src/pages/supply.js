@@ -273,30 +273,50 @@ function stockValue(lot) {
   return numberValue(lot.quantity_available) * numberValue(lot.unit_cost);
 }
 
+const TICKET_FILTER_KEYS = ["search", "status", "supplier_id", "product_name", "due_from", "due_to", "overdue_only"];
+
 async function renderExchangeTicketsList() {
   const params = new URLSearchParams(location.search);
-  const data = await api(`/api/exchange-tickets?${params.toString()}`);
+  const [data, options] = await Promise.all([
+    api(`/api/exchange-tickets?${params.toString()}`),
+    api("/api/stock-lots/options"),
+  ]);
+  const selectOptions = (list, selected, labeller = (x) => x) => list.map((item) => {
+    const [key, label] = Array.isArray(item) ? item : [item.id ?? item, labeller(item)];
+    return `<option value="${esc(key)}" ${String(selected) === String(key) ? "selected" : ""}>${esc(label)}</option>`;
+  }).join("");
+  const open = data.items.filter((t) => ["opened", "partially_paid", "overdue"].includes(t.status));
+  const obligation = open.reduce((sum, t) => sum + numberValue(t.total_amount), 0);
+
   app.innerHTML = opsListPage({
     className: "exchange-ticket-ops-page",
     title: "Birja ticketlari",
     tabs: [
-      { label: "Ta'minotchilar", path: "/suppliers" },
+      { label: "Umumiy ko'rinish", path: "/supply" },
       { label: "Birja ticketlari", active: true },
       { label: "Zaxira", path: "/stock" },
     ],
     createPath: canEdit("taminot") ? "/exchange-tickets/new" : undefined,
     createLabel: "Ticket yaratish",
     clearPath: "/exchange-tickets",
-    counter: `${fmt(data.total)} ta ticket`,
+    counter: `${fmt(data.total)} ta ticket · ${fmt(open.length)} ta ochiq · ${fmtMoney(obligation)} majburiyat`,
     formId: "exchange-ticket-search-form",
-    filters: `<input name="search" placeholder="Ticket, ta'minotchi, mahsulot" value="${esc(params.get("search") || "")}" /><select name="status"><option value="">Status</option>${exchangeTicketStatuses.map(([key, label]) => `<option value="${key}" ${params.get("status") === key ? "selected" : ""}>${label}</option>`).join("")}</select><label class="inline-check"><input type="checkbox" name="overdue_only" value="true" ${params.get("overdue_only") === "true" ? "checked" : ""} /> Muddati o'tgan</label>`,
+    filters: [
+      opsFilterField("Qidirish", `<input name="search" placeholder="Ticket, ta'minotchi, mahsulot" value="${esc(params.get("search") || "")}" />`),
+      opsFilterField("Status", `<select name="status"><option value="">Barcha holatlar</option>${selectOptions(exchangeTicketStatuses, params.get("status"))}</select>`),
+      opsFilterField("Ta'minotchi", `<select name="supplier_id"><option value="">Barcha ta'minotchilar</option>${selectOptions(options.suppliers, params.get("supplier_id"), (x) => x.name)}</select>`),
+      opsFilterField("Mahsulot", `<select name="product_name"><option value="">Barcha mahsulotlar</option>${selectOptions(options.products, params.get("product_name"))}</select>`),
+      opsFilterField("To'lov muddati: dan", `<input type="date" name="due_from" value="${esc(params.get("due_from") || "")}" />`),
+      opsFilterField("To'lov muddati: gacha", `<input type="date" name="due_to" value="${esc(params.get("due_to") || "")}" />`),
+      opsFilterField("Qo'shimcha", `<label class="inline-check"><input type="checkbox" name="overdue_only" value="true" ${params.get("overdue_only") === "true" ? "checked" : ""} /> Faqat muddati o'tganlari</label>`),
+    ].join(""),
     headers: ["Ticket №", "Sana", "Ta'minotchi", "Mahsulot", "Ticket miqdori", "Zaxiraga tushgan", "Zaxirada erkin", "Jami summa", "To'lov muddati", "Qoldiq kun", "Status", ""],
-    rows: data.items.map((ticket) => `<tr><td><button class="ops-primary-link" data-nav="/exchange-tickets/${ticket.id}">${fmt(ticket.ticket_number)}</button></td><td>${fmt(ticket.ticket_date)}</td><td>${fmt(ticket.supplier_name)}</td><td>${fmt(ticket.product_name)}</td><td>${fmtQty(ticket.quantity, ticket.unit)}</td><td>${fmtQty(ticket.balance?.taken, ticket.unit)}</td><td>${fmtQty(ticket.balance?.available, ticket.unit)}</td><td class="ops-money">${fmtMoney(ticket.total_amount)}</td><td>${fmt(ticket.due_date)}</td><td>${fmt(daysUntil(ticket.due_date))}</td><td>${statusBadge(ticket.status)}</td><td><div class="ops-row-actions"><button class="link-btn" data-nav="/exchange-tickets/${ticket.id}">Ochish</button>${ticket.stock_lot ? `<button class="link-btn" data-nav="/stock/${ticket.stock_lot.id}">Zaxira</button>` : ""}</div></td></tr>`).join(""),
+    rows: data.items.map((ticket) => `<tr><td><button class="ops-primary-link" data-nav="/exchange-tickets/${ticket.id}">${fmt(ticket.ticket_number)}</button></td><td>${fmt(ticket.ticket_date)}</td><td>${fmt(ticket.supplier_name)}</td><td>${fmt(ticket.product_name)}</td><td>${fmtQty(ticket.quantity, ticket.unit)}</td><td>${fmtQty(ticket.balance?.taken, ticket.unit)}</td><td>${fmtQty(ticket.balance?.available, ticket.unit)}</td><td class="ops-money">${fmtMoney(ticket.total_amount)}</td><td>${fmt(ticket.due_date)}</td><td class="${daysUntil(ticket.due_date) < 0 ? "negative" : ""}">${fmt(daysUntil(ticket.due_date))}</td><td>${statusBadge(ticket.status)}</td><td><div class="ops-row-actions"><button class="link-btn" data-nav="/exchange-tickets/${ticket.id}">Ochish</button>${ticket.stock_lot ? `<button class="link-btn" data-nav="/stock/${ticket.stock_lot.id}">Zaxira</button>` : ""}</div></td></tr>`).join(""),
     emptyText: "Birja ticketlari topilmadi.",
     colspan: 12,
     footer: opsFooter(data, "exchange-ticket"),
   });
-  bindOpsSearch("exchange-ticket-search-form", "/exchange-tickets", ["search", "status", "overdue_only"]);
+  bindOpsSearch("exchange-ticket-search-form", "/exchange-tickets", TICKET_FILTER_KEYS);
   bindOpsPagination("exchange-ticket", "/exchange-tickets");
 }
 
@@ -479,31 +499,65 @@ async function renderExchangeTicketDetail(id) {
   bindPanelTabs("exchange-ticket-tab");
 }
 
+const STOCK_FILTER_KEYS = ["search", "product_name", "supplier_id", "stock_status", "location_type", "due_from", "due_to", "min_available", "available_only", "reserved_only", "due_soon"];
+
 async function renderStockList() {
   const params = new URLSearchParams(location.search);
-  const data = await api(`/api/stock-lots?${params.toString()}`);
+  const [data, options] = await Promise.all([
+    api(`/api/stock-lots?${params.toString()}`),
+    api("/api/stock-lots/options"),
+  ]);
   const totalAvailable = data.items.reduce((sum, lot) => sum + numberValue(lot.quantity_available), 0);
   const reserved = data.items.reduce((sum, lot) => sum + numberValue(lot.quantity_reserved), 0);
   const value = data.items.reduce((sum, lot) => sum + stockValue(lot), 0);
+  const selectOptions = (list, selected, labeller = (x) => x) => list.map((item) => {
+    const [key, label] = Array.isArray(item) ? item : [item.id ?? item, labeller(item)];
+    return `<option value="${esc(key)}" ${String(selected) === String(key) ? "selected" : ""}>${esc(label)}</option>`;
+  }).join("");
+
   app.innerHTML = opsListPage({
     className: "stock-ops-page",
     title: "Zaxira",
     tabs: [
-      { label: "Ta'minotchilar", path: "/suppliers" },
+      { label: "Umumiy ko'rinish", path: "/supply" },
       { label: "Birja ticketlari", path: "/exchange-tickets" },
       { label: "Zaxira", active: true },
     ],
     clearPath: "/stock",
     counter: `${fmt(data.total)} ta zaxira partiyasi · ${fmtQty(totalAvailable)} mavjud · ${fmtQty(reserved)} band · ${fmtMoney(value)} qiymat`,
     formId: "stock-search-form",
-    filters: `<input name="search" placeholder="Mahsulot, ta'minotchi, ticket" value="${esc(params.get("search") || "")}" /><select name="location_type"><option value="">Joylashuv</option>${stockLocationTypes.map(([key, label]) => `<option value="${key}" ${params.get("location_type") === key ? "selected" : ""}>${label}</option>`).join("")}</select><label class="inline-check"><input type="checkbox" name="available_only" value="true" ${params.get("available_only") === "true" ? "checked" : ""} /> Mavjud</label><label class="inline-check"><input type="checkbox" name="reserved_only" value="true" ${params.get("reserved_only") === "true" ? "checked" : ""} /> Band</label>`,
-    headers: ["Mahsulot", "Ta'minotchi", "Joylashuv", "Ticket", "Dastlabki", "Mavjud", "Band", "Birlik xarid narxi", "Status", ""],
-    rows: data.items.map((lot) => `<tr><td><button class="ops-primary-link" data-nav="/stock/${lot.id}">${fmt(lot.product_name)}</button></td><td>${fmt(lot.supplier_name)}</td><td>${fmt(lot.location_name)}</td><td>${fmt(lot.ticket_number)}</td><td>${fmtQty(lot.quantity_initial, lot.unit)}</td><td>${fmtQty(lot.quantity_available, lot.unit)}</td><td>${fmtQty(lot.quantity_reserved, lot.unit)}</td><td class="ops-money">${fmtMoney(lot.unit_cost)}</td><td>${statusBadge(lot.stock_status)}</td><td><div class="ops-row-actions"><button class="link-btn" data-nav="/stock/${lot.id}">Ko'rish</button>${canEdit("sotuv") ? `<button class="link-btn" data-nav="/orders/new?source_type=supplier_held_stock&stock_lot_id=${lot.id}">Buyurtmaga ajratish</button>` : ""}</div></td></tr>`).join(""),
+    filters: [
+      opsFilterField("Qidirish", `<input name="search" placeholder="Mahsulot, ta'minotchi, ticket" value="${esc(params.get("search") || "")}" />`),
+      opsFilterField("Mahsulot", `<select name="product_name"><option value="">Barcha mahsulotlar</option>${selectOptions(options.products, params.get("product_name"))}</select>`),
+      opsFilterField("Ta'minotchi", `<select name="supplier_id"><option value="">Barcha ta'minotchilar</option>${selectOptions(options.suppliers, params.get("supplier_id"), (x) => x.name)}</select>`),
+      opsFilterField("Zaxira holati", `<select name="stock_status"><option value="">Barcha holatlar</option>${selectOptions(stockStatuses, params.get("stock_status"))}</select>`),
+      opsFilterField("Joylashuv turi", `<select name="location_type"><option value="">Barcha joylashuvlar</option>${selectOptions(stockLocationTypes, params.get("location_type"))}</select>`),
+      opsFilterField("To'lov muddati: dan", `<input type="date" name="due_from" value="${esc(params.get("due_from") || "")}" />`),
+      opsFilterField("To'lov muddati: gacha", `<input type="date" name="due_to" value="${esc(params.get("due_to") || "")}" />`),
+      opsFilterField("Eng kam mavjud miqdor", `<input type="number" step="any" min="0" name="min_available" value="${esc(params.get("min_available") || "")}" />`),
+      opsFilterField("Qo'shimcha", `<label class="inline-check"><input type="checkbox" name="available_only" value="true" ${params.get("available_only") === "true" ? "checked" : ""} /> Faqat mavjudi</label><label class="inline-check"><input type="checkbox" name="reserved_only" value="true" ${params.get("reserved_only") === "true" ? "checked" : ""} /> Faqat band</label><label class="inline-check"><input type="checkbox" name="due_soon" value="true" ${params.get("due_soon") === "true" ? "checked" : ""} /> Muddati yaqin</label>`),
+    ].join(""),
+    headers: [
+      opsSortHeader("product", "Mahsulot"),
+      opsSortHeader("supplier", "Ta'minotchi"),
+      "Joylashuv",
+      "Ticket",
+      opsSortHeader("due", "To'lov muddati"),
+      opsSortHeader("initial", "Dastlabki"),
+      opsSortHeader("available", "Mavjud"),
+      opsSortHeader("reserved", "Band"),
+      opsSortHeader("price", "Birlik xarid narxi"),
+      "Qiymati",
+      "Status",
+      "",
+    ],
+    rows: data.items.map((lot) => `<tr><td><button class="ops-primary-link" data-nav="/stock/${lot.id}">${fmt(lot.product_name)}</button></td><td>${fmt(lot.supplier_name)}</td><td>${fmt(lot.location_name)}</td><td><button class="link-btn" data-nav="/exchange-tickets/${lot.ticket_id}">${fmt(lot.ticket_number)}</button></td><td data-noloc>${fmt(lot.due_date)}</td><td>${fmtQty(lot.quantity_initial, lot.unit)}</td><td>${fmtQty(lot.quantity_available, lot.unit)}</td><td>${fmtQty(lot.quantity_reserved, lot.unit)}</td><td class="ops-money">${fmtMoney(lot.unit_cost)}</td><td class="ops-money">${fmtMoney(stockValue(lot))}</td><td>${statusBadge(lot.stock_status)}</td><td><div class="ops-row-actions"><button class="link-btn" data-nav="/stock/${lot.id}">Ko'rish</button>${canEdit("sotuv") ? `<button class="link-btn" data-nav="/orders/new?source_type=supplier_held_stock&stock_lot_id=${lot.id}">Buyurtmaga ajratish</button>` : ""}</div></td></tr>`).join(""),
     emptyText: "Zaxira topilmadi.",
-    colspan: 10,
+    colspan: 12,
     footer: opsFooter(data, "stock"),
   });
-  bindOpsSearch("stock-search-form", "/stock", ["search", "location_type", "available_only", "reserved_only"]);
+  bindOpsSearch("stock-search-form", "/stock", STOCK_FILTER_KEYS);
+  bindOpsSort("/stock");
   bindOpsPagination("stock", "/stock");
 }
 

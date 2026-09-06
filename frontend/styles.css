@@ -9585,3 +9585,24 @@ body.map-modal-open {
   .due-value { font-size: 10px; }
   .due-label { font-size: 11px; }
 }
+
+/* Saralanadigan ustun sarlavhasi */
+.ops-sort {
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.ops-sort:hover { color: var(--primary); }
+.ops-sort.active { color: var(--primary); }
+
+.ops-sort-arrow {
+  font-size: 11px;
+  line-height: 1;
+}

@@ -1777,6 +1777,36 @@ function opsActiveFilterState(fields = []) {
   });
 }
 
+// Saralanadigan ustun sarlavhasi. Tanlov URLda turadi, ya'ni saralangan
+// ko'rinishni havola qilib yuborsa ham bo'ladi.
+function opsSortHeader(key, label) {
+  const params = new URLSearchParams(location.search);
+  const active = params.get("sort") === key;
+  const order = active && params.get("order") === "asc" ? "asc" : active ? "desc" : "";
+  const arrow = order === "asc" ? "↑" : order === "desc" ? "↓" : "";
+  return `<button type="button" class="ops-sort ${active ? "active" : ""}" data-ops-sort="${esc(key)}">${label}${arrow ? `<span class="ops-sort-arrow" data-noloc>${arrow}</span>` : ""}</button>`;
+}
+
+function bindOpsSort(basePath) {
+  app.querySelectorAll("[data-ops-sort]").forEach((button) => button.addEventListener("click", () => {
+    const params = new URLSearchParams(location.search);
+    const key = button.dataset.opsSort;
+    // Uchinchi bosishda saralash olib tashlanadi: dastlabki tartibga
+    // qaytishning boshqa yo'li yo'q edi.
+    if (params.get("sort") === key && params.get("order") === "asc") {
+      params.delete("sort");
+      params.delete("order");
+    } else if (params.get("sort") === key) {
+      params.set("order", "asc");
+    } else {
+      params.set("sort", key);
+      params.set("order", "desc");
+    }
+    params.delete("page");
+    navigate(`${basePath}${params.toString() ? `?${params}` : ""}`);
+  }));
+}
+
 function bindOpsFilterUi(root = app) {
   root.querySelectorAll("[data-ops-filter-toggle]").forEach((button) => {
     button.addEventListener("click", () => {

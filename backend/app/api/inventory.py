@@ -468,6 +468,34 @@ def open_exchange_ticket(ticket_id: int, db: Session = Depends(get_db)):
 
 
 
+# Zaxira ro'yxatining saralanadigan ustunlari. Kalit URLda turadi, shuning
+# uchun filtrlangan va saralangan ko'rinishni havola qilib yuborsa bo'ladi.
+STOCK_SORT_COLUMNS = {
+    "product": StockLot.product_name,
+    "supplier": StockLot.supplier_id,
+    "available": StockLot.quantity_available,
+    "reserved": StockLot.quantity_reserved,
+    "initial": StockLot.quantity_initial,
+    "price": StockLot.unit_cost,
+    "due": ExchangeTicket.due_date,
+    "created": StockLot.created_at,
+}
+
+
+@router.get("/stock-lots/options")
+def stock_lot_options(db: Session = Depends(get_db)) -> dict[str, Any]:
+    """Filtr ro'yxatlari: faqat zaxirada haqiqatan uchraydigan qiymatlar."""
+    lots = db.scalars(select(StockLot).options(selectinload(StockLot.supplier))).unique().all()
+    suppliers = sorted(
+        {(lot.supplier_id, lot.supplier.name if lot.supplier else None) for lot in lots if lot.supplier_id},
+        key=lambda pair: pair[1] or "",
+    )
+    return {
+        "products": sorted({lot.product_name for lot in lots if lot.product_name}),
+        "suppliers": [{"id": sid, "name": name} for sid, name in suppliers],
+    }
+
+
 @router.get("/stock-lots", response_model=Page[StockLotSummary])
 def list_stock_lots(
     db: Session = Depends(get_db),
@@ -478,6 +506,12 @@ def list_stock_lots(
     product_name: str | None = None,
     ticket_id: int | None = None,
     location_type: str | None = None,
+    stock_status: str | None = None,
+    due_from: date | None = None,
+    due_to: date | None = None,
+    min_available: Decimal | None = None,
+    sort: str | None = None,
+    order: str = "desc",
     available_only: bool = False,
     reserved_only: bool = False,
     due_soon: bool = False,
@@ -505,10 +539,20 @@ def list_stock_lots(
         filters.append(StockLot.quantity_reserved > 0)
     if due_soon:
         filters.append(ExchangeTicket.due_date <= date.today() + timedelta(days=7))
+    if stock_status:
+        filters.append(StockLot.stock_status == stock_status)
+    if due_from:
+        filters.append(ExchangeTicket.due_date >= due_from)
+    if due_to:
+        filters.append(ExchangeTicket.due_date <= due_to)
+    if min_available is not None:
+        filters.append(StockLot.quantity_available >= min_available)
     if filters:
         stmt = stmt.where(*filters)
     total = db.scalar(select(func.count()).select_from(stmt.subquery())) or 0
-    lots = db.scalars(stmt.order_by(StockLot.created_at.desc()).offset((page - 1) * page_size).limit(page_size)).unique()
+    column = STOCK_SORT_COLUMNS.get(sort or "", StockLot.created_at)
+    stmt = stmt.order_by(column.asc() if order == "asc" else column.desc())
+    lots = db.scalars(stmt.offset((page - 1) * page_size).limit(page_size)).unique()
     return Page(items=[stock_lot_summary(lot) for lot in lots], total=total, page=page, page_size=page_size)
 
 
