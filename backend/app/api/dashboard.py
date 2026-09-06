@@ -8,7 +8,13 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
 from backend.app.db.session import get_db
-from backend.app.models.inventory import ExchangeTicket, ExchangeTicketStatus
+from backend.app.models.inventory import (
+    ExchangeTicket,
+    ExchangeTicketStatus,
+    StockAllocation,
+    StockAllocationStatus,
+    StockLot,
+)
 from backend.app.models.client import Client
 from backend.app.models.contract import Contract, ContractStatus
 from backend.app.models.delivery import BatchStatus, DeliveryBatch, DeliveryBatchItem, Logistics
@@ -81,6 +87,11 @@ def load_context(db: Session) -> dict[str, Any]:
         "contracts": db.scalars(select(Contract).options(selectinload(Contract.client), selectinload(Contract.orders))).all(),
         "orders": db.scalars(select(Order).options(selectinload(Order.client), selectinload(Order.contract), selectinload(Order.delivery_batches), selectinload(Order.procurement))).all(),
         "batches": db.scalars(select(DeliveryBatch).options(selectinload(DeliveryBatch.client), selectinload(DeliveryBatch.order), selectinload(DeliveryBatch.items), selectinload(DeliveryBatch.logistics))).all(),
+        "stock_allocations": db.scalars(
+            select(StockAllocation).options(
+                selectinload(StockAllocation.stock_lot).selectinload(StockLot.ticket)
+            )
+        ).all(),
         "logistics": db.scalars(select(Logistics).options(selectinload(Logistics.batch))).all(),
         "customer_invoices": db.scalars(select(CustomerInvoice).options(selectinload(CustomerInvoice.client), selectinload(CustomerInvoice.contract), selectinload(CustomerInvoice.order), selectinload(CustomerInvoice.delivery_batch), selectinload(CustomerInvoice.allocations))).all(),
         "customer_payments": db.scalars(select(CustomerPayment).options(selectinload(CustomerPayment.client))).all(),
@@ -151,6 +162,39 @@ def supplier_totals(invoices: list[SupplierInvoice]) -> dict[str, Decimal]:
     }
 
 
+# Zaxiradan olingan mol tannarxi hisob-fakturada turmaydi: hisob butun birja
+# ticketiga yoziladi, buyurtma esa uning bir qismini oladi. Shuning uchun
+# tannarx ajratmadan hisoblanadi -- ajratilgan miqdor × partiya tonna narxi.
+# Bu bo'lmasa zaxiradan sotilgan buyurtmaning xarajati nolga chiqib, foyda
+# butun tushum bo'lib ko'rinadi.
+COUNTED_ALLOCATION_STATUSES = (
+    StockAllocationStatus.reserved,
+    StockAllocationStatus.picked_up,
+    StockAllocationStatus.delivered,
+)
+
+
+def stock_cost(allocations: list[StockAllocation]) -> dict[str, Decimal]:
+    subtotal = Decimal("0")
+    total = Decimal("0")
+    for allocation in allocations:
+        lot = allocation.stock_lot
+        if not lot:
+            continue
+        line = Decimal(allocation.allocated_quantity or 0) * Decimal(lot.unit_cost or 0)
+        subtotal += line
+        vat_rate = Decimal(lot.ticket.vat_rate or 0) if lot.ticket else Decimal("0")
+        total += line * (Decimal("1") + vat_rate / Decimal("100"))
+    return {"subtotal": money(subtotal), "total": money(total)}
+
+
+def order_stock_allocations(ctx: dict[str, Any], order_id: int) -> list[StockAllocation]:
+    return [
+        a for a in ctx["stock_allocations"]
+        if a.order_id == order_id and a.status in COUNTED_ALLOCATION_STATUSES
+    ]
+
+
 def logistics_cost(logistics_rows: list[Logistics], supplier_transport_invoices: list[SupplierInvoice]) -> Decimal:
     linked_logistics_ids = {invoice.logistics_id for invoice in supplier_transport_invoices if invoice.logistics_id}
     invoice_cost = money(
@@ -184,6 +228,12 @@ def order_profit_row(order: Order, ctx: dict[str, Any]) -> dict[str, Any]:
     ]
     logistics_rows = [l for l in ctx["logistics"] if l.batch and l.batch.order_id == order.id]
     log_cost = logistics_cost(logistics_rows, transport_invoices)
+    # To'lov holati faqat hisob-fakturalar haqida: ticket puli buyurtmaga emas,
+    # ticketning o'ziga to'lanadi va Kreditorlikda o'sha yerda turadi.
+    supplier_state = payment_state(supplier["supplier_purchase_cost_total_with_vat"], supplier["supplier_paid"])
+    stock = stock_cost(order_stock_allocations(ctx, order.id))
+    supplier["supplier_purchase_cost_subtotal"] = money(supplier["supplier_purchase_cost_subtotal"] + stock["subtotal"])
+    supplier["supplier_purchase_cost_total_with_vat"] = money(supplier["supplier_purchase_cost_total_with_vat"] + stock["total"])
     gross = money(customer["revenue_subtotal"] - supplier["supplier_purchase_cost_subtotal"] - log_cost)
     return {
         "order_id": order.id,
@@ -196,12 +246,13 @@ def order_profit_row(order: Order, ctx: dict[str, Any]) -> dict[str, Any]:
         "fulfillment_type": enum_value(order.fulfillment_type),
         **customer,
         **supplier,
+        "stock_cost_subtotal": stock["subtotal"],
         "logistics_cost": log_cost,
         "markup_amount": money(order.markup_amount),
         "gross_profit": gross,
         "profit_margin": margin(gross, customer["revenue_subtotal"]),
         "payment_status": payment_state(customer["revenue_total_with_vat"], customer["customer_paid"]),
-        "supplier_payment_status": payment_state(supplier["supplier_purchase_cost_total_with_vat"], supplier["supplier_paid"]),
+        "supplier_payment_status": supplier_state,
         "order_status": enum_value(order.status),
     }
 
@@ -323,6 +374,12 @@ def profit_batches(db: Session = Depends(get_db), page_no: int = Query(1, alias=
         supplier = supplier_totals(supplier_invoices)
         transport_invoices = [i for i in supplier_invoices if i.invoice_type == SupplierInvoiceType.transport and i.status != SupplierInvoiceStatus.cancelled]
         log_cost = logistics_cost([batch.logistics] if batch.logistics else [], transport_invoices)
+        stock = stock_cost([
+            a for a in ctx["stock_allocations"]
+            if a.delivery_batch_id == batch.id and a.status in COUNTED_ALLOCATION_STATUSES
+        ])
+        supplier["supplier_purchase_cost_subtotal"] = money(supplier["supplier_purchase_cost_subtotal"] + stock["subtotal"])
+        supplier["supplier_purchase_cost_total_with_vat"] = money(supplier["supplier_purchase_cost_total_with_vat"] + stock["total"])
         gross = money(customer["revenue_subtotal"] - supplier["supplier_purchase_cost_subtotal"] - log_cost)
         rows.append({
             "delivery_batch_id": batch.id,
@@ -338,6 +395,7 @@ def profit_batches(db: Session = Depends(get_db), page_no: int = Query(1, alias=
             "accepted_quantity": sum((item.accepted_quantity or Decimal("0") for item in batch.items), Decimal("0")),
             **customer,
             **supplier,
+            "stock_cost_subtotal": stock["subtotal"],
             "logistics_cost": log_cost,
             "gross_profit": gross,
             "profit_margin": margin(gross, customer["revenue_subtotal"]),

@@ -1271,14 +1271,18 @@ function orderSupplierTab(order, related = {}) {
   if (order.source_type === "supplier_held_stock") {
     const allocations = related.allocations || [];
     const lotsById = new Map((related.stockLots || []).map((lot) => [lot.id, lot]));
+    // Buyurtmaning mol tannarxi shu yerdan chiqadi: ticket puli butun
+    // partiyaga to'lanadi, buyurtmaga esa olingan ulushi tegishli.
+    const allocationCost = (allocation) => numberValue(allocation.allocated_quantity) * numberValue((lotsById.get(allocation.stock_lot_id) || {}).unit_cost);
+    const stockCost = allocations.reduce((sum, allocation) => sum + allocationCost(allocation), 0);
     return section("Zaxira / Xarid", `
-      ${detailList([["Manba", optionLabel(sourceTypes, order.source_type)], ["Zaxira holati", allocations.length ? "Zaxiradan ajratilgan" : "Zaxira ajratilmagan"], ["Ta'minotchi", order.supplier_name]])}
+      ${detailList([["Manba", optionLabel(sourceTypes, order.source_type)], ["Zaxira holati", allocations.length ? "Zaxiradan ajratilgan" : "Zaxira ajratilmagan"], ["Ta'minotchi", order.supplier_name], ["Zaxira tannarxi (QQSsiz)", fmtMoney(stockCost)]])}
       ${canEdit("taminot") ? `<div class="actions"><button class="btn primary" type="button" data-order-stock>Zaxiradan ajratish</button></div>` : ""}
-      ${tableOrEmpty(allocations, ["Mahsulot", "Ta'minotchi", "Ticket", "Joylashuv", "Ajratilgan miqdor", "Birlik xarid narxi", "Status"], (allocation) => {
+      ${tableOrEmpty(allocations, ["Mahsulot", "Ta'minotchi", "Ticket", "Joylashuv", "Ajratilgan miqdor", "Birlik xarid narxi", "Tannarx", "Status"], (allocation) => {
         const lot = lotsById.get(allocation.stock_lot_id) || {};
-        return `<tr><td>${fmt(lot.product_name)}</td><td>${fmt(lot.supplier_name)}</td><td>${fmt(lot.ticket_number)}</td><td>${fmt(lot.location_name)}</td><td>${fmtQty(allocation.allocated_quantity, lot.unit)}</td><td>${fmtMoney(lot.unit_cost)}</td><td>${fmt(optionLabel(stockAllocationStatuses, allocation.status))}</td></tr>`;
+        return `<tr><td>${fmt(lot.product_name)}</td><td>${fmt(lot.supplier_name)}</td><td>${fmt(lot.ticket_number)}</td><td>${fmt(lot.location_name)}</td><td>${fmtQty(allocation.allocated_quantity, lot.unit)}</td><td>${fmtMoney(lot.unit_cost)}</td><td>${fmtMoney(allocationCost(allocation))}</td><td>${fmt(optionLabel(stockAllocationStatuses, allocation.status))}</td></tr>`;
       }, "Bu buyurtma uchun zaxira ajratilmagan.")}
-      <p class="helper-text">Ta'minotchi omboridagi zaxira uchun ta'minotchi taklifi talab qilinmaydi.</p>
+      <p class="helper-text">Ta'minotchi omboridagi zaxira uchun ta'minotchi taklifi talab qilinmaydi. Tannarx foyda hisobiga shu yerdan tushadi.</p>
     `);
   }
   return section("Xarid jarayoni", `
