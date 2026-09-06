@@ -190,7 +190,11 @@ const paymentStatuses = [["received", "Kelib tushgan"], ["unallocated", "Taqsiml
 const financeDocumentTypes = [["invoice_file", "Hisob fayli"], ["payment_order", "To'lov topshiriqnomasi"], ["bank_statement", "Bank ko'chirmasi"], ["reconciliation_act", "Solishtirma dalolatnoma"], ["other", "Boshqa"]];
 
 const supplierAddressTypes = [["legal", "Yuridik"], ["loading", "Yuklash"], ["warehouse", "Ombor"], ["factory", "Zavod"], ["other", "Boshqa"]];
-const procurementStatuses = [["draft", "Qoralama"], ["supplier_search", "Ta'minotchi qidirilmoqda"], ["offers_received", "Takliflar olindi"], ["supplier_selected", "Ta'minotchi tanlandi"], ["supplier_confirmed", "Ta'minotchi tasdiqlandi"], ["purchase_approved", "Xarid tasdiqlandi"], ["waiting_supplier_ready", "Ta'minotchi tayyorligi kutilmoqda"], ["ready_for_pickup", "Yuklab olishga tayyor"], ["ready_for_delivery", "Yetkazishga tayyor"], ["completed", "Yakunlandi"], ["cancelled", "Bekor qilindi"], ["issue", "Muammo"]];
+// Xarid bosqichlari qisqardi: mol harakati Partiyalar bo'limida kuzatiladi,
+// bu yerda takrorlanmaydi. Eski yozuvlarda uchrashi mumkin bo'lgan holatlar
+// nomi bilan ko'rinsin uchun ro'yxatdan olib tashlanmadi, faqat ajratildi.
+const procurementStatuses = [["draft", "Qoralama"], ["supplier_selected", "Ta'minotchi tanlandi"], ["supplier_confirmed", "Ta'minotchi tasdiqlandi"], ["completed", "Yakunlandi"], ["cancelled", "Bekor qilindi"], ["issue", "Muammo"]];
+const procurementLegacyStatuses = [["supplier_search", "Ta'minotchi qidirilmoqda"], ["offers_received", "Takliflar olindi"], ["purchase_approved", "Xarid tasdiqlandi"], ["waiting_supplier_ready", "Ta'minotchi tayyorligi kutilmoqda"], ["ready_for_pickup", "Yuklab olishga tayyor"], ["ready_for_delivery", "Yetkazishga tayyor"]];
 const supplierOfferStatuses = [["draft", "Qoralama"], ["sent", "Yuborilgan"], ["received", "Olingan"], ["selected", "Tanlangan"], ["partially_selected", "Qisman tanlangan"], ["rejected", "Rad etilgan"], ["expired", "Muddati o'tgan"], ["cancelled", "Bekor qilingan"]];
 const supplierInvoiceTypes = [["advance", "Avans"], ["product_purchase", "Mahsulot xaridi"], ["transport", "Transport"], ["adjustment", "Qayta hisoblash"], ["other", "Boshqa"]];
 const supplierInvoiceStatuses = [["draft", "Qoralama"], ["received", "Qabul qilindi"], ["partially_paid", "Qisman to'langan"], ["paid", "To'langan"], ["overdue", "Kechikkan"], ["cancelled", "Bekor qilingan"]];

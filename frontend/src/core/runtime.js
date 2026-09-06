@@ -1391,6 +1391,9 @@ function statusLabel(status) {
     stockAllocationStatuses,
     supplierStatuses,
     transportStatuses,
+    // Xarid bosqichlari qisqartirilgan, lekin eski yozuvlarda ular hali
+    // uchraydi -- nomi ko'rinsin, xom kalit emas.
+    procurementLegacyStatuses,
   ];
   for (const group of groups) {
     const label = group.find(([key]) => key === status)?.[1];

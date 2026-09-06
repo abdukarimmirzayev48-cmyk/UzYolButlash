@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from backend.app.core.paths import UPLOADS_DIR
 from backend.app.db.session import get_db
-from backend.app.api.procurement import ensure_procurement_for_order, sync_procurement_items_from_order
+from backend.app.api.procurement import sync_procurement_items_from_order
 from backend.app.models.client import Client
 from backend.app.models.contract import Contract, ContractItem, TransportPaymentType
 from backend.app.models.delivery import BatchStatus, DeliveryBatch, DeliveryBatchItem
@@ -648,8 +648,9 @@ def create_order(payload: OrderCreate, db: Session = Depends(get_db)):
     db.flush()
     db.refresh(order)
     recalculate_order(db, order, markup_from_percent=markup_from_percent)
-    if order.source_type != SourceType.supplier_held_stock:
-        ensure_procurement_for_order(db, order)
+    # Xarid yozuvi endi avtomatik ochilmaydi. Ilgari har buyurtmaga bittadan
+    # ochilardi va bo'sh qoralama bo'lib qolaverardi -- 14 tadan 13 tasi shunday
+    # edi. Mol zaxiradan ketadi, kerak bo'lganda xarid qo'lda yaratiladi.
     sync_order_status(order, db=db)
     db.commit()
     return get_order_detail(order.id, db)
@@ -769,8 +770,8 @@ def update_order(order_id: int, payload: OrderUpdate, db: Session = Depends(get_
     if payload.items is not None:
         apply_order_items(db, order, contract, payload.items)
     recalculate_order(db, order, markup_from_percent=markup_from_percent)
-    if order.source_type != SourceType.supplier_held_stock:
-        ensure_procurement_for_order(db, order)
+    # Yangi xarid ochilmaydi; ilgari ochilgani bo'lsa, pozitsiyalari ergashadi.
+    if order.procurement:
         sync_procurement_items_from_order(db, order.procurement)
     sync_order_status(order, db=db)
     db.commit()
@@ -824,8 +825,8 @@ def create_item(order_id: int, payload: OrderItemCreate, db: Session = Depends(g
     db.flush()
     db.refresh(order)
     recalculate_order(db, order)
-    if order.source_type != SourceType.supplier_held_stock:
-        ensure_procurement_for_order(db, order)
+    # Yangi xarid ochilmaydi; ilgari ochilgani bo'lsa, pozitsiyalari ergashadi.
+    if order.procurement:
         sync_procurement_items_from_order(db, order.procurement)
     sync_order_status(order, db=db)
     db.commit()
@@ -854,8 +855,8 @@ def update_item(order_id: int, item_id: int, payload: OrderItemUpdate, db: Sessi
     item.vat_rate = merged.vat_rate if merged.vat_rate is not None else contract_item.vat_rate
     calculate_item(item)
     recalculate_order(db, order)
-    if order.source_type != SourceType.supplier_held_stock:
-        ensure_procurement_for_order(db, order)
+    # Yangi xarid ochilmaydi; ilgari ochilgani bo'lsa, pozitsiyalari ergashadi.
+    if order.procurement:
         sync_procurement_items_from_order(db, order.procurement)
     sync_order_status(order, db=db)
     db.commit()
@@ -873,8 +874,8 @@ def delete_item(order_id: int, item_id: int, db: Session = Depends(get_db)):
     db.flush()
     db.refresh(order)
     recalculate_order(db, order)
-    if order.source_type != SourceType.supplier_held_stock:
-        ensure_procurement_for_order(db, order)
+    # Yangi xarid ochilmaydi; ilgari ochilgani bo'lsa, pozitsiyalari ergashadi.
+    if order.procurement:
         sync_procurement_items_from_order(db, order.procurement)
     sync_order_status(order, db=db)
     db.commit()

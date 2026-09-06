@@ -379,16 +379,10 @@ def recalculate_procurement(db: Session, procurement: Procurement) -> None:
     )
     required = qty(sum((item.required_quantity for item in procurement.items), Decimal("0")))
     selected = qty(sum((item.purchased_quantity for item in procurement.items), Decimal("0")))
-    if selected <= 0:
-        procurement.status = ProcurementStatus.offers_received if procurement.offers else procurement.status
-    elif selected < required:
-        procurement.status = ProcurementStatus.supplier_selected
-    elif procurement.status not in {
+    # Taklif tanlangan bo'lsa -- ta'minotchi tanlandi. Qo'lda qo'yilgan
+    # keyingi bosqichlar (tasdiqlandi, yakunlandi) qaytarib bosilmaydi.
+    if selected > 0 and procurement.status not in {
         ProcurementStatus.supplier_confirmed,
-        ProcurementStatus.purchase_approved,
-        ProcurementStatus.waiting_supplier_ready,
-        ProcurementStatus.ready_for_pickup,
-        ProcurementStatus.ready_for_delivery,
         ProcurementStatus.completed,
     }:
         procurement.status = ProcurementStatus.supplier_selected
