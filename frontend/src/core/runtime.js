@@ -943,9 +943,12 @@ function field(form, name) {
   return value === "" ? null : value;
 }
 
-function section(title, body) {
+function section(title, body, panel = null) {
+  // `panel` berilsa, bo'lim tab bilan boshqariladi: barcha bo'limlar bir yo'la
+  // chiziladi, ko'rinadigani esa `bindPanelTabs` tanlaydi.
+  const attr = panel ? ` data-tab-panel="${esc(panel)}"` : "";
   return `
-    <section class="card">
+    <section class="card"${attr}>
       <div class="card-header"><h2>${title}</h2></div>
       <div class="card-body">${body}</div>
     </section>
@@ -1890,6 +1893,26 @@ function workflowNextActionPanel(action = {}) {
 // Uchinchi element -- sanoq. Nol ham ko'rsatiladi: «Buyurtmalar 0» bo'limni
 // ochib ko'rish kerakmi degan savolga javob beradi, sanoqsiz esa har safar
 // ochib tekshirish kerak.
+// Tab bosilganda sahifa qaytadan chizilmaydi: bo'limlar allaqachon DOMda
+// turadi, faqat keragi ko'rsatiladi. Bu tugmalar ilgari umuman bog'lanmagan
+// edi -- ticket va ta'minotchi kartochkasida bosilsa hech narsa bo'lmasdi.
+function bindPanelTabs(attr, root = app) {
+  const buttons = [...root.querySelectorAll(`[data-${attr}]`)];
+  const panels = [...root.querySelectorAll("[data-tab-panel]")];
+  if (!buttons.length || !panels.length) return;
+  const show = (key) => {
+    buttons.forEach((button) => button.classList.toggle("active", button.dataset[camelize(attr)] === key));
+    panels.forEach((panel) => { panel.hidden = panel.dataset.tabPanel !== key; });
+  };
+  buttons.forEach((button) => button.addEventListener("click", () => show(button.dataset[camelize(attr)])));
+  const initial = buttons.find((button) => button.classList.contains("active")) || buttons[0];
+  show(initial.dataset[camelize(attr)]);
+}
+
+function camelize(value) {
+  return value.replace(/-([a-z])/g, (_, letter) => letter.toUpperCase());
+}
+
 function workflowTabs(active, items, attr) {
   return `<div class="tabs workflow-tabs">${items.map(([key, label, count]) => {
     const badge = count === undefined || count === null ? "" : `<span class="tab-count" data-noloc>${count}</span>`;
