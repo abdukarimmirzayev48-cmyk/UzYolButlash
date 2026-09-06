@@ -21,9 +21,8 @@ qolganini ayirgan qismi.
 from dataclasses import dataclass
 from decimal import Decimal
 
-MSG_OVER_INTAKE = "Ticket kvotasidan ortiq mol olib bo'lmaydi"
-MSG_QUOTA_UNUSED = "Ticket kvotasidan olinmagan miqdor bor"
-MSG_NOTHING_TAKEN = "Ticket bo'yicha hali mol olinmagan"
+MSG_QUOTA_UNUSED = "Ticket miqdori zaxiraga to'liq kirmagan"
+MSG_NOTHING_TAKEN = "Ticket bo'yicha zaxira partiyasi ochilmagan"
 
 
 @dataclass
@@ -49,10 +48,10 @@ def quantity_text(value: Decimal) -> str:
     return text.replace(",", " ")
 
 
-def build_balance(*, quota: Decimal, intakes: list[Decimal], available: Decimal, reserved: Decimal) -> TicketBalance:
+def build_balance(*, quota: Decimal, taken: Decimal, available: Decimal, reserved: Decimal) -> TicketBalance:
     return TicketBalance(
         quota=Decimal(quota or 0),
-        taken=sum((Decimal(value or 0) for value in intakes), Decimal("0")),
+        taken=Decimal(taken or 0),
         available=Decimal(available or 0),
         reserved=Decimal(reserved or 0),
     )

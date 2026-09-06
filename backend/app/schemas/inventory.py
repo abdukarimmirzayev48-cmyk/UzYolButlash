@@ -65,29 +65,8 @@ class ExchangeTicketUpdate(BaseModel):
     created_by: str | None = None
 
 
-class ExchangeTicketIntakeCreate(BaseModel):
-    intake_date: date
-    quantity: Decimal = Field(gt=0)
-    document_number: str | None = Field(default=None, max_length=128)
-    notes: str | None = None
-    created_by: str | None = None
-
-
-class ExchangeTicketIntakeRead(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
-    id: int
-    ticket_id: int
-    intake_date: date
-    quantity: Decimal
-    document_number: str | None
-    notes: str | None
-    created_by: str | None
-    created_at: datetime
-
-
 class TicketBalanceRead(BaseModel):
-    """Ticketdagi ikkita har xil qoldiq: kvotada va zaxirada."""
+    """Ticket miqdori va undan zaxirada nima qolgani."""
 
     quota: Decimal
     taken: Decimal
@@ -148,7 +127,6 @@ class ExchangeTicketRead(BaseModel):
     created_at: datetime
     updated_at: datetime
     stock_lot: StockLotSummary | None = None
-    intakes: list[ExchangeTicketIntakeRead] = Field(default_factory=list)
     balance: TicketBalanceRead | None = None
 
 
