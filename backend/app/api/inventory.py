@@ -521,13 +521,14 @@ def get_stock_lot(lot_id: int, db: Session = Depends(get_db)):
             selectinload(StockLot.ticket),
             selectinload(StockLot.supplier),
             selectinload(StockLot.stock_location),
-            selectinload(StockLot.allocations),
+            selectinload(StockLot.allocations).selectinload(StockAllocation.order).selectinload(Order.client),
+            selectinload(StockLot.allocations).selectinload(StockAllocation.delivery_batch),
             selectinload(StockLot.movements),
         )
     ).first()
     if not lot:
         raise HTTPException(status_code=404, detail="Zaxira partiyasi topilmadi.")
-    return StockLotDetail(**stock_lot_summary(lot).model_dump(), allocations=lot.allocations, movements=lot.movements)
+    return StockLotDetail(**stock_lot_summary(lot).model_dump(), allocations=[allocation_read(a) for a in lot.allocations], movements=lot.movements)
 
 
 @router.post("/stock-allocations", response_model=StockAllocationRead, status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_edit("taminot"))])
@@ -546,6 +547,25 @@ def create_stock_allocation(payload: StockAllocationCreate, db: Session = Depend
     return allocation
 
 
+def allocation_read(allocation: StockAllocation) -> StockAllocationRead:
+    order = allocation.order
+    return StockAllocationRead(
+        **{
+            key: getattr(allocation, key)
+            for key in ("id", "stock_lot_id", "order_id", "order_item_id", "delivery_batch_id", "allocated_quantity", "status", "created_at", "updated_at")
+        },
+        order_number=order.order_number if order else None,
+        client_name=order.client.name if order and order.client else None,
+        batch_number=allocation.delivery_batch.batch_number if allocation.delivery_batch else None,
+    )
+
+
+ALLOCATION_LOADS = (
+    selectinload(StockAllocation.order).selectinload(Order.client),
+    selectinload(StockAllocation.delivery_batch),
+)
+
+
 @router.get("/stock-allocations", response_model=list[StockAllocationRead])
 def list_stock_allocations(
     db: Session = Depends(get_db),
@@ -553,14 +573,14 @@ def list_stock_allocations(
     delivery_batch_id: int | None = None,
     stock_lot_id: int | None = None,
 ):
-    stmt = select(StockAllocation).order_by(StockAllocation.created_at.desc())
+    stmt = select(StockAllocation).options(*ALLOCATION_LOADS).order_by(StockAllocation.created_at.desc())
     if order_id:
         stmt = stmt.where(StockAllocation.order_id == order_id)
     if delivery_batch_id:
         stmt = stmt.where(StockAllocation.delivery_batch_id == delivery_batch_id)
     if stock_lot_id:
         stmt = stmt.where(StockAllocation.stock_lot_id == stock_lot_id)
-    return list(db.scalars(stmt).all())
+    return [allocation_read(row) for row in db.scalars(stmt).all()]
 
 
 def reserve_stock_for_order(

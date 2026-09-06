@@ -9439,3 +9439,12 @@ body.map-modal-open {
     align-items: flex-start;
   }
 }
+
+/* Kartochka bo'limi ichidagi kichik sarlavha: bir bo'limda ikkita blok
+   bo'lganda (ma'lumot + jadval) ularni ajratib turadi. */
+.section-subtitle {
+  margin: 20px 0 10px;
+  font-size: 15px;
+  font-weight: 650;
+  color: var(--text);
+}

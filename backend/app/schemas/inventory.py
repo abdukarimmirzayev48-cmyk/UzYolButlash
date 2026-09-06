@@ -149,6 +149,11 @@ class StockAllocationRead(BaseModel):
     delivery_batch_id: int | None
     allocated_quantity: Decimal
     status: StockAllocationStatus
+    # Ticket va zaxira kartochkasida moli qaysi buyurtmaga ketgani ko'rinsin
+    # uchun: yalang'och ID dan foydalanuvchiga hech qanday ma'no yo'q.
+    order_number: str | None = None
+    client_name: str | None = None
+    batch_number: str | None = None
     created_at: datetime
     updated_at: datetime
 
