@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session, selectinload
 from backend.app.db.session import get_db
 from backend.app.models.delivery import DeliveryBatch, Logistics
 from backend.app.models.inventory import ExchangeTicket
+from backend.app.models.order import Order
 from backend.app.models.procurement import Procurement, Supplier, SupplierOffer, SupplierOfferItem
 from backend.app.models.supplier_finance import (
     SupplierFinanceDocument,
@@ -106,30 +107,40 @@ def recalculate_payment(db: Session, payment: SupplierPayment) -> None:
 def validate_invoice_links(db: Session, invoice: SupplierInvoice) -> None:
     if not db.get(Supplier, invoice.supplier_id):
         raise HTTPException(status_code=400, detail="Ta'minotchi mavjud emas.")
-    # Hisob nimadandir kelib chiqishi kerak: xariddan yoki birja ticketidan.
-    # Ikkalasi ham bo'sh hisob havoda qoladi va uni hech narsaga bog'lab
-    # bo'lmaydi.
-    if not invoice.procurement_id and not invoice.ticket_id:
-        raise HTTPException(status_code=422, detail="Hisob-faktura xaridga yoki birja ticketiga bog'lanishi kerak.")
+    procurement = None
+    if invoice.procurement_id:
+        procurement = db.get(Procurement, invoice.procurement_id)
+        if not procurement:
+            raise HTTPException(status_code=400, detail="Xarid mavjud emas.")
+        # Xarid buyurtmani biladi -- bog'lanish undan tiklanadi, foydalanuvchi
+        # bir narsani ikki marta ko'rsatmaydi.
+        if not invoice.order_id:
+            invoice.order_id = procurement.order_id
+    # Hisob nimadandir kelib chiqishi kerak: buyurtmadan (mol xaridi),
+    # birja ticketidan yoki partiyadan (transport). Uchalasi ham bo'sh hisob
+    # havoda qoladi va uni hech qanday tannarxga qo'shib bo'lmaydi.
+    if not invoice.order_id and not invoice.ticket_id and not invoice.delivery_batch_id:
+        raise HTTPException(status_code=422, detail="Hisob-faktura buyurtmaga, birja ticketiga yoki partiyaga bog'lanishi kerak.")
     if invoice.ticket_id:
         ticket = db.get(ExchangeTicket, invoice.ticket_id)
         if not ticket:
             raise HTTPException(status_code=400, detail="Birja ticketi mavjud emas.")
         if ticket.supplier_id != invoice.supplier_id:
             raise HTTPException(status_code=422, detail="Ticket boshqa ta'minotchiga tegishli.")
-    procurement = None
-    if invoice.procurement_id:
-        procurement = db.get(Procurement, invoice.procurement_id)
-        if not procurement:
-            raise HTTPException(status_code=400, detail="Xarid mavjud emas.")
+    if invoice.order_id:
+        order = db.get(Order, invoice.order_id)
+        if not order:
+            raise HTTPException(status_code=400, detail="Buyurtma mavjud emas.")
+        if procurement and procurement.order_id != invoice.order_id:
+            raise HTTPException(status_code=422, detail="Xarid boshqa buyurtmaga tegishli.")
     if invoice.supplier_offer_id:
         offer = db.get(SupplierOffer, invoice.supplier_offer_id)
         if not offer or offer.procurement_id != invoice.procurement_id or offer.supplier_id != invoice.supplier_id:
             raise HTTPException(status_code=422, detail="Ta'minotchi taklifi ta'minotchi va xaridga mos kelishi kerak.")
     if invoice.delivery_batch_id:
         batch = db.get(DeliveryBatch, invoice.delivery_batch_id)
-        if not batch or (procurement and batch.order_id != procurement.order_id):
-            raise HTTPException(status_code=422, detail="Yetkazib berish partiyasi xarid buyurtmasiga tegishli bo'lishi kerak.")
+        if not batch or (invoice.order_id and batch.order_id != invoice.order_id):
+            raise HTTPException(status_code=422, detail="Yetkazib berish partiyasi hisob buyurtmasiga tegishli bo'lishi kerak.")
     if invoice.logistics_id:
         logistics = db.get(Logistics, invoice.logistics_id)
         if not logistics or (invoice.delivery_batch_id and logistics.delivery_batch_id != invoice.delivery_batch_id):
@@ -142,6 +153,7 @@ def load_invoice(db: Session, invoice_id: int) -> SupplierInvoice:
         .where(SupplierInvoice.id == invoice_id)
         .options(
             selectinload(SupplierInvoice.supplier),
+            selectinload(SupplierInvoice.order),
             selectinload(SupplierInvoice.procurement),
             selectinload(SupplierInvoice.ticket),
             selectinload(SupplierInvoice.supplier_offer).selectinload(SupplierOffer.items),
@@ -211,11 +223,11 @@ def validate_allocations(db: Session, payment: SupplierPayment, allocations: lis
 
 
 def sync_orders_for_supplier_invoices(db: Session, invoices: list[SupplierInvoice]) -> None:
-    procurement_ids = {invoice.procurement_id for invoice in invoices if invoice and invoice.procurement_id}
-    for procurement_id in procurement_ids:
-        procurement = db.scalars(select(Procurement).where(Procurement.id == procurement_id).options(selectinload(Procurement.order))).first()
-        if procurement and procurement.order:
-            sync_order_status(procurement.order, db=db)
+    order_ids = {invoice.order_id for invoice in invoices if invoice and invoice.order_id}
+    for order_id in order_ids:
+        order = db.get(Order, order_id)
+        if order:
+            sync_order_status(order, db=db)
 
 
 @invoice_router.get("", response_model=Page[SupplierInvoiceListItem])
@@ -227,6 +239,7 @@ def list_invoices(
     status_filter: str | None = Query(None, alias="status"),
     invoice_type: str | None = None,
     supplier_id: int | None = None,
+    order_id: int | None = None,
     procurement_id: int | None = None,
     overdue_only: bool = False,
 ):
@@ -235,11 +248,16 @@ def list_invoices(
         .join(Supplier)
         # Tashqi bog'lanish: ticketdan kelgan hisobning xaridi yo'q, ichki
         # join uni ro'yxatdan jimgina tushirib yuborardi.
-        .outerjoin(Procurement)
-        .outerjoin(SupplierOffer)
-        .outerjoin(DeliveryBatch)
+        .outerjoin(Order, SupplierInvoice.order_id == Order.id)
+        .outerjoin(Procurement, SupplierInvoice.procurement_id == Procurement.id)
+        .outerjoin(SupplierOffer, SupplierInvoice.supplier_offer_id == SupplierOffer.id)
+        # Bog'lanish shartlari aniq yozildi: buyurtma qo'shilgach jadvallar
+        # o'rtasida bir nechta tashqi kalit paydo bo'ldi va SQLAlchemy qaysi
+        # biri ekanini o'zi topolmay qoldi.
+        .outerjoin(DeliveryBatch, SupplierInvoice.delivery_batch_id == DeliveryBatch.id)
         .options(
             selectinload(SupplierInvoice.supplier),
+            selectinload(SupplierInvoice.order),
             selectinload(SupplierInvoice.procurement),
             selectinload(SupplierInvoice.ticket),
             selectinload(SupplierInvoice.supplier_offer).selectinload(SupplierOffer.items),
@@ -250,11 +268,13 @@ def list_invoices(
     filters = []
     if search:
         value = f"%{search}%"
-        filters.append(or_(SupplierInvoice.invoice_number.ilike(value), Supplier.name.ilike(value), Supplier.inn.ilike(value), Procurement.procurement_number.ilike(value), SupplierOffer.offer_number.ilike(value), DeliveryBatch.batch_number.ilike(value)))
+        filters.append(or_(SupplierInvoice.invoice_number.ilike(value), Supplier.name.ilike(value), Supplier.inn.ilike(value), Order.order_number.ilike(value), Procurement.procurement_number.ilike(value), SupplierOffer.offer_number.ilike(value), DeliveryBatch.batch_number.ilike(value)))
     if status_filter:
         filters.append(SupplierInvoice.status == status_filter)
     if invoice_type:
         filters.append(SupplierInvoice.invoice_type == invoice_type)
+    if order_id:
+        filters.append(SupplierInvoice.order_id == order_id)
     if supplier_id:
         filters.append(SupplierInvoice.supplier_id == supplier_id)
     if procurement_id:

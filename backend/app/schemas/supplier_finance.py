@@ -97,8 +97,18 @@ class ExchangeTicketSummary(BaseModel):
     ticket_number: str
 
 
+class OrderSummary(BaseModel):
+    """Hisob qaysi buyurtma uchun -- raqami bilan, kartochkaga havola uchun."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    order_number: str
+
+
 class SupplierInvoiceBase(BaseModel):
     supplier_id: int
+    order_id: int | None = None
     procurement_id: int | None = None
     ticket_id: int | None = None
     supplier_offer_id: int | None = None
@@ -122,6 +132,7 @@ class SupplierInvoiceCreate(SupplierInvoiceBase):
 
 class SupplierInvoiceUpdate(BaseModel):
     supplier_id: int | None = None
+    order_id: int | None = None
     procurement_id: int | None = None
     supplier_offer_id: int | None = None
     delivery_batch_id: int | None = None
@@ -161,6 +172,7 @@ class SupplierInvoiceRead(SupplierInvoiceBase):
 
 class SupplierInvoiceListItem(SupplierInvoiceRead):
     supplier: SupplierRead
+    order: OrderSummary | None = None
     procurement: ProcurementRead | None = None
     ticket: ExchangeTicketSummary | None = None
     supplier_offer: SupplierOfferRead | None = None
@@ -169,6 +181,7 @@ class SupplierInvoiceListItem(SupplierInvoiceRead):
 
 class SupplierInvoiceDetail(SupplierInvoiceRead):
     supplier: SupplierRead
+    order: OrderSummary | None = None
     procurement: ProcurementRead | None = None
     ticket: ExchangeTicketSummary | None = None
     supplier_offer: SupplierOfferRead | None = None

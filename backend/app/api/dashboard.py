@@ -95,8 +95,7 @@ def load_context(db: Session) -> dict[str, Any]:
         "logistics": db.scalars(select(Logistics).options(selectinload(Logistics.batch))).all(),
         "customer_invoices": db.scalars(select(CustomerInvoice).options(selectinload(CustomerInvoice.client), selectinload(CustomerInvoice.contract), selectinload(CustomerInvoice.order), selectinload(CustomerInvoice.delivery_batch), selectinload(CustomerInvoice.allocations))).all(),
         "customer_payments": db.scalars(select(CustomerPayment).options(selectinload(CustomerPayment.client))).all(),
-        "procurements": db.scalars(select(Procurement).options(selectinload(Procurement.order))).all(),
-        "supplier_invoices": db.scalars(select(SupplierInvoice).options(selectinload(SupplierInvoice.supplier), selectinload(SupplierInvoice.procurement), selectinload(SupplierInvoice.delivery_batch), selectinload(SupplierInvoice.allocations))).all(),
+        "supplier_invoices": db.scalars(select(SupplierInvoice).options(selectinload(SupplierInvoice.supplier), selectinload(SupplierInvoice.order), selectinload(SupplierInvoice.procurement), selectinload(SupplierInvoice.delivery_batch), selectinload(SupplierInvoice.allocations))).all(),
         "supplier_payments": db.scalars(select(SupplierPayment).options(selectinload(SupplierPayment.supplier))).all(),
     }
 
@@ -213,18 +212,18 @@ def logistics_cost(logistics_rows: list[Logistics], supplier_transport_invoices:
 
 
 def order_profit_row(order: Order, ctx: dict[str, Any]) -> dict[str, Any]:
-    procurements = [p for p in ctx["procurements"] if p.order_id == order.id]
-    procurement_ids = {p.id for p in procurements}
     batch_ids = {b.id for b in ctx["batches"] if b.order_id == order.id}
     customer = customer_totals([i for i in ctx["customer_invoices"] if i.order_id == order.id])
-    supplier_invoices = [i for i in ctx["supplier_invoices"] if i.procurement_id in procurement_ids]
+    # Hisob endi to'g'ridan-to'g'ri buyurtmani ko'rsatadi. Ilgari u xarid
+    # orqali topilardi, xarid ochilmagan buyurtmaning esa tannarxi yo'q edi.
+    supplier_invoices = [i for i in ctx["supplier_invoices"] if i.order_id == order.id]
     supplier = supplier_totals(supplier_invoices)
     transport_invoices = [
         i
         for i in ctx["supplier_invoices"]
         if i.status != SupplierInvoiceStatus.cancelled
         and i.invoice_type == SupplierInvoiceType.transport
-        and (i.procurement_id in procurement_ids or i.delivery_batch_id in batch_ids)
+        and (i.order_id == order.id or i.delivery_batch_id in batch_ids)
     ]
     logistics_rows = [l for l in ctx["logistics"] if l.batch and l.batch.order_id == order.id]
     log_cost = logistics_cost(logistics_rows, transport_invoices)
@@ -517,8 +516,8 @@ def payables(db: Session = Depends(get_db), overdue_only: bool = False, supplier
             "remaining_amount": invoice.remaining_amount,
             "overdue_days": overdue_days,
             "status": enum_value(invoice.status),
-            "procurement_id": invoice.procurement_id,
-            "procurement_number": invoice.procurement.procurement_number if invoice.procurement else None,
+            "order_id": invoice.order_id,
+            "order_number": invoice.order.order_number if invoice.order else None,
             "delivery_batch_id": invoice.delivery_batch_id,
             "batch_number": invoice.delivery_batch.batch_number if invoice.delivery_batch else None,
         })
@@ -566,8 +565,8 @@ def payables(db: Session = Depends(get_db), overdue_only: bool = False, supplier
             "remaining_amount": ticket.total_amount,
             "overdue_days": max((today - ticket.due_date).days, 0),
             "status": enum_value(ticket.status),
-            "procurement_id": None,
-            "procurement_number": None,
+            "order_id": None,
+            "order_number": None,
             "delivery_batch_id": None,
             "batch_number": None,
         })
