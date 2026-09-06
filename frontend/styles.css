@@ -9448,3 +9448,140 @@ body.map-modal-open {
   font-weight: 650;
   color: var(--text);
 }
+
+/* ================= Ta'minot umumiy ko'rinishi ================= */
+
+/* Ticket holatlari rangi: to'lanmagani ogohlantiruvchi, to'langani yashil,
+   yopilgani va bekor qilingani kul rang -- e'tibor talab qilmaydi. */
+.ring-arc.ticket-opened,
+.ring-dot.ticket-opened { stroke: #2f80ed; background: #2f80ed; }
+.ring-arc.ticket-partially_paid,
+.ring-dot.ticket-partially_paid { stroke: #f2a33c; background: #f2a33c; }
+.ring-arc.ticket-overdue,
+.ring-dot.ticket-overdue { stroke: var(--danger); background: var(--danger); }
+.ring-arc.ticket-paid,
+.ring-dot.ticket-paid { stroke: #22b573; background: #22b573; }
+.ring-arc.ticket-closed,
+.ring-dot.ticket-closed { stroke: #94a3b8; background: #94a3b8; }
+.ring-arc.ticket-cancelled,
+.ring-dot.ticket-cancelled { stroke: #cbd5e1; background: #cbd5e1; }
+.ring-arc.ticket-draft,
+.ring-dot.ticket-draft { stroke: #dbe3ea; background: #dbe3ea; }
+
+/* To'lov muddati ustunlari */
+.due-chart {
+  display: flex;
+  align-items: flex-end;
+  gap: 14px;
+  min-height: 230px;
+  padding-top: 8px;
+}
+
+.due-col {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  min-width: 0;
+  height: 100%;
+}
+
+.due-value {
+  font-size: 12px;
+  font-weight: 650;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.due-bar {
+  width: 100%;
+  max-width: 64px;
+  min-height: 2px;
+  border-radius: 6px 6px 0 0;
+  background: linear-gradient(180deg, #4c9fe0, #2f80ed);
+}
+
+.due-col.is-overdue .due-bar {
+  background: linear-gradient(180deg, #ef8080, var(--danger));
+}
+
+.due-label {
+  font-size: 12px;
+  color: var(--text);
+  text-align: center;
+  line-height: 1.25;
+}
+
+.due-count {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+/* Zaxira harakati: bitta chiziqda erkin / band / ketgan */
+.flow-bar {
+  display: flex;
+  height: 22px;
+  border-radius: 6px;
+  overflow: hidden;
+  background: #eef2f5;
+}
+
+.flow-part { display: block; height: 100%; }
+.flow-free { background: #22b573; }
+.flow-reserved { background: #f2a33c; }
+.flow-shipped { background: #94a3b8; }
+
+.flow-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 18px;
+  margin-top: 12px;
+}
+
+.flow-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.flow-legend-item b { color: var(--text); }
+
+.flow-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  display: inline-block;
+}
+
+.flow-dot.flow-free { background: #22b573; }
+.flow-dot.flow-reserved { background: #f2a33c; }
+.flow-dot.flow-shipped { background: #94a3b8; }
+
+/* Jadval katakchasidagi kichik ustun */
+.mini-bar {
+  height: 5px;
+  border-radius: 3px;
+  background: #eef2f5;
+  margin-bottom: 5px;
+  max-width: 150px;
+}
+
+.mini-bar span {
+  display: block;
+  height: 100%;
+  border-radius: 3px;
+  background: #2f80ed;
+}
+
+@media (max-width: 860px) {
+  .due-chart {
+    gap: 8px;
+    min-height: 190px;
+  }
+  .due-value { font-size: 10px; }
+  .due-label { font-size: 11px; }
+}

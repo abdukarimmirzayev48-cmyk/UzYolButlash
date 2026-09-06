@@ -1,3 +1,202 @@
+// Ta'minot bo'limining umumiy ko'rinishi. Ticket -- pul majburiyati, zaxira
+// -- o'sha pulga olingan mol; ikkalasi bir ekranda turmaguncha «qaysi
+// mahsulotdan qancha qoldi va qaysi to'lov qachon» degan savolga javob yig'ish
+// uchun ikkita ro'yxatni qo'lda solishtirish kerak edi.
+const SUPPLY_FILTER_KEYS = ["product", "supplier_id", "status", "due_from", "due_to"];
+
+function supplyToolbar(params, options) {
+  const opt = (value, label, selected) => `<option value="${esc(value)}" ${selected ? "selected" : ""}>${label}</option>`;
+  return `<div class="overview-toolbar">
+    <div class="overview-toolbar-actions">
+      <button class="btn primary" type="button" data-nav="/exchange-tickets/new">${overviewIcon("plus", 16)}<span>Yangi ticket</span></button>
+      <button class="btn" type="button" data-nav="/stock">${overviewIcon("box", 16)}<span>Zaxira</span></button>
+    </div>
+    <form class="overview-toolbar-filters" id="supply-filter-form">
+      <select name="product">
+        ${opt("", "Barcha mahsulotlar", !params.get("product"))}
+        ${options.products.map((name) => opt(name, esc(name), params.get("product") === name)).join("")}
+      </select>
+      <select name="supplier_id">
+        ${opt("", "Barcha ta'minotchilar", !params.get("supplier_id"))}
+        ${options.suppliers.map((s) => opt(s.id, esc(s.name), params.get("supplier_id") === String(s.id))).join("")}
+      </select>
+      <select name="status">
+        ${opt("", "Barcha holatlar", !params.get("status"))}
+        ${options.statuses.map((s) => opt(s.key, s.label, params.get("status") === s.key)).join("")}
+      </select>
+      <input type="date" name="due_from" value="${esc(params.get("due_from") || "")}" title="To'lov muddati: dan" />
+      <span class="overview-date-sep" data-noloc>–</span>
+      <input type="date" name="due_to" value="${esc(params.get("due_to") || "")}" title="To'lov muddati: gacha" />
+      <button class="ops-tool-btn" type="submit">${overviewIcon("filter", 14)}<span>Qo'llash</span></button>
+      <button class="ops-tool-btn" type="button" data-nav="/supply">Tozalash</button>
+    </form>
+  </div>`;
+}
+
+function supplyHeadline(n) {
+  const cards = [
+    ["wallet", "Ochiq majburiyat", fmtMoney(n.obligation), `${fmt(n.tickets_open)} ta ochiq ticket`, "/payables"],
+    ["alert", "Muddati o'tgan", fmtMoney(n.overdue_amount), `${fmt(n.overdue_count)} ta ticket`, "/exchange-tickets?overdue_only=true"],
+    ["hourglass", "7 kun ichida to'lanadi", fmtMoney(n.due_soon_amount), `${fmt(n.due_soon_count)} ta ticket`, ""],
+    ["box", "Zaxirada erkin", fmtQty(n.stock_available, "t"), "Sotishga tayyor", "/stock?available_only=true"],
+    ["droplet", "Zaxira qiymati", fmtMoney(n.stock_value), "Erkin molning tannarxi", "/stock"],
+  ];
+  return `<div class="headline-cards">${cards.map(([icon, label, value, note, path]) => `
+    <div class="headline-card" ${path ? `data-nav="${path}"` : ""}>
+      <span class="headline-icon">${overviewIcon(icon, 20)}</span>
+      <span class="headline-copy">
+        <span class="headline-label">${label}</span>
+        <strong>${value}</strong>
+        <span class="headline-note">${note}</span>
+      </span>
+    </div>`).join("")}</div>`;
+}
+
+// Mol qayerda turibdi: olinganidan qanchasi hali erkin, qanchasi buyurtmaga
+// band qilingan, qanchasi mijozga ketgan.
+function supplyStockFlow(n) {
+  const total = numberValue(n.stock_initial) || 1;
+  const parts = [
+    ["free", "Erkin", numberValue(n.stock_available)],
+    ["reserved", "Band qilingan", numberValue(n.stock_reserved)],
+    ["shipped", "Mijozga ketgan", numberValue(n.stock_shipped)],
+  ];
+  return `<div class="flow-block">
+    <div class="flow-bar">${parts.map(([key, , value]) => value > 0
+      ? `<span class="flow-part flow-${key}" style="width:${(value / total * 100).toFixed(2)}%"></span>` : "").join("")}</div>
+    <div class="flow-legend">${parts.map(([key, label, value]) => `
+      <span class="flow-legend-item"><i class="flow-dot flow-${key}"></i><span>${label}</span><b data-noloc>${fmtQty(value, "t")}</b></span>`).join("")}</div>
+    <p class="helper-text"><span>Ticketlar bo'yicha zaxiraga tushgan jami:</span> <b data-noloc>${fmtQty(n.stock_initial, "t")}</b></p>
+  </div>`;
+}
+
+// Yorliqlar backenddan emas, shu yerdan olinadi: lug'at faqat frontend
+// matnlarini yig'adi, backend qatori esa tarjimasiz o'tib ketardi.
+const SUPPLY_DUE_LABELS = {
+  overdue: "Muddati o'tgan",
+  week: "7 kun ichida",
+  month: "8-30 kun ichida",
+  quarter: "31-90 kun ichida",
+  later: "90 kundan keyin",
+};
+
+// To'lov muddati bo'yicha taqsimot: qaysi pul qachon kerakligi.
+function supplyDueChart(buckets) {
+  const peak = Math.max(1, ...buckets.map((b) => numberValue(b.amount)));
+  return `<div class="due-chart">${buckets.map((b) => {
+    const value = numberValue(b.amount);
+    const height = value > 0 ? Math.max(6, (value / peak) * 100) : 0;
+    return `<div class="due-col ${b.key === "overdue" ? "is-overdue" : ""}">
+      <span class="due-value" data-noloc>${value > 0 ? fmtMoney(value) : ""}</span>
+      <span class="due-bar" style="height:${height}%"></span>
+      <span class="due-label">${SUPPLY_DUE_LABELS[b.key] || b.label}</span>
+      <span class="due-count"><span data-noloc>${fmt(b.count)}</span> <span>ta</span></span>
+    </div>`;
+  }).join("")}</div>`;
+}
+
+function supplyStatusRing(mix) {
+  const size = 148;
+  const stroke = 18;
+  const radius = (size - stroke) / 2;
+  const circumference = 2 * Math.PI * radius;
+  let offset = 0;
+  const arcs = mix.items.map((item) => {
+    const length = (item.count / (mix.total || 1)) * circumference;
+    const arc = `<circle cx="${size / 2}" cy="${size / 2}" r="${radius}" class="ring-arc ticket-${item.key}"
+      stroke-width="${stroke}" fill="none"
+      stroke-dasharray="${length} ${circumference - length}" stroke-dashoffset="${-offset}" />`;
+    offset += length;
+    return arc;
+  }).join("");
+  return `<div class="ring-block">
+    <div class="ring-chart">
+      <svg viewBox="0 0 ${size} ${size}" role="img" aria-label="Ticketlar holati">
+        <circle cx="${size / 2}" cy="${size / 2}" r="${radius}" class="ring-track" stroke-width="${stroke}" fill="none" />
+        ${arcs}
+      </svg>
+      <div class="ring-center"><span>Ticketlar</span><strong data-noloc>${fmt(mix.total)}</strong></div>
+    </div>
+    <ul class="ring-legend">${mix.items.map((item) => `
+      <li><i class="ring-dot ticket-${item.key}"></i><span>${item.label}</span><b data-noloc>${fmt(item.count)}</b></li>`).join("") || `<li><span>Ticketlar yo'q</span></li>`}</ul>
+  </div>`;
+}
+
+// Mahsulot kesimi -- eng ko'p so'raladigan qirqim: qaysi maxsulotdan qancha
+// mol bor va u qanchaga tushgan.
+function supplyProductTable(rows) {
+  const peak = Math.max(1, ...rows.map((r) => numberValue(r.available)));
+  return tableOrEmpty(rows, ["Mahsulot", "Zaxirada erkin", "Band", "Mijozga ketgan", "Erkin qiymati", "Ochiq majburiyat", "Ticketlar"], (r) => `
+    <tr>
+      <td>${fmt(r.product)}</td>
+      <td>
+        <div class="mini-bar"><span style="width:${(numberValue(r.available) / peak * 100).toFixed(1)}%"></span></div>
+        <span data-noloc>${fmtQty(r.available, r.unit)}</span>
+      </td>
+      <td>${fmtQty(r.reserved, r.unit)}</td>
+      <td>${fmtQty(r.shipped, r.unit)}</td>
+      <td class="ops-money">${fmtMoney(r.value)}</td>
+      <td class="ops-money">${fmtMoney(r.obligation)}</td>
+      <td data-noloc>${fmt(r.tickets)}</td>
+    </tr>`, "Mahsulotlar bo'yicha ma'lumot yo'q.");
+}
+
+function supplyUpcomingTable(rows) {
+  return tableOrEmpty(rows, ["Ticket", "Ta'minotchi", "Mahsulot", "To'lov muddati", "Qolgan kun", "Summa", "Status"], (r) => `
+    <tr>
+      <td><button class="ops-primary-link" data-nav="/exchange-tickets/${r.ticket_id}">${fmt(r.ticket_number)}</button></td>
+      <td>${fmt(r.supplier_name)}</td>
+      <td>${fmt(r.product_name)}</td>
+      <td data-noloc>${fmt(r.due_date)}</td>
+      <td class="${r.days < 0 ? "negative" : ""}" data-noloc>${fmt(r.days)}</td>
+      <td class="ops-money">${fmtMoney(r.amount)}</td>
+      <td>${statusBadge(r.status)}</td>
+    </tr>`, "Yaqin to'lov muddati yo'q.");
+}
+
+async function renderSupplyOverview() {
+  app.innerHTML = `<div class="page ops-page"><div class="empty">Yuklanmoqda...</div></div>`;
+  const params = new URLSearchParams(location.search);
+  const query = new URLSearchParams();
+  SUPPLY_FILTER_KEYS.forEach((key) => { if (params.get(key)) query.set(key, params.get(key)); });
+  const data = await api(`/api/supply/overview?${query.toString()}`);
+  const n = data.now;
+
+  app.innerHTML = `
+    <div class="page ops-page module-overview">
+      <div class="overview-head">
+        <h1>Ta'minot</h1>
+        <p>Birja ticketlari va zaxira bitta oynada: qancha qarz, qancha mol, qaysi to'lov qachon</p>
+      </div>
+
+      ${supplyToolbar(params, data.filter_options)}
+      ${supplyHeadline(n)}
+
+      <div class="panel-grid two">
+        ${section("To'lov muddati bo'yicha", supplyDueChart(data.due_buckets))}
+        ${section("Ticketlar holati", supplyStatusRing(data.status_mix))}
+      </div>
+
+      ${section("Zaxira harakati", supplyStockFlow(n))}
+
+      ${overviewCardWithLink("Mahsulot kesimida", supplyProductTable(data.by_product), "/stock")}
+
+      <div class="panel-grid two">
+        ${overviewCardWithLink("Yaqin to'lovlar", supplyUpcomingTable(data.upcoming), "/payables")}
+        ${overviewCardWithLink("Ta'minotchilar kesimida", tableOrEmpty(data.by_supplier.slice(0, 6), ["Ta'minotchi", "Ochiq majburiyat", "Zaxirada erkin", "Ticketlar"], (r) => `
+          <tr>
+            <td><button class="link-btn" data-nav="/suppliers/${r.supplier_id}">${fmt(r.name)}</button></td>
+            <td class="ops-money">${fmtMoney(r.obligation)}</td>
+            <td>${fmtQty(r.available, "t")}</td>
+            <td data-noloc>${fmt(r.tickets)}</td>
+          </tr>`, "Ta'minotchilar bo'yicha ma'lumot yo'q."), "/suppliers")}
+      </div>
+    </div>
+  `;
+
+  bindOpsSearch("supply-filter-form", "/supply", SUPPLY_FILTER_KEYS);
+}
+
 function supplierPayload(form, includeChildren = false) {
   const payload = {
     name: field(form, "name"),

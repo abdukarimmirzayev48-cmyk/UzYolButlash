@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>UzYolButlash ERP</title>
     <link rel="stylesheet" href="/static/vendor/leaflet.css?v=1.9.4" />
-    <link rel="stylesheet" href="/static/styles.css?v=20260906-alloc" />
+    <link rel="stylesheet" href="/static/styles.css?v=20260906-supply" />
   </head>
   <body>
     <header class="app-topbar">
@@ -50,8 +50,9 @@
           </div>
         </div>
         <div class="top-nav-group">
-          <button type="button">Ta'minot</button>
+          <button type="button" data-nav-module="/supply">Ta'minot</button>
           <div class="top-nav-menu">
+            <a href="/supply">Umumiy ko'rinish</a>
             <a href="/exchange-tickets">Birja ticketlari</a>
             <a href="/stock">Zaxira</a>
           </div>
@@ -188,6 +189,7 @@
         </section>
         <section class="nav-section">
           <h2>Ta'minot</h2>
+          <a href="/supply" data-short="TU" title="Umumiy ko'rinish"><span>Umumiy ko'rinish</span></a>
           <a href="/exchange-tickets" data-short="BT" title="Birja ticketlari"><span>Birja ticketlari</span></a>
           <a href="/stock" data-short="Z" title="Zaxira"><span>Zaxira</span></a>
         </section>
@@ -230,8 +232,8 @@
     <script src="/static/src/components/Panels.js?v=20260629-frontend-refactor" defer></script>
     <script src="/static/src/index.js?v=20260629-frontend-refactor" defer></script>
     <script src="/static/src/config/constants.js?v=20260906-noproc" defer></script>
-    <script src="/static/src/config/cyrillic.js?v=20260905-ticketpay" defer></script>
-    <script src="/static/src/core/runtime.js?v=20260906-tabs" defer></script>
+    <script src="/static/src/config/cyrillic.js?v=20260906-supply" defer></script>
+    <script src="/static/src/core/runtime.js?v=20260906-supply" defer></script>
     <script src="/static/src/pages/clients.js?v=20260824-links" defer></script>
     <script src="/static/src/pages/references.js?v=20260904-no-regions" defer></script>
     <script src="/static/src/pages/deliveryPoints.js?v=20260904-district-filter" defer></script>
@@ -239,17 +241,17 @@
     <script src="/static/src/pages/publicTalabnoma.js?v=20260819-geo-tz" defer></script>
     <script src="/static/src/pages/contracts.js?v=20260904-flow-end" defer></script>
     <script src="/static/src/pages/orders.js?v=20260906-noproc" defer></script>
-    <script src="/static/src/pages/delivery.js?v=20260902-cascade" defer></script>
+    <script src="/static/src/pages/delivery.js?v=20260906-supply" defer></script>
     <script src="/static/src/pages/transports.js?v=20260830-list-controls-v2" defer></script>
     <script src="/static/src/pages/repairs.js?v=20260902-wizard-v2" defer></script>
     <script src="/static/src/pages/customerFinance.js?v=20260828-request" defer></script>
-    <script src="/static/src/pages/supply.js?v=20260906-alloc" defer></script>
+    <script src="/static/src/pages/supply.js?v=20260906-supply" defer></script>
     <script src="/static/src/pages/dashboard.js?v=20260906-invorder" defer></script>
     <script src="/static/src/pages/products.js?v=20260902-method-v1" defer></script>
     <script src="/static/src/pages/attendance.js?v=20260814-merge-departments" defer></script>
     <script src="/static/src/pages/tasks.js?v=20260819-dialog" defer></script>
     <script src="/static/src/pages/auditLog.js?v=20260819-clients-ux" defer></script>
     <script src="/static/src/pages/auth.js?v=20260819-audit" defer></script>
-    <script src="/static/src/router.js?v=20260906-noproc" defer></script>
+    <script src="/static/src/router.js?v=20260906-race" defer></script>
   </body>
 </html>

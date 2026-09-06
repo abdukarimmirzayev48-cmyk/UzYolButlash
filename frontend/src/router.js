@@ -19,7 +19,18 @@ function renderNotFound() {
   localizeDom(app);
 }
 
+// Sahifa ma'lumotini so'rab turgan paytda boshqasiga o'tilsa, eskisining
+// javobi kechikib kelib yangi sahifani bosib ketardi: menyudan bosasiz, bir
+// zumga yangi sahifa chiqadi, keyin o'rniga oldingisi qaytadi. Har chizish
+// o'z navbat raqamini oladi; javob kelganda raqam eskirgan bo'lsa, natija
+// tashlab yuboriladi va joriy manzil qaytadan chiziladi. Sahifalar `app`ga
+// o'zlari yozgani uchun kechikkan javobni yo'lda to'xtatib bo'lmaydi -- shu
+// sababdan tuzatish qayta chizish orqali bo'ladi.
+let renderSeq = 0;
+
 async function render() {
+  const seq = ++renderSeq;
+  const stale = () => seq !== renderSeq;
   try {
     const isPublicRequestRoute = location.pathname === "/talabnoma" || location.pathname === "/request";
     document.body.classList.toggle("public-layout", isPublicRequestRoute);
@@ -172,6 +183,8 @@ async function render() {
       await renderTransportsList();
     } else if (location.pathname === "/audit-log") {
       await renderAuditLog();
+    } else if (location.pathname === "/supply") {
+      await renderSupplyOverview();
     } else if (location.pathname === "/delivery") {
       await renderDeliveryOverview();
     } else if (location.pathname === "/tasks/new") {
@@ -223,6 +236,10 @@ async function render() {
     setupFormattedNumberInputs(app);
     setupFieldValidationMessages(app);
     bindSelectSearch(app);
+    if (stale()) {
+      render();
+      return;
+    }
     bindOpsFilterUi(app);
     bindRuDateFields(app);
     scrollToHashTarget();
@@ -238,6 +255,10 @@ async function render() {
       });
     });
   } catch (error) {
+    if (stale()) {
+      render();
+      return;
+    }
     app.innerHTML = `<div class="page"><div class="empty error">${esc(error.message)}</div></div>`;
   }
 }
