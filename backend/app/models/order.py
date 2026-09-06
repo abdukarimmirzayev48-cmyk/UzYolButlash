@@ -109,7 +109,6 @@ class Order(Base, TimestampMixin):
         back_populates="order", cascade="all, delete-orphan", order_by="DeliveryBatch.created_at.desc()"
     )
     customer_invoices: Mapped[list["CustomerInvoice"]] = relationship(back_populates="order")
-    procurement: Mapped["Procurement | None"] = relationship(back_populates="order", uselist=False, cascade="all, delete-orphan")
 
 
 class OrderItem(Base, TimestampMixin):
@@ -130,7 +129,6 @@ class OrderItem(Base, TimestampMixin):
     order: Mapped[Order] = relationship(back_populates="items")
     contract_item: Mapped["ContractItem"] = relationship(back_populates="order_items")
     delivery_batch_items: Mapped[list["DeliveryBatchItem"]] = relationship(back_populates="order_item")
-    procurement_item: Mapped["ProcurementItem | None"] = relationship(back_populates="order_item", uselist=False)
 
 
 class OrderSupplierOption(Base, TimestampMixin):

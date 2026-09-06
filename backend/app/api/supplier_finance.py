@@ -10,7 +10,7 @@ from backend.app.db.session import get_db
 from backend.app.models.delivery import DeliveryBatch, Logistics
 from backend.app.models.inventory import ExchangeTicket
 from backend.app.models.order import Order
-from backend.app.models.procurement import Procurement, Supplier, SupplierOffer, SupplierOfferItem
+from backend.app.models.supplier import Supplier
 from backend.app.models.supplier_finance import (
     SupplierFinanceDocument,
     SupplierFinanceNote,
@@ -107,15 +107,6 @@ def recalculate_payment(db: Session, payment: SupplierPayment) -> None:
 def validate_invoice_links(db: Session, invoice: SupplierInvoice) -> None:
     if not db.get(Supplier, invoice.supplier_id):
         raise HTTPException(status_code=400, detail="Ta'minotchi mavjud emas.")
-    procurement = None
-    if invoice.procurement_id:
-        procurement = db.get(Procurement, invoice.procurement_id)
-        if not procurement:
-            raise HTTPException(status_code=400, detail="Xarid mavjud emas.")
-        # Xarid buyurtmani biladi -- bog'lanish undan tiklanadi, foydalanuvchi
-        # bir narsani ikki marta ko'rsatmaydi.
-        if not invoice.order_id:
-            invoice.order_id = procurement.order_id
     # Hisob nimadandir kelib chiqishi kerak: buyurtmadan (mol xaridi),
     # birja ticketidan yoki partiyadan (transport). Uchalasi ham bo'sh hisob
     # havoda qoladi va uni hech qanday tannarxga qo'shib bo'lmaydi.
@@ -131,12 +122,6 @@ def validate_invoice_links(db: Session, invoice: SupplierInvoice) -> None:
         order = db.get(Order, invoice.order_id)
         if not order:
             raise HTTPException(status_code=400, detail="Buyurtma mavjud emas.")
-        if procurement and procurement.order_id != invoice.order_id:
-            raise HTTPException(status_code=422, detail="Xarid boshqa buyurtmaga tegishli.")
-    if invoice.supplier_offer_id:
-        offer = db.get(SupplierOffer, invoice.supplier_offer_id)
-        if not offer or offer.procurement_id != invoice.procurement_id or offer.supplier_id != invoice.supplier_id:
-            raise HTTPException(status_code=422, detail="Ta'minotchi taklifi ta'minotchi va xaridga mos kelishi kerak.")
     if invoice.delivery_batch_id:
         batch = db.get(DeliveryBatch, invoice.delivery_batch_id)
         if not batch or (invoice.order_id and batch.order_id != invoice.order_id):
@@ -154,9 +139,7 @@ def load_invoice(db: Session, invoice_id: int) -> SupplierInvoice:
         .options(
             selectinload(SupplierInvoice.supplier),
             selectinload(SupplierInvoice.order),
-            selectinload(SupplierInvoice.procurement),
             selectinload(SupplierInvoice.ticket),
-            selectinload(SupplierInvoice.supplier_offer).selectinload(SupplierOffer.items),
             selectinload(SupplierInvoice.delivery_batch),
             selectinload(SupplierInvoice.logistics),
             selectinload(SupplierInvoice.items),
@@ -240,7 +223,6 @@ def list_invoices(
     invoice_type: str | None = None,
     supplier_id: int | None = None,
     order_id: int | None = None,
-    procurement_id: int | None = None,
     overdue_only: bool = False,
 ):
     stmt = (
@@ -249,8 +231,6 @@ def list_invoices(
         # Tashqi bog'lanish: ticketdan kelgan hisobning xaridi yo'q, ichki
         # join uni ro'yxatdan jimgina tushirib yuborardi.
         .outerjoin(Order, SupplierInvoice.order_id == Order.id)
-        .outerjoin(Procurement, SupplierInvoice.procurement_id == Procurement.id)
-        .outerjoin(SupplierOffer, SupplierInvoice.supplier_offer_id == SupplierOffer.id)
         # Bog'lanish shartlari aniq yozildi: buyurtma qo'shilgach jadvallar
         # o'rtasida bir nechta tashqi kalit paydo bo'ldi va SQLAlchemy qaysi
         # biri ekanini o'zi topolmay qoldi.
@@ -258,9 +238,7 @@ def list_invoices(
         .options(
             selectinload(SupplierInvoice.supplier),
             selectinload(SupplierInvoice.order),
-            selectinload(SupplierInvoice.procurement),
             selectinload(SupplierInvoice.ticket),
-            selectinload(SupplierInvoice.supplier_offer).selectinload(SupplierOffer.items),
             selectinload(SupplierInvoice.delivery_batch),
         )
         .distinct()
@@ -268,7 +246,7 @@ def list_invoices(
     filters = []
     if search:
         value = f"%{search}%"
-        filters.append(or_(SupplierInvoice.invoice_number.ilike(value), Supplier.name.ilike(value), Supplier.inn.ilike(value), Order.order_number.ilike(value), Procurement.procurement_number.ilike(value), SupplierOffer.offer_number.ilike(value), DeliveryBatch.batch_number.ilike(value)))
+        filters.append(or_(SupplierInvoice.invoice_number.ilike(value), Supplier.name.ilike(value), Supplier.inn.ilike(value), Order.order_number.ilike(value), DeliveryBatch.batch_number.ilike(value)))
     if status_filter:
         filters.append(SupplierInvoice.status == status_filter)
     if invoice_type:
@@ -277,8 +255,6 @@ def list_invoices(
         filters.append(SupplierInvoice.order_id == order_id)
     if supplier_id:
         filters.append(SupplierInvoice.supplier_id == supplier_id)
-    if procurement_id:
-        filters.append(SupplierInvoice.procurement_id == procurement_id)
     if overdue_only:
         filters.append(SupplierInvoice.remaining_amount > 0)
         filters.append(SupplierInvoice.due_date < date.today())
@@ -304,13 +280,11 @@ def create_invoice(payload: SupplierInvoiceCreate, db: Session = Depends(get_db)
     for document_payload in payload.documents:
         doc_data = document_payload.model_dump()
         doc_data["supplier_id"] = doc_data.get("supplier_id") or invoice.supplier_id
-        doc_data["procurement_id"] = doc_data.get("procurement_id") or invoice.procurement_id
         doc_data["supplier_invoice_id"] = invoice.id
         db.add(SupplierFinanceDocument(**doc_data))
     if payload.initial_note:
         note_data = payload.initial_note.model_dump()
         note_data["supplier_id"] = note_data.get("supplier_id") or invoice.supplier_id
-        note_data["procurement_id"] = note_data.get("procurement_id") or invoice.procurement_id
         note_data["supplier_invoice_id"] = invoice.id
         db.add(SupplierFinanceNote(**note_data))
     db.flush()
@@ -351,15 +325,14 @@ def update_invoice(invoice_id: int, payload: SupplierInvoiceUpdate, db: Session 
 def delete_invoice(invoice_id: int, db: Session = Depends(get_db)):
     invoice = load_invoice(db, invoice_id)
     payments = [allocation.payment for allocation in invoice.allocations]
-    procurement_id = invoice.procurement_id
+    order_id = invoice.order_id
     db.delete(invoice)
     db.flush()
     for payment in payments:
         recalculate_payment(db, payment)
-    if procurement_id:
-        procurement = db.scalars(select(Procurement).where(Procurement.id == procurement_id).options(selectinload(Procurement.order))).first()
-        if procurement and procurement.order:
-            sync_order_status(procurement.order, db=db)
+    order = db.get(Order, order_id) if order_id else None
+    if order:
+        sync_order_status(order, db=db)
     db.commit()
     return Response(status_code=204)
 
@@ -519,78 +492,6 @@ def supplier_balance(supplier_id: int, db: Session = Depends(get_db)):
     return SupplierBalanceSummary(supplier_id=supplier_id, total_invoiced=total_invoiced, total_paid=total_paid, balance=money(total_invoiced - total_paid))
 
 
-@finance_router.post("/procurements/{procurement_id}/generate-invoices", response_model=list[SupplierInvoiceDetail], dependencies=[Depends(require_edit("moliya"))])
-def generate_invoices_from_procurement(procurement_id: int, payload: GenerateSupplierInvoicesRequest, db: Session = Depends(get_db)):
-    procurement = db.scalars(
-        select(Procurement)
-        .where(Procurement.id == procurement_id)
-        .options(selectinload(Procurement.offers).selectinload(SupplierOffer.items))
-    ).first()
-    if not procurement:
-        raise HTTPException(status_code=404, detail="Xarid topilmadi.")
-
-    selected: dict[int, list[tuple[SupplierOffer, SupplierOfferItem]]] = {}
-    for offer in procurement.offers:
-        if not offer.supplier_id:
-            continue
-        for item in offer.items:
-            if item.selected_quantity and item.selected_quantity > 0:
-                selected.setdefault(offer.supplier_id, []).append((offer, item))
-    if not selected:
-        raise HTTPException(status_code=422, detail="Tanlangan ta'minotchi taklifi bandlari topilmadi.")
-
-    created = []
-    invoice_date = payload.invoice_date or date.today()
-    due_date = payload.due_date or invoice_date
-    for supplier_id, rows in selected.items():
-        offer_ids = {offer.id for offer, _ in rows}
-        duplicate = db.scalars(
-            select(SupplierInvoice)
-            .join(SupplierInvoiceItem)
-            .where(
-                SupplierInvoice.procurement_id == procurement.id,
-                SupplierInvoice.supplier_id == supplier_id,
-                SupplierInvoiceItem.supplier_offer_item_id.in_([item.id for _, item in rows]),
-                SupplierInvoice.status != SupplierInvoiceStatus.cancelled,
-            )
-        ).first()
-        if duplicate:
-            raise HTTPException(status_code=422, detail="Tanlangan ta'minotchi taklifi bandlari uchun hisob-faktura allaqachon mavjud.")
-        invoice = SupplierInvoice(
-            supplier_id=supplier_id,
-            procurement_id=procurement.id,
-            supplier_offer_id=next(iter(offer_ids)) if len(offer_ids) == 1 else None,
-            delivery_batch_id=payload.delivery_batch_id,
-            invoice_number=f"SINV-{procurement.procurement_number}-{supplier_id}",
-            invoice_date=invoice_date,
-            due_date=due_date,
-            invoice_type=SupplierInvoiceType.product_purchase,
-            status=payload.status,
-            currency=procurement.currency,
-            created_by=payload.created_by,
-        )
-        db.add(invoice)
-        db.flush()
-        for _, offer_item in rows:
-            invoice.items.append(
-                SupplierInvoiceItem(
-                    supplier_invoice_id=invoice.id,
-                    procurement_item_id=offer_item.procurement_item_id,
-                    supplier_offer_item_id=offer_item.id,
-                    description=offer_item.product_name,
-                    product_name=offer_item.product_name,
-                    unit=offer_item.unit,
-                    quantity=offer_item.selected_quantity,
-                    unit_price=offer_item.unit_price,
-                    vat_rate=offer_item.vat_rate,
-                )
-            )
-        recalculate_invoice(db, invoice)
-        created.append(invoice)
-    db.commit()
-    return [get_invoice_detail(invoice.id, db) for invoice in created]
-
-
 @finance_router.post("/documents", response_model=SupplierFinanceDocumentRead, status_code=201, dependencies=[Depends(require_edit("moliya"))])
 def create_document(payload: SupplierFinanceDocumentCreate, db: Session = Depends(get_db)):
     data = payload.model_dump()
@@ -598,7 +499,6 @@ def create_document(payload: SupplierFinanceDocumentCreate, db: Session = Depend
         invoice = db.get(SupplierInvoice, data.get("supplier_invoice_id")) if data.get("supplier_invoice_id") else None
         payment = db.get(SupplierPayment, data.get("supplier_payment_id")) if data.get("supplier_payment_id") else None
         data["supplier_id"] = invoice.supplier_id if invoice else payment.supplier_id if payment else None
-        data["procurement_id"] = data.get("procurement_id") or (invoice.procurement_id if invoice else None)
     if not data.get("supplier_id"):
         raise HTTPException(status_code=422, detail="supplier_id majburiy.")
     document = SupplierFinanceDocument(**data)
@@ -615,7 +515,6 @@ def create_note(payload: SupplierFinanceNoteCreate, db: Session = Depends(get_db
         invoice = db.get(SupplierInvoice, data.get("supplier_invoice_id")) if data.get("supplier_invoice_id") else None
         payment = db.get(SupplierPayment, data.get("supplier_payment_id")) if data.get("supplier_payment_id") else None
         data["supplier_id"] = invoice.supplier_id if invoice else payment.supplier_id if payment else None
-        data["procurement_id"] = data.get("procurement_id") or (invoice.procurement_id if invoice else None)
     if not data.get("supplier_id"):
         raise HTTPException(status_code=422, detail="supplier_id majburiy.")
     note = SupplierFinanceNote(**data)

@@ -122,10 +122,6 @@ async function render() {
       await renderSupplierDetail(getSupplierIdFromPath());
     } else if (location.pathname === "/suppliers") {
       await renderSuppliersList();
-    } else if (/^\/procurements\/\d+$/.test(location.pathname)) {
-      await renderProcurementDetail(getProcurementIdFromPath());
-    } else if (location.pathname === "/procurements") {
-      await renderProcurementsList();
     } else if (location.pathname === "/customer-invoices/new") {
       await renderNewInvoice();
     } else if (/^\/customer-invoices\/\d+\/edit$/.test(location.pathname)) {

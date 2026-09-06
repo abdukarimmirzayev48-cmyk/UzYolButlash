@@ -30,7 +30,7 @@ async function renderSuppliersList() {
   const params = new URLSearchParams(location.search);
   const data = await api(`/api/suppliers?${params.toString()}`);
   const editable = canEdit("taminot");
-  app.innerHTML = opsListPage({className:"suppliers-ops-page",title:"Ta'minotchilar",tabs:[{label:"Ta'minotchilar",active:true},{label:"Xaridlar",path:"/procurements"},{label:"Ta'minotchi hisoblari",path:"/supplier-invoices"}],createPath:editable ? "/suppliers/new" : undefined,clearPath:"/suppliers",counter:`${fmt(data.total)} ta ta'minotchi`,formId:"supplier-search-form",filters:`<input name="search" placeholder="Ta'minotchi, STIR, telefon, email" value="${esc(params.get("search") || "")}" />`,headers:["Nomi","STIR","Telefon","Mas'ul shaxs","Hudud","Yuklash manzili","Oxirgi faollik",""],rows:data.items.map((s)=>`<tr><td><button class="ops-primary-link" data-nav="/suppliers/${s.id}">${fmt(s.name)}</button></td><td>${fmt(s.inn)}</td><td>${fmt(s.phone)}</td><td>${fmt(s.primary_contact?.full_name)}</td><td>${fmt(s.primary_region)}</td><td>${fmt(s.primary_loading_address)}</td><td>${fmtDate(s.last_activity)}</td><td><div class="ops-row-actions"><button class="link-btn" data-nav="/suppliers/${s.id}">Ochish</button>${editable ? `<button class="link-btn" data-nav="/suppliers/${s.id}/edit">Tahrirlash</button>` : ""}</div></td></tr>`).join(""),emptyText:"Ta'minotchilar topilmadi.",colspan:8,footer:opsFooter(data,"supplier")});
+  app.innerHTML = opsListPage({className:"suppliers-ops-page",title:"Ta'minotchilar",tabs:[{label:"Ta'minotchilar",active:true},{label:"Ta'minotchi hisoblari",path:"/supplier-invoices"}],createPath:editable ? "/suppliers/new" : undefined,clearPath:"/suppliers",counter:`${fmt(data.total)} ta ta'minotchi`,formId:"supplier-search-form",filters:`<input name="search" placeholder="Ta'minotchi, STIR, telefon, email" value="${esc(params.get("search") || "")}" />`,headers:["Nomi","STIR","Telefon","Mas'ul shaxs","Hudud","Yuklash manzili","Oxirgi faollik",""],rows:data.items.map((s)=>`<tr><td><button class="ops-primary-link" data-nav="/suppliers/${s.id}">${fmt(s.name)}</button></td><td>${fmt(s.inn)}</td><td>${fmt(s.phone)}</td><td>${fmt(s.primary_contact?.full_name)}</td><td>${fmt(s.primary_region)}</td><td>${fmt(s.primary_loading_address)}</td><td>${fmtDate(s.last_activity)}</td><td><div class="ops-row-actions"><button class="link-btn" data-nav="/suppliers/${s.id}">Ochish</button>${editable ? `<button class="link-btn" data-nav="/suppliers/${s.id}/edit">Tahrirlash</button>` : ""}</div></td></tr>`).join(""),emptyText:"Ta'minotchilar topilmadi.",colspan:8,footer:opsFooter(data,"supplier")});
   bindOpsSearch("supplier-search-form","/suppliers",["search"]);
   bindOpsPagination("supplier","/suppliers");
 }
@@ -82,7 +82,6 @@ async function renderExchangeTicketsList() {
     title: "Birja ticketlari",
     tabs: [
       { label: "Ta'minotchilar", path: "/suppliers" },
-      { label: "Xaridlar", path: "/procurements" },
       { label: "Birja ticketlari", active: true },
       { label: "Zaxira", path: "/stock" },
     ],
@@ -314,10 +313,10 @@ async function renderSupplierDetail(id) {
   if (!s.contacts?.length) warnings.push("Kontaktlar kiritilmagan.");
   if (!s.bank_accounts?.length) warnings.push("Bank rekvizitlari kiritilmagan.");
   if (!hasDocs(s)) warnings.push("Hujjatlar yuklanmagan.");
-  const headerActions = [{label:"Xaridlar tarixi",path:"/procurements",primary:true}];
-  if (editable) headerActions.push({label:"Birja ticketi",path:"/exchange-tickets/new"});
+  const headerActions = [];
+  if (editable) headerActions.push({label:"Birja ticketi",path:"/exchange-tickets/new",primary:true});
   headerActions.push({label:"Hujjat yuklash",path:`/suppliers/${s.id}#documents`});
-  const nextAction = !s.contacts?.length?{title:"Kontakt qo'shing",...(editable?{button:"To'liq tahrirlash",path:`/suppliers/${s.id}/edit`}:{})}:!s.bank_accounts?.length?{title:"Bank rekvizitlarini qo'shing",...(editable?{button:"To'liq tahrirlash",path:`/suppliers/${s.id}/edit`}:{})}:!hasDocs(s)?{title:"Ta'minotchi hujjatini yuklang",button:"Hujjatlar",path:`/suppliers/${s.id}#documents`}:{title:"Ta'minotchi kartasi tayyor",button:"Xaridlar",path:"/procurements",done:true};
+  const nextAction = !s.contacts?.length?{title:"Kontakt qo'shing",...(editable?{button:"To'liq tahrirlash",path:`/suppliers/${s.id}/edit`}:{})}:!s.bank_accounts?.length?{title:"Bank rekvizitlarini qo'shing",...(editable?{button:"To'liq tahrirlash",path:`/suppliers/${s.id}/edit`}:{})}:!hasDocs(s)?{title:"Ta'minotchi hujjatini yuklang",button:"Hujjatlar",path:`/suppliers/${s.id}#documents`}:{title:"Ta'minotchi kartasi tayyor",button:"Bizning zaxira",path:"/stock",done:true};
   app.innerHTML = `<div class="page">${workflowHeader({title:s.name,subtitle:subtitleLine([{value:"STIR"},{value:s.inn,raw:true},{value:"Telefon"},{value:s.phone,raw:true}]),backPath:"/suppliers",fullEditPath:editable ? `/suppliers/${s.id}/edit` : "",actions:headerActions})}${workflowStatusGrid([["Kontaktlar",statusChip(s.contacts?.length?{label:`${s.contacts.length} ta`,tone:"success"}:{label:"Kutilmoqda",tone:"warning"})],["Manzillar",statusChip(s.addresses?.length?{label:`${s.addresses.length} ta`,tone:"success"}:{label:"Kutilmoqda",tone:"muted"})],["Bizning zaxira",statusChip(supplierStock.items.length?{label:`${supplierStock.items.length} partiya`,tone:"success"}:{label:"Yo'q",tone:"muted"})],["Hujjatlar",statusChip(hasDocs(s)?{label:"Yuklangan",tone:"success"}:{label:"Kutilmoqda",tone:"warning"})]])}${summaryCards([["Jami mahsulot miqdori", fmtQty(supplierStock.items.reduce((sum, lot) => sum + numberValue(lot.quantity_initial), 0))], ["Mavjud zaxira", fmtQty(supplierStock.items.reduce((sum, lot) => sum + numberValue(lot.quantity_available), 0))], ["Band qilingan zaxira", fmtQty(supplierStock.items.reduce((sum, lot) => sum + numberValue(lot.quantity_reserved), 0))], ["To'lov muddati yaqin", fmt(supplierStock.items.filter((lot) => { const d = daysUntil(lot.due_date); return typeof d === "number" && d <= 7; }).length)]])}${workflowWarningsPanel(warnings)}${workflowNextActionPanel(nextAction)}${workflowTabs("general",[["general","Umumiy"],["stock","Bizning zaxira"],["contacts","Kontaktlar"],["addresses","Manzillar"],["bank","Rekvizitlar"],["documents","Hujjatlar"],["history","Tarix"]],"supplier-tab")}${section("Umumiy ma'lumotlar", detailList([["Nomi",s.name],["STIR",s.inn],["OKED",s.oked],["Telefon",s.phone],["Email",s.email],["Izoh",s.notes],["Yaratilgan",fmtDate(s.created_at)],["Yangilangan",fmtDate(s.updated_at)]]))}${section("Bizning zaxira", tableOrEmpty(supplierStock.items,["Mahsulot","Ticket","Dastlabki miqdor","Mavjud","Band qilingan","Birlik xarid narxi","To'lov muddati","Status"],(lot)=>`<tr><td><button class="link-btn" data-nav="/stock/${lot.id}">${fmt(lot.product_name)}</button></td><td>${fmt(lot.ticket_number)}</td><td>${fmtQty(lot.quantity_initial,lot.unit)}</td><td>${fmtQty(lot.quantity_available,lot.unit)}</td><td>${fmtQty(lot.quantity_reserved,lot.unit)}</td><td>${fmtMoney(lot.unit_cost)}</td><td>${fmt(lot.due_date)}</td><td>${statusBadge(lot.stock_status)}</td></tr>`,"Bu ta'minotchida kompaniya zaxirasi yo'q."))}${section("Kontaktlar", tableOrEmpty(s.contacts,["Ism","Lavozim","Telefon","Email","Asosiy"],(c)=>`<tr><td>${fmt(c.full_name)}</td><td>${fmt(c.position)}</td><td>${fmt(c.phone)}</td><td>${fmt(c.email)}</td><td>${c.is_primary ? '<span class="pill">Asosiy</span>' : dash}</td></tr>`,"Kontaktlar yo'q."))}${section("Manzillar", tableOrEmpty(s.addresses,["Turi","Hudud","Tuman","Manzil"],(a)=>`<tr><td>${fmt(optionLabel(supplierAddressTypes,a.address_type))}</td><td>${fmt(a.region)}</td><td>${fmt(a.district)}</td><td>${fmt(a.address)}</td></tr>`,"Manzillar yo'q."))}${section("Rekvizitlar", tableOrEmpty(s.bank_accounts,["Bank","MFO","Hisob raqami","Asosiy"],(b)=>`<tr><td>${fmt(b.bank_name)}</td><td>${fmt(b.mfo)}</td><td>${fmt(b.account_number)}</td><td>${b.is_primary ? '<span class="pill">Asosiy</span>' : dash}</td></tr>`,"Bank rekvizitlari yo'q."))}<div id="documents">${section("Hujjatlar", tableOrEmpty(s.documents,["Hujjat nomi","Turi","Yuklangan"],(d)=>`<tr><td>${fmt(d.title)}</td><td>${fmt(d.document_type)}</td><td>${fmtDate(d.uploaded_at)}</td></tr>`,"Hujjatlar yo'q."))}</div>${section("Tarix", tableOrEmpty(s.notes_history,["Sana","Foydalanuvchi","Izoh"],(n)=>`<tr><td>${fmtDate(n.created_at)}</td><td>${fmt(n.created_by)}</td><td>${fmt(n.note)}</td></tr>`,"Tarix yozuvlari yo'q."))}</div>`;
 }
 
@@ -332,451 +331,6 @@ async function fetchSuppliersOptions(selectedId = null) {
 // oladi -- shuning uchun fayl va ekran hech qachon farq qilmaydi.
 
 const PROCUREMENT_FILTER_KEYS = ["search", "status", "client_id", "product", "date_from", "date_to", "amount_min", "amount_max"];
-
-const PROCUREMENT_SORT_COLUMNS = [
-  ["number", "Xarid №"],
-  ["date", "Sana"],
-  ["order", "Buyurtma"],
-  ["client", "Mijoz"],
-];
-
-// Eski yozuvlarda qisqartirilgan bosqichlar uchraydi; ular ham nomi bilan
-// ko'rinishi kerak, aks holda jadvalda xom kalit chiqadi.
-function procurementStatusLabel(key) {
-  return optionLabel(procurementStatuses, key) || optionLabel(procurementLegacyStatuses, key) || key;
-}
-
-function procurementSortHeader(key, label, params) {
-  const active = (params.get("sort") || "") === key;
-  const currentOrder = active && params.get("order") === "desc" ? "desc" : "asc";
-  const nextOrder = active && currentOrder === "asc" ? "desc" : "asc";
-  // Strelka o'z tugunida: lug'at butun matn tugunini solishtiradi, yorliqqa
-  // yopishgan belgi hech narsaga mos kelmaydi.
-  const arrow = active ? (currentOrder === "desc" ? "↓" : "↑") : "⇅";
-  return `<button type="button" class="ops-sort${active ? " active" : ""}" data-proc-sort="${key}" data-proc-order="${nextOrder}">
-    <span>${label}</span><span class="ops-sort-arrow" data-noloc>${arrow}</span>
-  </button>`;
-}
-
-function procurementChipSelect(name, label, options, selected) {
-  const chosen = options.filter(([value]) => selected.includes(String(value)));
-  return `<label class="filter-field">
-    <span class="filter-label">${label}</span>
-    <details class="chip-select" data-chip-select="${name}">
-      <summary>
-        <span class="chip-box">${chosen.length
-          ? chosen.map(([value, text]) => `<span class="chip">${text}<button type="button" data-chip-remove="${esc(value)}" aria-label="Olib tashlash"><span data-noloc>×</span></button></span>`).join("")
-          : `<span class="chip-placeholder">Barchasi</span>`}</span>
-        <span class="chip-caret" data-noloc>▾</span>
-      </summary>
-      <div class="chip-menu">${options.map(([value, text]) => `
-        <label class="chip-option"><input type="checkbox" value="${esc(value)}" ${selected.includes(String(value)) ? "checked" : ""} /><span>${text}</span></label>`).join("")}</div>
-    </details>
-  </label>`;
-}
-
-function procurementFilterPanel(params, overview) {
-  const statuses = (params.get("status") || "").split(",").filter(Boolean);
-  const products = (params.get("product") || "").split(",").filter(Boolean);
-  const clientId = params.get("client_id") || "";
-  const clientOptions = (overview.clients || []).map((client) => `<option value="${client.id}" ${String(client.id) === clientId ? "selected" : ""}>${esc(client.name)}</option>`).join("");
-  return `<div class="filter-panel" data-filter-panel hidden>
-    <div class="filter-panel-head"><strong>Filtrlar</strong><button type="button" class="link-btn" data-filter-reset>Tozalash</button></div>
-    <form id="procurement-filter-form">
-      ${procurementChipSelect("status", "Status", procurementStatuses, statuses)}
-      <label class="filter-field">
-        <span class="filter-label">Sana oralig'i</span>
-        <span class="filter-range">
-          <input type="date" name="date_from" value="${esc(params.get("date_from") || "")}" />
-          <span class="filter-dash" data-noloc>–</span>
-          <input type="date" name="date_to" value="${esc(params.get("date_to") || "")}" />
-        </span>
-      </label>
-      <label class="filter-field">
-        <span class="filter-label">Mijoz</span>
-        <span class="filter-control">
-          ${selectSearch("client_id", "Qidirish yoki tanlash")}
-          <select name="client_id"><option value="">Barcha mijozlar</option>${clientOptions}</select>
-        </span>
-      </label>
-      ${procurementChipSelect("product", "Mahsulot", (overview.products || []).map((name) => [name, esc(name)]), products)}
-      <label class="filter-field">
-        <span class="filter-label">Summa</span>
-        <span class="filter-range">
-          ${moneyInputField("amount_min", "", params.get("amount_min") || "").replace("<label>", "").replace("</label>", "")}
-          <span class="filter-dash" data-noloc>–</span>
-          ${moneyInputField("amount_max", "", params.get("amount_max") || "").replace("<label>", "").replace("</label>", "")}
-        </span>
-      </label>
-      <div class="filter-panel-foot">
-        <button type="button" class="btn" data-filter-cancel>Bekor qilish</button>
-        <button type="submit" class="btn primary">Natijalarni ko'rsatish</button>
-      </div>
-    </form>
-  </div>`;
-}
-
-function procurementActiveChips(params, overview) {
-  const chips = [];
-  // Yorliq va qiymat bitta flex elementida: aks holda ular orasidagi bo'shliq
-  // «Status  : Qoralama» bo'lib ko'rinardi.
-  const push = (key, label, value) => chips.push(`<span class="active-chip"><span class="chip-text"><span>${label}</span><span data-noloc>: ${esc(value)}</span></span><button type="button" data-chip-clear="${key}" aria-label="Olib tashlash"><span data-noloc>×</span></button></span>`);
-  const statuses = (params.get("status") || "").split(",").filter(Boolean);
-  if (statuses.length) push("status", "Status", statuses.map((key) => localizeText(procurementStatusLabel(key))).join(", "));
-  const from = params.get("date_from");
-  const to = params.get("date_to");
-  if (from || to) push("date_from,date_to", "Sana", `${from ? fmtDayOnly(from) : "…"} – ${to ? fmtDayOnly(to) : "…"}`);
-  const clientId = params.get("client_id");
-  if (clientId) {
-    const client = (overview.clients || []).find((row) => String(row.id) === clientId);
-    push("client_id", "Mijoz", client ? client.name : clientId);
-  }
-  const products = (params.get("product") || "").split(",").filter(Boolean);
-  if (products.length) push("product", "Mahsulot", products.join(", "));
-  const min = params.get("amount_min");
-  const max = params.get("amount_max");
-  if (min || max) push("amount_min,amount_max", "Summa", `${min ? fmtMoney(min) : "…"} – ${max ? fmtMoney(max) : "…"}`);
-  if (!chips.length) return "";
-  return `<div class="active-chips">${chips.join("")}<button type="button" class="link-btn" data-filter-reset>Barchasini tozalash</button></div>`;
-}
-
-function procurementStatCards(stats = {}) {
-  const cards = [
-    ["cart", "Jami xaridlar", fmt(stats.total), "Barcha vaqt"],
-    ["pulse", "Faol jarayonlar", fmt(stats.active_recent), "Oxirgi 30 kun"],
-    ["bag", "Jami summa", fmtMoney(stats.total_amount), "Barcha vaqt"],
-    ["clock", "Tasdiq kutilmoqda", fmt(stats.awaiting_confirmation), "Oxirgi 30 kun"],
-  ];
-  return `<div class="stat-grid">${cards.map(([icon, label, value, hint]) => `
-    <div class="stat-card">
-      <span class="stat-icon stat-icon-${icon}" data-noloc></span>
-      <span class="stat-body"><span class="stat-label">${label}</span><strong class="stat-value">${value}</strong><span class="stat-hint">${hint}</span></span>
-    </div>`).join("")}</div>`;
-}
-
-function procurementRow(item) {
-  const offers = numberValue(item.offers_count);
-  return `<tr>
-    <td><a class="ops-primary-link" href="/procurements/${item.id}" data-nav="/procurements/${item.id}">${fmt(item.procurement_number)}</a></td>
-    <td data-noloc>${fmtDayOnly(item.procurement_date)}</td>
-    <td data-noloc>${fmt(item.order?.order_number)}</td>
-    <td>${fmt(item.client?.name)}</td>
-    <td>${fmt(item.product)}</td>
-    <td class="ops-num">${fmtQty(item.required_quantity, item.unit)}</td>
-    <td class="ops-money">${fmtMoney(item.purchase_amount)}</td>
-    <td class="ops-num ${offers ? "" : "ops-warning"}">${fmt(offers)}</td>
-    <td>${statusBadge(item.status)}</td>
-  </tr>`;
-}
-
-function procurementFilterNote(params, overview) {
-  const parts = [];
-  if (params.get("search")) parts.push(`Qidiruv: ${params.get("search")}`);
-  const statuses = (params.get("status") || "").split(",").filter(Boolean);
-  if (statuses.length) parts.push(`Status: ${statuses.map((key) => procurementStatusLabel(key)).join(", ")}`);
-  if (params.get("date_from") || params.get("date_to")) parts.push(`Sana: ${params.get("date_from") || "…"} – ${params.get("date_to") || "…"}`);
-  if (params.get("client_id")) {
-    const client = (overview.clients || []).find((row) => String(row.id) === params.get("client_id"));
-    parts.push(`Mijoz: ${client ? client.name : params.get("client_id")}`);
-  }
-  if (params.get("product")) parts.push(`Mahsulot: ${params.get("product")}`);
-  if (params.get("amount_min") || params.get("amount_max")) parts.push(`Summa: ${params.get("amount_min") || "…"} – ${params.get("amount_max") || "…"}`);
-  return parts.join("; ");
-}
-
-async function renderProcurementsList() {
-  const params = new URLSearchParams(location.search);
-  const [data, overview] = await Promise.all([
-    api(`/api/procurements?${params.toString()}`),
-    api("/api/procurements/overview"),
-  ]);
-  const activeCount = PROCUREMENT_FILTER_KEYS.filter((key) => key !== "search" && params.get(key)).length;
-  const sortable = Object.fromEntries(PROCUREMENT_SORT_COLUMNS.map(([key, label]) => [key, procurementSortHeader(key, label, params)]));
-
-  app.innerHTML = `<div class="page ops-page procurements-page">
-    <nav class="breadcrumb" aria-label="Ta'minot"><span>Ta'minot</span><span data-noloc> / </span><span>Xaridlar</span></nav>
-    <div class="page-header">
-      <div class="page-title">
-        <h1>Xaridlar</h1>
-        <p>Birjadan olinmagan mol uchun ta'minotchi qidirish</p>
-      </div>
-      <div class="actions"><button type="button" class="btn" data-procurement-export>Excel eksport</button></div>
-    </div>
-    <div class="empty compact">
-      <p>Xarid endi har buyurtmaga o'z-o'zidan ochilmaydi.</p>
-      <p>Mol birja ticketidan zaxiraga tushadi va buyurtma o'sha yerdan bajariladi. Xarid faqat zaxirada yo'q mol uchun ta'minotchi qidirilganda kerak bo'ladi.</p>
-    </div>
-    ${procurementStatCards(overview.stats)}
-    <div class="ops-commandbar">
-      <form class="ops-search" id="procurement-search-form">
-        <input type="search" name="search" placeholder="Xarid, buyurtma yoki mijoz bo'yicha qidirish" value="${esc(params.get("search") || "")}" />
-        <button class="ops-tool-btn primary" type="submit">Qidirish</button>
-      </form>
-      <div class="ops-command-right">
-        <div class="filter-anchor">
-          <button type="button" class="ops-tool-btn" data-filter-toggle aria-expanded="false">Filtrlar${activeCount ? ` <span class="filter-badge" data-noloc>${activeCount}</span>` : ""}</button>
-          ${procurementFilterPanel(params, overview)}
-        </div>
-        <span class="ops-counter">${fmt(data.total)} ta natija</span>
-      </div>
-    </div>
-    ${procurementActiveChips(params, overview)}
-    <section class="ops-table-card"><table class="ops-table">
-      <thead><tr>
-        <th>${sortable.number}</th><th>${sortable.date}</th><th>${sortable.order}</th><th>${sortable.client}</th>
-        <th>Mahsulot</th><th class="ops-num">Miqdor</th><th class="ops-num">Summa</th><th class="ops-num">Takliflar</th><th>Status</th>
-      </tr></thead>
-      <tbody>${data.items.length ? data.items.map(procurementRow).join("") : `<tr><td colspan="9"><div class="empty">Xaridlar topilmadi.</div></td></tr>`}</tbody>
-    </table></section>
-    ${opsFooter(data, "procurement")}
-  </div>`;
-
-  bindOpsSearch("procurement-search-form", "/procurements", ["search"]);
-  bindOpsPagination("procurement", "/procurements");
-  bindProcurementFilters(params, overview);
-}
-
-function procurementNavigate(mutate) {
-  const next = new URLSearchParams(location.search);
-  mutate(next);
-  // Filtr o'zgargach birinchi sahifaga qaytamiz: 3-sahifada turib filtrni
-  // toraytirish bo'sh ekran beradi va u xatoga o'xshaydi.
-  next.delete("procurement_page");
-  navigate(`/procurements${next.toString() ? `?${next}` : ""}`);
-}
-
-function bindProcurementFilters(params, overview) {
-  const panel = app.querySelector("[data-filter-panel]");
-  const toggle = app.querySelector("[data-filter-toggle]");
-  toggle?.addEventListener("click", () => {
-    panel.hidden = !panel.hidden;
-    toggle.setAttribute("aria-expanded", String(!panel.hidden));
-  });
-  app.querySelector("[data-filter-cancel]")?.addEventListener("click", () => {
-    panel.hidden = true;
-    toggle?.setAttribute("aria-expanded", "false");
-  });
-  app.querySelectorAll("[data-filter-reset]").forEach((button) => button.addEventListener("click", () => {
-    procurementNavigate((next) => PROCUREMENT_FILTER_KEYS.forEach((key) => next.delete(key)));
-  }));
-  app.querySelectorAll("[data-chip-clear]").forEach((button) => button.addEventListener("click", () => {
-    procurementNavigate((next) => button.dataset.chipClear.split(",").forEach((key) => next.delete(key)));
-  }));
-  app.querySelectorAll("[data-proc-sort]").forEach((button) => button.addEventListener("click", () => {
-    procurementNavigate((next) => {
-      next.set("sort", button.dataset.procSort);
-      next.set("order", button.dataset.procOrder);
-    });
-  }));
-
-  // Chip ko'p tanlovi: belgilangan qutichalar oynadagi chiplar bilan bir xil
-  // qiymatni saqlaydi, natija esa faqat «Natijalarni ko'rsatish» bosilganda
-  // manzilga yoziladi.
-  app.querySelectorAll("[data-chip-select]").forEach((holder) => {
-    holder.querySelectorAll("[data-chip-remove]").forEach((button) => button.addEventListener("click", (event) => {
-      event.preventDefault();
-      event.stopPropagation();
-      const box = holder.querySelector(`input[value="${CSS.escape(button.dataset.chipRemove)}"]`);
-      if (box) box.checked = false;
-      refreshChipSummary(holder);
-    }));
-    holder.querySelectorAll("input[type=checkbox]").forEach((box) => box.addEventListener("change", () => refreshChipSummary(holder)));
-  });
-
-  app.querySelector("#procurement-filter-form")?.addEventListener("submit", (event) => {
-    event.preventDefault();
-    const form = event.currentTarget;
-    procurementNavigate((next) => {
-      app.querySelectorAll("[data-chip-select]").forEach((holder) => {
-        const values = [...holder.querySelectorAll("input[type=checkbox]")].filter((box) => box.checked).map((box) => box.value);
-        if (values.length) next.set(holder.dataset.chipSelect, values.join(","));
-        else next.delete(holder.dataset.chipSelect);
-      });
-      const setOrDelete = (key, value) => (value ? next.set(key, value) : next.delete(key));
-      setOrDelete("date_from", field(form, "date_from"));
-      setOrDelete("date_to", field(form, "date_to"));
-      setOrDelete("client_id", field(form, "client_id"));
-      setOrDelete("amount_min", normalizeNumberInputValue(field(form, "amount_min")));
-      setOrDelete("amount_max", normalizeNumberInputValue(field(form, "amount_max")));
-    });
-  });
-
-  app.querySelector("[data-procurement-export]")?.addEventListener("click", () => {
-    const query = new URLSearchParams(location.search);
-    query.delete("procurement_page");
-    query.set("lang", currentLang());
-    query.set("filter_note", procurementFilterNote(params, overview));
-    window.location.href = `/api/procurements/export.xlsx?${query.toString()}`;
-  });
-
-  bindSelectSearch(app);
-}
-
-function refreshChipSummary(holder) {
-  const box = holder.querySelector(".chip-box");
-  const chosen = [...holder.querySelectorAll("input[type=checkbox]")].filter((input) => input.checked);
-  box.innerHTML = chosen.length
-    ? chosen.map((input) => `<span class="chip">${esc(input.parentElement.textContent.trim())}<button type="button" data-chip-remove="${esc(input.value)}" aria-label="Olib tashlash"><span data-noloc>×</span></button></span>`).join("")
-    : `<span class="chip-placeholder">Barchasi</span>`;
-  localizeDom(box);
-  box.querySelectorAll("[data-chip-remove]").forEach((button) => button.addEventListener("click", (event) => {
-    event.preventDefault();
-    event.stopPropagation();
-    const input = holder.querySelector(`input[value="${CSS.escape(button.dataset.chipRemove)}"]`);
-    if (input) input.checked = false;
-    refreshChipSummary(holder);
-  }));
-}
-
-async function renderProcurementDetail(id) {
-  const p = await api(`/api/procurements/${id}`);
-  const editable = canEdit("taminot");
-  const supplierOptions = editable ? await fetchSuppliersOptions() : "";
-  const warnings = [];
-  if (!p.offers?.length) warnings.push("Ta'minotchi takliflari hali kiritilmagan.");
-  if (numberValue(p.summary?.remaining_quantity) > 0) warnings.push("Tanlangan miqdor buyurtma talabini to'liq yopmagan.");
-  if (!p.summary?.selected_suppliers_count) warnings.push("Ta'minotchi hali tasdiqlanmagan.");
-  const nextAction = !p.offers?.length
-    ? { title: "Ta'minotchi taklifini qo'shing", ...(editable ? { button: "Taklif qo'shish", path: `/procurements/${p.id}#supplier-offer-form` } : {}) }
-    : numberValue(p.summary?.remaining_quantity) > 0
-      ? { title: "Takliflardan miqdor tanlang", button: "Takliflarni ko'rish", path: `/procurements/${p.id}` }
-      : { title: "Xarid partiya yaratishga tayyor", button: "Buyurtmani ochish", path: `/orders/${p.order_id}?tab=batches`, done: true };
-  const headerActions = [{label:"Buyurtmani ochish",path:`/orders/${p.order_id}`}];
-  if (editable) headerActions.push({label:"Taklif qo'shish",path:`/procurements/${p.id}#supplier-offer-form`,primary:true});
-  app.innerHTML = `<div class="page">${workflowHeader({title:p.procurement_number,subtitle:subtitleLine([{value:p.client?.name,raw:true},{value:p.order?.order_number,raw:true},{value:procurementStatusLabel(p.status)}]),backPath:"/procurements",actions:headerActions})}${workflowStatusGrid([["Xarid holati",statusBadge(p.status)],["Takliflar holati",statusChip(p.offers?.length?{label:`${p.offers.length} ta taklif`,tone:"success"}:{label:"Taklif kutilmoqda",tone:"warning"})],["Tanlangan miqdor",fmtQty(p.summary?.selected_quantity)],["Ta'minotchi tasdiqi",statusChip(p.summary?.selected_suppliers_count?{label:"Tasdiqlangan",tone:"success"}:{label:"Kutilmoqda",tone:"muted"})]])}${summaryCards([["Talab miqdori",fmtQty(p.summary?.required_quantity)],["Tanlangan",fmtQty(p.summary?.selected_quantity)],["Qoldiq",fmtQty(p.summary?.remaining_quantity)],["Takliflar",fmt(p.summary?.offers_count)],["Ta'minotchilar",fmt(p.summary?.selected_suppliers_count)],["Yakuniy xarid",fmtMoney(p.summary?.final_purchase_amount)]])}${workflowWarningsPanel(warnings)}${workflowNextActionPanel(nextAction)}${workflowTabs("items",[["items","Mahsulotlar"],["offers","Takliflar"],["finance","Moliya"],["history","Tarix"]],"procurement-tab")}${section("Mahsulotlar", tableOrEmpty(p.items,["Mahsulot","Birlik","Talab miqdori","Xarid qilingan"],(item)=>`<tr><td>${fmt(item.product_name)}</td><td>${fmt(item.unit)}</td><td>${fmtQty(item.required_quantity,item.unit)}</td><td>${fmtQty(item.purchased_quantity,item.unit)}</td></tr>`,"Mahsulotlar topilmadi."))}${section("Takliflar", `${editable ? `<div class="actions"><button class="btn primary" type="button" onclick="document.querySelector('#supplier-offer-box')?.setAttribute('open','open'); document.querySelector('#supplier-offer-form')?.scrollIntoView({behavior:'smooth',block:'start'});">Taklif qo'shish</button></div>` : ""}${tableOrEmpty(p.offers,["Taklif","Ta'minotchi","Sana","Status","Jami","Mahsulotlar","Amallar"],(offer)=>`<tr><td>${fmt(offer.offer_number)}</td><td>${fmt(offer.supplier_name)}</td><td>${fmt(offer.offer_date)}</td><td>${fmt(optionLabel(supplierOfferStatuses,offer.status))}</td><td>${fmtMoney(offer.total_amount)}</td><td>${offer.items.map((item)=>`<div class="inline-edit"><span>${fmt(item.product_name)}: ${fmtQty(item.offered_quantity,item.unit)} taklif, ${fmtQty(item.selected_quantity,item.unit)} tanlangan</span>${editable ? `<input type="number" step="any" value="${esc(item.selected_quantity)}" data-offer-item-qty="${item.id}" /><button class="link-btn" data-offer-item-select="${item.id}">Miqdorni yangilash</button>` : ""}</div>`).join("")}</td><td>${editable ? `<button class="link-btn" data-offer-confirm="${offer.id}">Tasdiqlash</button>` : ""}</td></tr>`,"Takliflar hali kiritilmagan.")}`)}${editable ? section("Ta'minotchi taklifini qo'shish", `<details id="supplier-offer-box" class="action-form-box"><summary>Taklif formasini ochish</summary><form id="supplier-offer-form"><div class="grid"><label>Ta'minotchi<select name="supplier_id"><option value="">Ro'yxatdan tanlanmagan</option>${supplierOptions}</select></label>${textField("supplier_name","Ta'minotchi nomi")}${textField("offer_number","Taklif raqami")}${textField("offer_date","Taklif sanasi",todayIso(),"date")}${selectField("status","Status",supplierOfferStatuses,"received")}${textField("estimated_delivery_cost","Taxminiy yetkazish xarajati",0,"number")}${textArea("delivery_terms","Yetkazib berish shartlari")}${textArea("payment_terms","To'lov shartlari")}${textArea("notes","Izoh")}</div><div id="supplier-offer-items">${p.items.map(procurementOfferItemRow).join("")}</div><div class="form-footer"><button class="btn primary">Taklifni saqlash</button></div></form></details>`) : ""}${section("Moliya", detailList([["Yakuniy xarid summasi", fmtMoney(p.summary?.final_purchase_amount)], ["Ta'minotchilar soni", p.summary?.selected_suppliers_count], ["Buyurtma", p.order?.order_number]]))}${editable ? section("Holatni o'zgartirish", procurementTransitionsHtml(p)) : ""}${section("Izohlar tarixi", tableOrEmpty(p.notes_history, ["Sana", "Foydalanuvchi", "Izoh"], (item) => `<tr><td>${fmtDate(item.created_at)}</td><td>${fmt(item.created_by)}</td><td>${fmt(item.note)}</td></tr>`, "Izohlar hali yo'q."))}${section("Tarix", workflowTimeline([["Yaratildi", fmtDate(p.created_at)], ["Holat", procurementStatusLabel(p.status)], ["Yangilandi", fmtDate(p.updated_at)]]))}</div>`;
-  bindProcurementStatusActions(p);
-  document.querySelector("#supplier-offer-form")?.addEventListener("submit", async (event) => {
-    event.preventDefault();
-    const form = event.currentTarget;
-    const selected = form.elements.supplier_id;
-    const selectedName = selected.value ? selected.options[selected.selectedIndex].textContent : field(form, "supplier_name");
-    const payload = { supplier_id: selected.value ? Number(selected.value) : null, supplier_name: selectedName, offer_number: field(form, "offer_number"), offer_date: field(form, "offer_date"), status: field(form, "status"), currency: "UZS", estimated_delivery_cost: field(form, "estimated_delivery_cost") || "0", delivery_terms: field(form, "delivery_terms"), payment_terms: field(form, "payment_terms"), notes: field(form, "notes"), items: collectSupplierOfferItems(form) };
-    try {
-      await api(`/api/procurements/${id}/offers`, { method: "POST", body: JSON.stringify(payload) });
-      showToast("Ta'minotchi taklifi saqlandi.");
-      await renderProcurementDetail(id);
-    } catch (error) { showToast(error.message, true); }
-  });
-  app.querySelectorAll("[data-offer-item-select]").forEach((button) => button.addEventListener("click", async () => {
-    const itemId = button.dataset.offerItemSelect;
-    const value = normalizeNumberInputValue(app.querySelector(`[data-offer-item-qty="${itemId}"]`).value);
-    try {
-      await api(`/api/procurements/offer-items/${itemId}?selected_quantity=${encodeURIComponent(value)}`, { method: "PATCH" });
-      showToast("Tanlov yangilandi.");
-      await renderProcurementDetail(id);
-    } catch (error) { showToast(error.message, true); }
-  }));
-  app.querySelectorAll("[data-offer-confirm]").forEach((button) => button.addEventListener("click", async () => {
-    try {
-      await api(`/api/procurements/${id}/offers/${button.dataset.offerConfirm}/confirm`, { method: "POST" });
-      showToast("Ta'minotchi taklifi tasdiqlandi.");
-      await renderProcurementDetail(id);
-    } catch (error) { showToast(error.message, true); }
-  }));
-}
-
-// Taklif formasidagi bitta mahsulot qatori.
-//
-// Bu funksiya va quyidagi collectSupplierOfferItems umuman yozilmagan ekan:
-// xarid kartochkasi ularni chaqirardi va sahifa «procurementOfferItemRow is
-// not defined» degan yozuvdan boshqa hech narsa ko'rsatmasdi. Ya'ni xaridni
-// ochishning iloji yo'q edi -- modul ishlatilmaganining sababi ham shu.
-function procurementOfferItemRow(item, index) {
-  return `<div class="item-row" data-offer-item-row data-procurement-item="${item.id}">
-    ${readonlyField(`offer_product_${index}`, "Mahsulot", item.product_name)}
-    ${readonlyField(`offer_unit_${index}`, "Birlik", item.unit)}
-    ${textField(`offer_quantity_${index}`, "Taklif miqdori", item.required_quantity ?? "", "number")}
-    ${textField(`offer_price_${index}`, "Birlik narxi (QQSsiz)", "", "number")}
-    ${textField(`offer_vat_${index}`, "QQS %", 12, "number")}
-  </div>`;
-}
-
-// Miqdori kiritilmagan qator yuborilmaydi: ta'minotchi hamma mahsulotga
-// taklif bermasligi mumkin.
-function collectSupplierOfferItems(form) {
-  return [...form.querySelectorAll("[data-offer-item-row]")]
-    .map((row) => {
-      const get = (prefix) => normalizeNumberInputValue(row.querySelector(`[name^='${prefix}_']`)?.value || "");
-      return {
-        procurement_item_id: Number(row.dataset.procurementItem),
-        offered_quantity: get("offer_quantity"),
-        unit_price: get("offer_price") || "0",
-        vat_rate: get("offer_vat") || "12",
-      };
-    })
-    .filter((item) => numberValue(item.offered_quantity) > 0);
-}
-
-// Xarid holati: ta'minotchi tasdiqlangunga qadar u takliflardan avtomatik
-// hisoblanadi, undan keyingi bosqichlar esa jismoniy ish -- ularni faqat odam
-// biladi. Shuning uchun tugmalar shu bosqichdan boshlab paydo bo'ladi.
-function procurementTransitionsHtml(procurement) {
-  const moves = procurement.available_transitions || [];
-  if (!moves.length) return `<div class="empty">Bu holatdan status o'zgartirilmaydi.</div>`;
-  const order = { forward: 0, backward: 1, issue: 2, cancel: 3 };
-  const buttons = [...moves]
-    .sort((a, b) => order[a.direction] - order[b.direction])
-    .map((move) => {
-      const cls = move.direction === "forward" ? "btn primary" : move.direction === "cancel" ? "btn danger" : "btn";
-      const prefix = move.direction === "backward" ? `<span>Orqaga qaytarish</span><span data-noloc>\u2190</span>` : "";
-      // Yorliq mahalliy ro'yxatdan olinadi -- shunda u lug'atdan o'tadi va
-      // serverdagi matn bilan ikki xil bo'lib qolmaydi.
-      const label = procurementStatusLabel(move.status) || move.label;
-      return `<button class="${cls}" type="button" data-procurement-status="${esc(move.status)}" data-procurement-direction="${esc(move.direction)}">${prefix}<span>${esc(label)}</span></button>`;
-    })
-    .join("");
-  const hint = moves.some((move) => move.direction !== "forward")
-    ? `<p class="form-hint">Orqaga qaytarish, muammo va bekor qilish uchun sabab yozish shart — u izohlar tarixiga yoziladi.</p>`
-    : "";
-  return `${hint}<div class="actions">${buttons}</div>`;
-}
-
-function bindProcurementStatusActions(procurement) {
-  app.querySelectorAll("[data-procurement-status]").forEach((button) => button.addEventListener("click", async () => {
-    const direction = button.dataset.procurementDirection;
-    const label = button.textContent.trim();
-    const needsComment = direction !== "forward";
-    const result = await appDialog({
-      title: "Xarid holatini o'zgartirish",
-      intro: needsComment
-        ? "Sabab izohlar tarixiga yoziladi va keyin ham ko'rinadi."
-        : "Xarid keyingi bosqichga o'tkaziladi.",
-      subject: `${procurement.procurement_number} — ${label}`,
-      confirmLabel: label,
-      tone: direction === "cancel" ? "danger" : "primary",
-      comment: needsComment ? { label: "Sabab", optional: false } : null,
-    });
-    if (!result.confirmed) return;
-    try {
-      await api(`/api/procurements/${procurement.id}/status`, {
-        method: "PATCH",
-        body: JSON.stringify({ status: button.dataset.procurementStatus, comment: result.comment }),
-      });
-      showToast("Xarid holati o'zgartirildi.");
-      await renderProcurementDetail(procurement.id);
-    } catch (error) {
-      showToast(error.message, true);
-    }
-  }));
-}
-
-// Hisob endi buyurtmaga bog'lanadi. Faqat yopilmagan buyurtmalar emas --
-// hisob ko'pincha mol ketgandan keyin keladi, shuning uchun hammasi chiqadi.
-async function fetchOrderOptions(selectedId = null) {
-  const data = await api("/api/orders?page_size=100");
-  const options = data.items.map((o) => `<option value="${o.id}" ${Number(selectedId) === o.id ? "selected" : ""}>${esc(o.order_number)} - ${esc(o.client?.name || "")}</option>`).join("");
-  return options;
-}
-
-async function fetchProcurementsOptions(selectedId = null, filters = {}) {
-  const query = new URLSearchParams({ page_size: "100" });
-  if (filters.supplierId) query.set("supplier_id", filters.supplierId);
-  if (filters.clientId) query.set("client_id", filters.clientId);
-  if (filters.contractId) query.set("contract_id", filters.contractId);
-  if (filters.orderId) query.set("order_id", filters.orderId);
-  const data = await api(`/api/procurements?${query.toString()}`);
-  return data.items.map((p)=>`<option value="${p.id}" ${Number(selectedId) === p.id ? "selected" : ""}>${esc(p.procurement_number)} - ${esc(p.client?.name || "")}</option>`).join("");
-}
 
 async function fetchSupplierInvoicesOptions(supplierId = null) {
   if (!supplierId) return "";
@@ -819,7 +373,7 @@ async function supplierInvoiceForm(invoice = null) {
   const orders = await fetchOrderOptions(invoice?.order_id || params.get("order_id"));
   const today = todayIso();
   const rows = invoice?.items?.length ? invoice.items : [{}];
-  return `<div class="page"><div class="page-header"><div class="page-title"><h1>${invoice ? "Ta'minotchi hisob-fakturasini tahrirlash" : "Yangi ta'minotchi hisob-fakturasi"}</h1><p>Ta'minotchi tomonidagi hisob-faktura: elementlar qo'lda kiritiladi, to'lovlar taqsimlanadi.</p></div><div class="actions"><button class="btn" data-nav="${invoice ? `/supplier-invoices/${invoice.id}` : "/supplier-invoices"}">Orqaga</button></div></div><form id="supplier-invoice-form"><input type="hidden" name="ticket_id" value="${esc(invoice?.ticket_id || params.get("ticket_id") || "")}" /><input type="hidden" name="procurement_id" value="${esc(invoice?.procurement_id || "")}" /><input type="hidden" name="supplier_offer_id" value="${esc(invoice?.supplier_offer_id || "")}" /><input type="hidden" name="delivery_batch_id" value="${esc(invoice?.delivery_batch_id || "")}" /><input type="hidden" name="logistics_id" value="${esc(invoice?.logistics_id || "")}" />${section("Asosiy ma'lumotlar", `<div class="grid"><label><span class="field-label-text">Ta'minotchi</span><select name="supplier_id"><option value="">Ta'minotchini tanlang</option>${suppliers}</select></label><label><span class="field-label-text">Buyurtma</span><select name="order_id"><option value="">Buyurtmani tanlang</option>${orders}</select></label>${textField("invoice_number","Hisob-faktura raqami",invoice?.invoice_number,"text",{ maxlength: 60 })}${textField("invoice_date","Hisob-faktura sanasi",invoice?.invoice_date || today,"date")}${textField("due_date","To'lov muddati",invoice?.due_date || today,"date")}${selectField("invoice_type","Turi",supplierInvoiceTypes,invoice?.invoice_type || "product_purchase")}${selectField("status","Status",supplierInvoiceStatuses,invoice?.status || "received")}${textArea("notes","Izohlar",invoice?.notes,{ maxlength: 2000 })}</div>`)}${section("Hisob-faktura elementlari", `<div id="supplier-finance-items">${rows.map(supplierFinanceItemRow).join("")}</div><button type="button" class="btn" id="add-supplier-finance-item">Element qo'shish</button><div class="totals-bar"><div class="total-box"><span>Subtotal</span><strong data-supplier-subtotal>${dash}</strong></div><div class="total-box"><span>QQS</span><strong data-supplier-vat>${dash}</strong></div><div class="total-box"><span>Jami</span><strong data-supplier-total>${dash}</strong></div></div>`)}${section("Documents", `<div class="empty">Hujjatlarni keyinroq, hisob-faktura kartochkasidan qo'shish mumkin.</div>`)}<div class="form-footer"><button type="button" class="btn" data-nav="${invoice ? `/supplier-invoices/${invoice.id}` : "/supplier-invoices"}">Bekor qilish</button><button class="btn primary" type="submit">Saqlash</button></div></form></div>`;
+  return `<div class="page"><div class="page-header"><div class="page-title"><h1>${invoice ? "Ta'minotchi hisob-fakturasini tahrirlash" : "Yangi ta'minotchi hisob-fakturasi"}</h1><p>Ta'minotchi tomonidagi hisob-faktura: elementlar qo'lda kiritiladi, to'lovlar taqsimlanadi.</p></div><div class="actions"><button class="btn" data-nav="${invoice ? `/supplier-invoices/${invoice.id}` : "/supplier-invoices"}">Orqaga</button></div></div><form id="supplier-invoice-form"><input type="hidden" name="ticket_id" value="${esc(invoice?.ticket_id || params.get("ticket_id") || "")}" /><input type="hidden" name="delivery_batch_id" value="${esc(invoice?.delivery_batch_id || "")}" /><input type="hidden" name="logistics_id" value="${esc(invoice?.logistics_id || "")}" />${section("Asosiy ma'lumotlar", `<div class="grid"><label><span class="field-label-text">Ta'minotchi</span><select name="supplier_id"><option value="">Ta'minotchini tanlang</option>${suppliers}</select></label><label><span class="field-label-text">Buyurtma</span><select name="order_id"><option value="">Buyurtmani tanlang</option>${orders}</select></label>${textField("invoice_number","Hisob-faktura raqami",invoice?.invoice_number,"text",{ maxlength: 60 })}${textField("invoice_date","Hisob-faktura sanasi",invoice?.invoice_date || today,"date")}${textField("due_date","To'lov muddati",invoice?.due_date || today,"date")}${selectField("invoice_type","Turi",supplierInvoiceTypes,invoice?.invoice_type || "product_purchase")}${selectField("status","Status",supplierInvoiceStatuses,invoice?.status || "received")}${textArea("notes","Izohlar",invoice?.notes,{ maxlength: 2000 })}</div>`)}${section("Hisob-faktura elementlari", `<div id="supplier-finance-items">${rows.map(supplierFinanceItemRow).join("")}</div><button type="button" class="btn" id="add-supplier-finance-item">Element qo'shish</button><div class="totals-bar"><div class="total-box"><span>Subtotal</span><strong data-supplier-subtotal>${dash}</strong></div><div class="total-box"><span>QQS</span><strong data-supplier-vat>${dash}</strong></div><div class="total-box"><span>Jami</span><strong data-supplier-total>${dash}</strong></div></div>`)}${section("Documents", `<div class="empty">Hujjatlarni keyinroq, hisob-faktura kartochkasidan qo'shish mumkin.</div>`)}<div class="form-footer"><button type="button" class="btn" data-nav="${invoice ? `/supplier-invoices/${invoice.id}` : "/supplier-invoices"}">Bekor qilish</button><button class="btn primary" type="submit">Saqlash</button></div></form></div>`;
 }
 
 function bindSupplierInvoiceForm(invoice = null) {
@@ -843,7 +397,7 @@ function bindSupplierInvoiceForm(invoice = null) {
   });
   form.addEventListener("submit", async (event)=>{
     event.preventDefault();
-    const payload = { supplier_id: Number(field(form,"supplier_id")), order_id: field(form,"order_id") ? Number(field(form,"order_id")) : null, procurement_id: field(form,"procurement_id") ? Number(field(form,"procurement_id")) : null, ticket_id: field(form,"ticket_id") ? Number(field(form,"ticket_id")) : null, supplier_offer_id: field(form,"supplier_offer_id") ? Number(field(form,"supplier_offer_id")) : null, delivery_batch_id: field(form,"delivery_batch_id") ? Number(field(form,"delivery_batch_id")) : null, logistics_id: field(form,"logistics_id") ? Number(field(form,"logistics_id")) : null, invoice_number: field(form,"invoice_number"), invoice_date: field(form,"invoice_date"), due_date: field(form,"due_date"), invoice_type: field(form,"invoice_type"), status: field(form,"status"), currency: "UZS", notes: field(form,"notes"), items: collectSupplierFinanceItems(form) };
+    const payload = { supplier_id: Number(field(form,"supplier_id")), order_id: field(form,"order_id") ? Number(field(form,"order_id")) : null, ticket_id: field(form,"ticket_id") ? Number(field(form,"ticket_id")) : null, delivery_batch_id: field(form,"delivery_batch_id") ? Number(field(form,"delivery_batch_id")) : null, logistics_id: field(form,"logistics_id") ? Number(field(form,"logistics_id")) : null, invoice_number: field(form,"invoice_number"), invoice_date: field(form,"invoice_date"), due_date: field(form,"due_date"), invoice_type: field(form,"invoice_type"), status: field(form,"status"), currency: "UZS", notes: field(form,"notes"), items: collectSupplierFinanceItems(form) };
     try {
       const saved = await api(invoice ? `/api/supplier-invoices/${invoice.id}` : "/api/supplier-invoices", { method: invoice ? "PATCH" : "POST", body: JSON.stringify(payload) });
       showToast("Ta'minotchi hisob-fakturasi saqlandi.");
@@ -871,7 +425,7 @@ async function renderSupplierInvoiceDetail(id) {
   const editable = canEdit("moliya");
   const warnings = [];
   if (numberValue(i.remaining_amount) > 0) warnings.push("Ta'minotchi hisobi bo'yicha to'lanmagan qoldiq mavjud.");
-  if (!i.procurement && !i.delivery_batch && !i.logistics) warnings.push("Hisob xarid yoki partiya bilan bog'lanmagan.");
+  if (!i.order && !i.ticket && !i.delivery_batch) warnings.push("Hisob buyurtma, ticket yoki partiya bilan bog'lanmagan.");
   if (!hasDocs(i)) warnings.push("Ta'minotchi hisobi fayli yuklanmagan.");
   const headerActions = [];
   if (editable) headerActions.push({label:"To'lov kiritish",path:"/supplier-payments/new",primary:true});
@@ -879,7 +433,7 @@ async function renderSupplierInvoiceDetail(id) {
   const nextAction = numberValue(i.remaining_amount)>0
     ? { title: "Ta'minotchiga to'lov kiriting", ...(editable ? { button: "To'lov kiritish", path: "/supplier-payments/new" } : {}) }
     : { title: "Hisob to'liq yopilgan", button: "Tarix", path: `/supplier-invoices/${i.id}#history`, done: true };
-  app.innerHTML = `<div class="page">${workflowHeader({title:i.invoice_number,subtitle:subtitleLine([{value:i.supplier?.name,raw:true},{value:optionLabel(supplierInvoiceTypes,i.invoice_type)},{value:optionLabel(supplierInvoiceStatuses,i.status)}]),backPath:"/supplier-invoices",fullEditPath:editable ? `/supplier-invoices/${i.id}/edit` : "",actions:headerActions})}${workflowStatusGrid([["Hisob holati",statusBadge(i.status)],["To'lov holati",statusChip(payState)],["Bog'lanishi",statusChip((i.order||i.ticket||i.delivery_batch||i.logistics)?{label:"Bog'langan",tone:"success"}:{label:"Bog'lanmagan",tone:"warning"})],["Hujjat holati",statusChip(hasDocs(i)?{label:"Yuklangan",tone:"success"}:{label:"Kutilmoqda",tone:"warning"})]])}${summaryCards([["Sof summa",fmtMoney(i.subtotal_amount)],["QQS",fmtMoney(i.vat_amount)],["Jami",fmtMoney(i.total_amount)],["To'langan",fmtMoney(i.paid_amount)],["Qoldiq",fmtMoney(i.remaining_amount)],["To'lov muddati",fmt(i.due_date)]])}${workflowWarningsPanel(warnings)}${workflowNextActionPanel(nextAction)}${section("Umumiy ma'lumotlar", detailList([["Hisob raqami",i.invoice_number],["Hisob sanasi",i.invoice_date],["To'lov muddati",i.due_date],["Turi",optionLabel(supplierInvoiceTypes,i.invoice_type)],["Status",optionLabel(supplierInvoiceStatuses,i.status)],["Ta'minotchi",i.supplier?.name],["Buyurtma",i.order?.order_number],["Birja ticketi",i.ticket?.ticket_number],["Xarid",i.procurement?.procurement_number],["Taklif",i.supplier_offer?.offer_number],["Partiya",i.delivery_batch?.batch_number],["Logistika",i.logistics?.logistics_number],["Valyuta",i.currency],["Izoh",i.notes],["Yaratilgan",fmtDate(i.created_at)],["Yangilangan",fmtDate(i.updated_at)]]))}${section("Hisob elementlari", tableOrEmpty(i.items,["Tavsif","Mahsulot","Birlik","Miqdor","Birlik narxi","QQS","Jami"],(it)=>`<tr><td>${fmt(it.description)}</td><td>${fmt(it.product_name)}</td><td>${fmt(it.unit)}</td><td>${fmtQty(it.quantity)}</td><td>${fmtMoney(it.unit_price)}</td><td>${fmtMoney(it.vat_amount)}</td><td>${fmtMoney(it.total_with_vat)}</td></tr>`,"Hisob elementlari yo'q."))}${section("To'lovlar / Taqsimlash", tableOrEmpty(i.allocations,["To'lov","Taqsimlangan","Yaratgan","Yaratilgan"],(a)=>`<tr><td>${fmt(a.supplier_payment?.payment_number || a.payment_number || "Ta'minotchi to'lovi")}</td><td>${fmtMoney(a.allocated_amount)}</td><td>${fmt(a.created_by)}</td><td>${fmtDate(a.created_at)}</td></tr>`,"Taqsimlash yozuvlari yo'q."))}<div id="documents">${section("Hujjatlar", tableOrEmpty(i.documents,["Hujjat nomi","Turi","Yuklangan"],(d)=>`<tr><td>${fmt(d.title)}</td><td>${fmt(optionLabel(supplierFinanceDocumentTypes,d.document_type))}</td><td>${fmtDate(d.uploaded_at)}</td></tr>`,"Hujjatlar yo'q."))}</div><div id="history">${section("Tarix", tableOrEmpty(i.notes_history,["Sana","Foydalanuvchi","Izoh"],(n)=>`<tr><td>${fmtDate(n.created_at)}</td><td>${fmt(n.created_by)}</td><td>${fmt(n.note)}</td></tr>`,"Tarix yozuvlari yo'q."))}</div></div>`;
+  app.innerHTML = `<div class="page">${workflowHeader({title:i.invoice_number,subtitle:subtitleLine([{value:i.supplier?.name,raw:true},{value:optionLabel(supplierInvoiceTypes,i.invoice_type)},{value:optionLabel(supplierInvoiceStatuses,i.status)}]),backPath:"/supplier-invoices",fullEditPath:editable ? `/supplier-invoices/${i.id}/edit` : "",actions:headerActions})}${workflowStatusGrid([["Hisob holati",statusBadge(i.status)],["To'lov holati",statusChip(payState)],["Bog'lanishi",statusChip((i.order||i.ticket||i.delivery_batch||i.logistics)?{label:"Bog'langan",tone:"success"}:{label:"Bog'lanmagan",tone:"warning"})],["Hujjat holati",statusChip(hasDocs(i)?{label:"Yuklangan",tone:"success"}:{label:"Kutilmoqda",tone:"warning"})]])}${summaryCards([["Sof summa",fmtMoney(i.subtotal_amount)],["QQS",fmtMoney(i.vat_amount)],["Jami",fmtMoney(i.total_amount)],["To'langan",fmtMoney(i.paid_amount)],["Qoldiq",fmtMoney(i.remaining_amount)],["To'lov muddati",fmt(i.due_date)]])}${workflowWarningsPanel(warnings)}${workflowNextActionPanel(nextAction)}${section("Umumiy ma'lumotlar", detailList([["Hisob raqami",i.invoice_number],["Hisob sanasi",i.invoice_date],["To'lov muddati",i.due_date],["Turi",optionLabel(supplierInvoiceTypes,i.invoice_type)],["Status",optionLabel(supplierInvoiceStatuses,i.status)],["Ta'minotchi",i.supplier?.name],["Buyurtma",i.order?.order_number],["Birja ticketi",i.ticket?.ticket_number],["Partiya",i.delivery_batch?.batch_number],["Logistika",i.logistics?.logistics_number],["Valyuta",i.currency],["Izoh",i.notes],["Yaratilgan",fmtDate(i.created_at)],["Yangilangan",fmtDate(i.updated_at)]]))}${section("Hisob elementlari", tableOrEmpty(i.items,["Tavsif","Mahsulot","Birlik","Miqdor","Birlik narxi","QQS","Jami"],(it)=>`<tr><td>${fmt(it.description)}</td><td>${fmt(it.product_name)}</td><td>${fmt(it.unit)}</td><td>${fmtQty(it.quantity)}</td><td>${fmtMoney(it.unit_price)}</td><td>${fmtMoney(it.vat_amount)}</td><td>${fmtMoney(it.total_with_vat)}</td></tr>`,"Hisob elementlari yo'q."))}${section("To'lovlar / Taqsimlash", tableOrEmpty(i.allocations,["To'lov","Taqsimlangan","Yaratgan","Yaratilgan"],(a)=>`<tr><td>${fmt(a.supplier_payment?.payment_number || a.payment_number || "Ta'minotchi to'lovi")}</td><td>${fmtMoney(a.allocated_amount)}</td><td>${fmt(a.created_by)}</td><td>${fmtDate(a.created_at)}</td></tr>`,"Taqsimlash yozuvlari yo'q."))}<div id="documents">${section("Hujjatlar", tableOrEmpty(i.documents,["Hujjat nomi","Turi","Yuklangan"],(d)=>`<tr><td>${fmt(d.title)}</td><td>${fmt(optionLabel(supplierFinanceDocumentTypes,d.document_type))}</td><td>${fmtDate(d.uploaded_at)}</td></tr>`,"Hujjatlar yo'q."))}</div><div id="history">${section("Tarix", tableOrEmpty(i.notes_history,["Sana","Foydalanuvchi","Izoh"],(n)=>`<tr><td>${fmtDate(n.created_at)}</td><td>${fmt(n.created_by)}</td><td>${fmt(n.note)}</td></tr>`,"Tarix yozuvlari yo'q."))}</div></div>`;
 }
 
 async function supplierPaymentForm(payment = null) {

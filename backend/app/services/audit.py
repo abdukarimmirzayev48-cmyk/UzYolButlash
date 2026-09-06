@@ -28,7 +28,6 @@ MODULE_BY_PREFIX = {
     "logistics": "Logistika",
     "transports": "Transportlar",
     "suppliers": "Ta'minotchilar",
-    "procurements": "Xaridlar",
     "supplier-invoices": "Ta'minotchi hisoblari",
     "supplier-payments": "Ta'minotchi to'lovlari",
     "supplier-finance": "Ta'minotchi moliyasi",

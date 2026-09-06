@@ -7624,27 +7624,10 @@ body.public-layout.sidebar-collapsed .app-shell {
   font-size: 11.5px;
 }
 
-.procurements-page .ops-commandbar {
-  gap: 16px;
-}
 
 /* Qidiruv chapda va keng: umumiy qoida uni o'ngga surib qo'yadi. */
-.procurements-page .ops-search {
-  flex: 1;
-  margin-left: 0;
-  min-width: 0;
-}
 
-.procurements-page .ops-search input[type="search"] {
-  width: min(520px, 100%);
-}
 
-.procurements-page .ops-command-right {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  flex: 0 0 auto;
-}
 
 .filter-anchor {
   position: relative;
@@ -7840,32 +7823,9 @@ body.public-layout.sidebar-collapsed .app-shell {
 }
 
 /* Ustunlar kengligi ichidagi matnga qarab o'smasin. */
-.procurements-page .ops-table {
-  table-layout: fixed;
-  width: 100%;
-  min-width: 1200px;
-}
 
-.procurements-page .ops-table th {
-  white-space: normal;
-  vertical-align: bottom;
-  overflow-wrap: break-word;
-  overflow: hidden;
-}
 
-.procurements-page .ops-table td {
-  overflow-wrap: break-word;
-}
 
-.procurements-page .ops-table :is(th, td):nth-child(1) { width: 16%; }
-.procurements-page .ops-table :is(th, td):nth-child(2) { width: 7%; }
-.procurements-page .ops-table :is(th, td):nth-child(3) { width: 13%; }
-.procurements-page .ops-table :is(th, td):nth-child(4) { width: 17%; }
-.procurements-page .ops-table :is(th, td):nth-child(5) { width: 12%; }
-.procurements-page .ops-table :is(th, td):nth-child(6) { width: 8%; }
-.procurements-page .ops-table :is(th, td):nth-child(7) { width: 11%; }
-.procurements-page .ops-table :is(th, td):nth-child(8) { width: 7%; }
-.procurements-page .ops-table :is(th, td):nth-child(9) { width: 9%; }
 
 @media (max-width: 720px) {
   .filter-field {

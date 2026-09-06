@@ -6,7 +6,6 @@ from sqlalchemy.orm import Session
 from backend.app.models.delivery import BatchStatus
 from backend.app.models.finance import CustomerInvoice, InvoiceStatus
 from backend.app.models.order import Order, OrderStatus, SupplierStatus
-from backend.app.models.procurement import ProcurementStatus
 from backend.app.models.supplier_finance import SupplierInvoice, SupplierInvoiceStatus
 from backend.app.services.contract_status import sync_contract_status
 
@@ -39,12 +38,10 @@ def _finance_ready_to_close(db: Session | None, order: Order) -> bool:
     if _qty(customer_remaining) > 0:
         return False
 
-    procurement_id = order.procurement.id if order.procurement else None
-    if not procurement_id:
-        return False
+    # Hisob endi to'g'ridan-to'g'ri buyurtmani ko'rsatadi.
     supplier_count = db.scalar(
         select(func.count()).where(
-            SupplierInvoice.procurement_id == procurement_id,
+            SupplierInvoice.order_id == order.id,
             SupplierInvoice.status != SupplierInvoiceStatus.cancelled,
         )
     ) or 0
@@ -52,7 +49,7 @@ def _finance_ready_to_close(db: Session | None, order: Order) -> bool:
         return False
     supplier_remaining = db.scalar(
         select(func.coalesce(func.sum(SupplierInvoice.remaining_amount), 0)).where(
-            SupplierInvoice.procurement_id == procurement_id,
+            SupplierInvoice.order_id == order.id,
             SupplierInvoice.status != SupplierInvoiceStatus.cancelled,
         )
     ) or Decimal("0")
@@ -120,24 +117,5 @@ def sync_order_status(order: Order, db: Session | None = None, force: bool = Fal
             order.supplier_status = SupplierStatus.searching
         finish(OrderStatus.supplier_search)
         return
-
-    procurement = order.procurement
-    if procurement:
-        if procurement.status in {
-            ProcurementStatus.supplier_confirmed,
-            ProcurementStatus.purchase_approved,
-            ProcurementStatus.waiting_supplier_ready,
-            ProcurementStatus.ready_for_pickup,
-            ProcurementStatus.ready_for_delivery,
-            ProcurementStatus.completed,
-        }:
-            finish(OrderStatus.supplier_confirmed)
-            return
-        if procurement.status == ProcurementStatus.supplier_selected:
-            finish(OrderStatus.supplier_selected)
-            return
-        if procurement.offers:
-            finish(OrderStatus.supplier_search)
-            return
 
     finish(OrderStatus.created if order.items else OrderStatus.draft)

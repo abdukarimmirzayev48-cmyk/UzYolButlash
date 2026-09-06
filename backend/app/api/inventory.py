@@ -21,7 +21,7 @@ from backend.app.models.inventory import (
     StockStatus,
 )
 from backend.app.models.order import Order, OrderItem, SourceType, SupplierStatus
-from backend.app.models.procurement import Supplier, SupplierAddress, SupplierAddressType
+from backend.app.models.supplier import Supplier, SupplierAddress, SupplierAddressType
 from backend.app.schemas.client import Page
 from backend.app.schemas.inventory import (
     ExchangeTicketCreate,

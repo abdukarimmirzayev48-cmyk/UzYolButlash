@@ -57,7 +57,6 @@ class SupplierInvoice(Base, TimestampMixin):
     supplier_id: Mapped[int] = mapped_column(ForeignKey("suppliers.id", ondelete="RESTRICT"), index=True)
     # Xarid ixtiyoriy: birja ticketi orqali olingan molning xaridi yo'q,
     # hisob-fakturasi esa bo'lishi kerak.
-    procurement_id: Mapped[int | None] = mapped_column(ForeignKey("procurements.id", ondelete="RESTRICT"), index=True)
     # Ticket bo'yicha hisob. Bog'langan hisob paydo bo'lgach, Kreditorlikda
     # qarzni ticket emas, hisob ko'rsatadi -- ikki marta sanalmaydi.
     ticket_id: Mapped[int | None] = mapped_column(ForeignKey("exchange_tickets.id", ondelete="SET NULL"), index=True)
@@ -65,7 +64,6 @@ class SupplierInvoice(Base, TimestampMixin):
     # orqali ulanardi, xarid esa buyurtmaga -- ortiqcha bo'g'in edi va xarid
     # ochilmagan buyurtmaning tannarxi hisobga kirmay qolardi.
     order_id: Mapped[int | None] = mapped_column(ForeignKey("orders.id", ondelete="SET NULL"), index=True)
-    supplier_offer_id: Mapped[int | None] = mapped_column(ForeignKey("supplier_offers.id", ondelete="SET NULL"), index=True)
     delivery_batch_id: Mapped[int | None] = mapped_column(ForeignKey("delivery_batches.id", ondelete="SET NULL"), index=True)
     logistics_id: Mapped[int | None] = mapped_column(ForeignKey("logistics.id", ondelete="SET NULL"), index=True)
     invoice_number: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
@@ -85,10 +83,8 @@ class SupplierInvoice(Base, TimestampMixin):
     created_by: Mapped[str | None] = mapped_column(String(255))
 
     supplier: Mapped["Supplier"] = relationship()
-    procurement: Mapped["Procurement | None"] = relationship()
     ticket: Mapped["ExchangeTicket | None"] = relationship()
     order: Mapped["Order | None"] = relationship()
-    supplier_offer: Mapped["SupplierOffer | None"] = relationship()
     delivery_batch: Mapped["DeliveryBatch | None"] = relationship()
     logistics: Mapped["Logistics | None"] = relationship()
     items: Mapped[list["SupplierInvoiceItem"]] = relationship(back_populates="invoice", cascade="all, delete-orphan", order_by="SupplierInvoiceItem.id")
@@ -102,8 +98,6 @@ class SupplierInvoiceItem(Base, TimestampMixin):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     supplier_invoice_id: Mapped[int] = mapped_column(ForeignKey("supplier_invoices.id", ondelete="CASCADE"), index=True)
-    procurement_item_id: Mapped[int | None] = mapped_column(ForeignKey("procurement_items.id", ondelete="SET NULL"), index=True)
-    supplier_offer_item_id: Mapped[int | None] = mapped_column(ForeignKey("supplier_offer_items.id", ondelete="SET NULL"), index=True)
     description: Mapped[str] = mapped_column(Text, nullable=False)
     product_name: Mapped[str | None] = mapped_column(String(255))
     unit: Mapped[str | None] = mapped_column(String(64))
@@ -115,8 +109,6 @@ class SupplierInvoiceItem(Base, TimestampMixin):
     total_with_vat: Mapped[Decimal] = mapped_column(Numeric(18, 2), default=0, nullable=False)
 
     invoice: Mapped[SupplierInvoice] = relationship(back_populates="items")
-    procurement_item: Mapped["ProcurementItem | None"] = relationship()
-    supplier_offer_item: Mapped["SupplierOfferItem | None"] = relationship()
 
 
 class SupplierPayment(Base, TimestampMixin):
@@ -162,7 +154,6 @@ class SupplierFinanceDocument(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     supplier_id: Mapped[int] = mapped_column(ForeignKey("suppliers.id", ondelete="CASCADE"), index=True)
-    procurement_id: Mapped[int | None] = mapped_column(ForeignKey("procurements.id", ondelete="SET NULL"), index=True)
     supplier_invoice_id: Mapped[int | None] = mapped_column(ForeignKey("supplier_invoices.id", ondelete="CASCADE"), index=True)
     supplier_payment_id: Mapped[int | None] = mapped_column(ForeignKey("supplier_payments.id", ondelete="CASCADE"), index=True)
     document_type: Mapped[SupplierFinanceDocumentType] = mapped_column(SAEnum(SupplierFinanceDocumentType), nullable=False, index=True)
@@ -180,7 +171,6 @@ class SupplierFinanceNote(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     supplier_id: Mapped[int] = mapped_column(ForeignKey("suppliers.id", ondelete="CASCADE"), index=True)
-    procurement_id: Mapped[int | None] = mapped_column(ForeignKey("procurements.id", ondelete="SET NULL"), index=True)
     supplier_invoice_id: Mapped[int | None] = mapped_column(ForeignKey("supplier_invoices.id", ondelete="CASCADE"), index=True)
     supplier_payment_id: Mapped[int | None] = mapped_column(ForeignKey("supplier_payments.id", ondelete="CASCADE"), index=True)
     note: Mapped[str] = mapped_column(Text, nullable=False)

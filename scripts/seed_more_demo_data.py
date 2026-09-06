@@ -60,18 +60,12 @@ from backend.app.models.order import (
     SupplierStatus,
 )
 from backend.app.models.transport import Transport, TransportStatus
-from backend.app.models.procurement import (
-    Procurement,
-    ProcurementItem,
-    ProcurementStatus,
+from backend.app.models.supplier import (
     Supplier,
     SupplierAddress,
     SupplierAddressType,
     SupplierBankAccount,
     SupplierContact,
-    SupplierOffer,
-    SupplierOfferItem,
-    SupplierOfferStatus,
 )
 from backend.app.models.supplier_finance import (
     SupplierInvoice,
@@ -339,79 +333,6 @@ def add_order(db, idx: int, contract: Contract, supplier: Supplier | None, statu
     return order
 
 
-def add_procurement(db, idx: int, order: Order, supplier: Supplier | None, status: ProcurementStatus) -> Procurement:
-    order_item = order.items[0]
-    purchase_price = money(order_item.unit_price * d("0.82"))
-    subtotal, vat, total = calc_line(order_item.quantity, purchase_price)
-    procurement = Procurement(
-        order=order,
-        contract=order.contract,
-        client=order.client,
-        procurement_number=f"PRC-2026-{100 + idx}",
-        procurement_date=order.order_date,
-        required_date=order.required_date,
-        status=status,
-        source_type=order.source_type.value,
-        fulfillment_type=order.fulfillment_type.value,
-        estimated_purchase_amount=total,
-        final_purchase_amount=total if supplier else Decimal("0"),
-        notes="Buyurtma bo'yicha xarid jarayoni.",
-        created_by="system",
-    )
-    procurement_item = ProcurementItem(
-        order_item=order_item,
-        contract_item_id=order_item.contract_item_id,
-        product_name=order_item.product_name,
-        unit=order_item.unit,
-        required_quantity=order_item.quantity,
-        purchased_quantity=order_item.quantity if status in {ProcurementStatus.supplier_selected, ProcurementStatus.supplier_confirmed, ProcurementStatus.purchase_approved, ProcurementStatus.ready_for_delivery, ProcurementStatus.completed} else Decimal("0"),
-    )
-    procurement.items.append(procurement_item)
-    if supplier:
-        offer = SupplierOffer(
-            supplier=supplier,
-            supplier_name=supplier.name,
-            offer_number=f"OFR-2026-{100 + idx}",
-            offer_date=order.order_date + timedelta(days=1),
-            valid_until=TODAY + timedelta(days=25),
-            status=SupplierOfferStatus.selected if status != ProcurementStatus.completed else SupplierOfferStatus.received,
-            total_product_amount=subtotal,
-            total_vat_amount=vat,
-            transport_included=False,
-            delivery_terms="Avto transport uchun alohida hisob.",
-            estimated_delivery_cost=d("1800000") + d(idx * 250000),
-            total_amount=total,
-            ready_date=TODAY + timedelta(days=idx),
-            payment_terms="50% oldindan, qolgan qismi yuklashda.",
-            notes="Ta'minotchi narx va muddat taklifi.",
-            is_selected=status in {ProcurementStatus.supplier_selected, ProcurementStatus.supplier_confirmed, ProcurementStatus.purchase_approved, ProcurementStatus.ready_for_delivery, ProcurementStatus.completed},
-            created_by="system",
-        )
-        offer.items.append(
-            SupplierOfferItem(
-                procurement_item=procurement_item,
-                order_item=order_item,
-                contract_item_id=order_item.contract_item_id,
-                product_name=order_item.product_name,
-                unit=order_item.unit,
-                offered_quantity=order_item.quantity,
-                selected_quantity=order_item.quantity if offer.is_selected else Decimal("0"),
-                unit_price=purchase_price,
-                subtotal=subtotal,
-                vat_rate=VAT,
-                vat_amount=vat,
-                total_with_vat=total,
-                transport_included=False,
-                delivery_terms="Yuklash terminalidan olib ketish.",
-                ready_date=offer.ready_date,
-                is_selected=offer.is_selected,
-            )
-        )
-        procurement.offers.append(offer)
-    db.add(procurement)
-    return procurement
-
-
 def add_batch(db, idx: int, order: Order, supplier: Supplier | None, transport: Transport | None, status: BatchStatus, planned: Decimal, loaded: Decimal | None, accepted: Decimal | None, logistics_status: LogisticsStatus) -> DeliveryBatch:
     order_item = order.items[0]
     batch = DeliveryBatch(
@@ -591,14 +512,12 @@ def add_customer_payment(db, idx: int, invoice: CustomerInvoice, amount: Decimal
     return payment
 
 
-def add_supplier_invoice(db, idx: int, supplier: Supplier, procurement: Procurement, batch: DeliveryBatch | None, status: SupplierInvoiceStatus, amount: Decimal, paid: Decimal, invoice_type: SupplierInvoiceType = SupplierInvoiceType.product_purchase) -> SupplierInvoice:
+def add_supplier_invoice(db, idx: int, supplier: Supplier, order: Order, batch: DeliveryBatch | None, status: SupplierInvoiceStatus, amount: Decimal, paid: Decimal, invoice_type: SupplierInvoiceType = SupplierInvoiceType.product_purchase) -> SupplierInvoice:
     subtotal = money(amount / d("1.12"))
     vat = money(amount - subtotal)
-    offer = procurement.offers[0] if procurement.offers else None
     invoice = SupplierInvoice(
         supplier=supplier,
-        procurement=procurement,
-        supplier_offer=offer,
+        order=order,
         delivery_batch=batch,
         logistics=batch.logistics if batch else None,
         invoice_number=f"SINV-2026-{100 + idx}",
@@ -614,17 +533,15 @@ def add_supplier_invoice(db, idx: int, supplier: Supplier, procurement: Procurem
         notes="Ta'minotchidan kelgan hisob.",
         created_by="system",
     )
-    procurement_item = procurement.items[0]
+    order_item = order.items[0]
     offer_item = offer.items[0] if offer and offer.items else None
     invoice.items.append(
         SupplierInvoiceItem(
-            procurement_item=procurement_item,
-            supplier_offer_item=offer_item,
             description=f"{invoice.invoice_number} bo'yicha xarid",
-            product_name=procurement_item.product_name,
-            unit=procurement_item.unit,
-            quantity=procurement_item.required_quantity,
-            unit_price=money(subtotal / procurement_item.required_quantity),
+            product_name=order_item.product_name,
+            unit=order_item.unit,
+            quantity=order_item.quantity,
+            unit_price=money(subtotal / order_item.quantity),
             subtotal=subtotal,
             vat_rate=VAT,
             vat_amount=vat,
@@ -703,30 +620,27 @@ def main() -> None:
         db.flush()
 
         scenarios = [
-            (ContractStatus.active, OrderStatus.created, SupplierStatus.not_selected, ProcurementStatus.supplier_search, None, FulfillmentType.company_managed_delivery, SourceType.jarkurgan, d("40"), d("5200000"), None),
-            (ContractStatus.active, OrderStatus.supplier_search, SupplierStatus.searching, ProcurementStatus.offers_received, suppliers[0], FulfillmentType.company_managed_delivery, SourceType.uzbekistan_local, d("55"), d("5350000"), None),
-            (ContractStatus.active, OrderStatus.supplier_selected, SupplierStatus.selected, ProcurementStatus.supplier_selected, suppliers[1], FulfillmentType.direct_supplier_to_customer, SourceType.jarkurgan, d("30"), d("5450000"), None),
-            (ContractStatus.signed, OrderStatus.waiting_payment, SupplierStatus.confirmed, ProcurementStatus.supplier_confirmed, suppliers[2], FulfillmentType.company_managed_delivery, SourceType.russia_direct, d("70"), d("5550000"), None),
-            (ContractStatus.active, OrderStatus.in_delivery, SupplierStatus.confirmed, ProcurementStatus.ready_for_delivery, suppliers[0], FulfillmentType.company_managed_delivery, SourceType.uzbekistan_local, d("65"), d("5300000"), (BatchStatus.in_transit, LogisticsStatus.in_transit, d("25"), d("25"), None)),
-            (ContractStatus.active, OrderStatus.partially_delivered, SupplierStatus.confirmed, ProcurementStatus.completed, suppliers[3], FulfillmentType.company_managed_delivery, SourceType.other, d("90"), d("5250000"), (BatchStatus.accepted, LogisticsStatus.accepted, d("45"), d("45"), d("42"))),
-            (ContractStatus.completed, OrderStatus.delivered, SupplierStatus.confirmed, ProcurementStatus.completed, suppliers[4], FulfillmentType.direct_supplier_to_customer, SourceType.jarkurgan, d("50"), d("5400000"), (BatchStatus.completed, LogisticsStatus.completed, d("50"), d("50"), d("50"))),
-            (ContractStatus.cancelled, OrderStatus.cancelled, SupplierStatus.changed, ProcurementStatus.cancelled, suppliers[5], FulfillmentType.company_managed_delivery, SourceType.russia_direct, d("35"), d("5600000"), None),
+            (ContractStatus.active, OrderStatus.created, SupplierStatus.not_selected, None, FulfillmentType.company_managed_delivery, SourceType.jarkurgan, d("40"), d("5200000"), None),
+            (ContractStatus.active, OrderStatus.supplier_search, SupplierStatus.searching, suppliers[0], FulfillmentType.company_managed_delivery, SourceType.uzbekistan_local, d("55"), d("5350000"), None),
+            (ContractStatus.active, OrderStatus.supplier_selected, SupplierStatus.selected, suppliers[1], FulfillmentType.direct_supplier_to_customer, SourceType.jarkurgan, d("30"), d("5450000"), None),
+            (ContractStatus.signed, OrderStatus.waiting_payment, SupplierStatus.confirmed, suppliers[2], FulfillmentType.company_managed_delivery, SourceType.russia_direct, d("70"), d("5550000"), None),
+            (ContractStatus.active, OrderStatus.in_delivery, SupplierStatus.confirmed, suppliers[0], FulfillmentType.company_managed_delivery, SourceType.uzbekistan_local, d("65"), d("5300000"), (BatchStatus.in_transit, LogisticsStatus.in_transit, d("25"), d("25"), None)),
+            (ContractStatus.active, OrderStatus.partially_delivered, SupplierStatus.confirmed, suppliers[3], FulfillmentType.company_managed_delivery, SourceType.other, d("90"), d("5250000"), (BatchStatus.accepted, LogisticsStatus.accepted, d("45"), d("45"), d("42"))),
+            (ContractStatus.completed, OrderStatus.delivered, SupplierStatus.confirmed, suppliers[4], FulfillmentType.direct_supplier_to_customer, SourceType.jarkurgan, d("50"), d("5400000"), (BatchStatus.completed, LogisticsStatus.completed, d("50"), d("50"), d("50"))),
+            (ContractStatus.cancelled, OrderStatus.cancelled, SupplierStatus.changed, suppliers[5], FulfillmentType.company_managed_delivery, SourceType.russia_direct, d("35"), d("5600000"), None),
         ]
 
         contracts: list[Contract] = []
         orders: list[Order] = []
-        procurements: list[Procurement] = []
         batches: list[DeliveryBatch | None] = []
 
-        for idx, (contract_status, order_status, supplier_status, procurement_status, supplier, fulfillment, source, quantity, unit_price, batch_spec) in enumerate(scenarios, start=1):
+        for idx, (contract_status, order_status, supplier_status, supplier, fulfillment, source, quantity, unit_price, batch_spec) in enumerate(scenarios, start=1):
             contract = add_contract(db, idx, clients[idx - 1], contract_status, quantity, unit_price)
             contracts.append(contract)
             db.flush()
             order = add_order(db, idx, contract, supplier, order_status, supplier_status, fulfillment, source, quantity, unit_price, d("2500000") if fulfillment == FulfillmentType.company_managed_delivery else Decimal("0"))
             orders.append(order)
             db.flush()
-            procurement = add_procurement(db, idx, order, supplier, procurement_status)
-            procurements.append(procurement)
             db.flush()
             batch = None
             if batch_spec:
@@ -805,12 +719,12 @@ def main() -> None:
         add_customer_payment(db, 5, invoices[5], d("1000000"), PaymentStatus.cancelled)
 
         supplier_invoices = [
-            add_supplier_invoice(db, 1, suppliers[2], procurements[3], None, SupplierInvoiceStatus.overdue, d("220000000"), d("0")),
-            add_supplier_invoice(db, 2, suppliers[0], procurements[4], batches[4], SupplierInvoiceStatus.received, d("118000000"), d("0")),
-            add_supplier_invoice(db, 3, suppliers[3], procurements[5], batches[5], SupplierInvoiceStatus.partially_paid, d("196000000"), d("70000000")),
-            add_supplier_invoice(db, 4, suppliers[4], procurements[6], batches[6], SupplierInvoiceStatus.paid, d("240000000"), d("240000000")),
-            add_supplier_invoice(db, 5, suppliers[4], procurements[6], batches[6], SupplierInvoiceStatus.paid, d("4800000"), d("4800000"), SupplierInvoiceType.transport),
-            add_supplier_invoice(db, 6, suppliers[5], procurements[7], None, SupplierInvoiceStatus.cancelled, d("110000000"), d("0")),
+            add_supplier_invoice(db, 1, suppliers[2], orders[3], None, SupplierInvoiceStatus.overdue, d("220000000"), d("0")),
+            add_supplier_invoice(db, 2, suppliers[0], orders[4], batches[4], SupplierInvoiceStatus.received, d("118000000"), d("0")),
+            add_supplier_invoice(db, 3, suppliers[3], orders[5], batches[5], SupplierInvoiceStatus.partially_paid, d("196000000"), d("70000000")),
+            add_supplier_invoice(db, 4, suppliers[4], orders[6], batches[6], SupplierInvoiceStatus.paid, d("240000000"), d("240000000")),
+            add_supplier_invoice(db, 5, suppliers[4], orders[6], batches[6], SupplierInvoiceStatus.paid, d("4800000"), d("4800000"), SupplierInvoiceType.transport),
+            add_supplier_invoice(db, 6, suppliers[5], orders[7], None, SupplierInvoiceStatus.cancelled, d("110000000"), d("0")),
         ]
         db.flush()
         add_supplier_payment(db, 1, supplier_invoices[2], d("70000000"), SupplierPaymentStatus.partially_allocated)
@@ -825,7 +739,6 @@ def main() -> None:
         print(f"  suppliers: {len(suppliers)}")
         print(f"  contracts: {len(contracts)}")
         print(f"  orders: {len(orders)}")
-        print(f"  procurements: {len(procurements)}")
         print(f"  batches/logistics: {sum(1 for item in batches if item)}")
         print(f"  transports: {len(transports)}")
         print(f"  stock tickets/lots: {len(stock_lots)}")

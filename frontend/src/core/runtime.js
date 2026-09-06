@@ -901,11 +901,6 @@ function getSupplierIdFromPath() {
   return match ? Number(match[1]) : null;
 }
 
-function getProcurementIdFromPath() {
-  const match = location.pathname.match(/^\/procurements\/(\d+)/);
-  return match ? Number(match[1]) : null;
-}
-
 function getSupplierInvoiceIdFromPath() {
   const match = location.pathname.match(/^\/supplier-invoices\/(\d+)/);
   return match ? Number(match[1]) : null;
@@ -1381,8 +1376,6 @@ function statusLabel(status) {
     paymentStatuses,
     supplierInvoiceStatuses,
     supplierPaymentStatuses,
-    procurementStatuses,
-    supplierOfferStatuses,
     taskStatuses,
     // Appended last so nothing already resolving changes: these were simply
     // missing, so stock and ticket badges showed the raw key ("partially_used").
@@ -1391,9 +1384,6 @@ function statusLabel(status) {
     stockAllocationStatuses,
     supplierStatuses,
     transportStatuses,
-    // Xarid bosqichlari qisqartirilgan, lekin eski yozuvlarda ular hali
-    // uchraydi -- nomi ko'rinsin, xom kalit emas.
-    procurementLegacyStatuses,
   ];
   for (const group of groups) {
     const label = group.find(([key]) => key === status)?.[1];

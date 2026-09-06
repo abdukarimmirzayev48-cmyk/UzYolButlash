@@ -11,12 +11,10 @@ from backend.app.models.supplier_finance import (
     SupplierPaymentStatus,
 )
 from backend.app.schemas.delivery import DeliveryBatchRead, LogisticsRead
-from backend.app.schemas.procurement import ProcurementRead, SupplierOfferRead, SupplierRead
+from backend.app.schemas.supplier import SupplierRead
 
 
 class SupplierInvoiceItemBase(BaseModel):
-    procurement_item_id: int | None = None
-    supplier_offer_item_id: int | None = None
     description: str = Field(min_length=1)
     product_name: str | None = None
     unit: str | None = None
@@ -58,7 +56,6 @@ class SupplierPaymentAllocationRead(BaseModel):
 
 class SupplierFinanceDocumentCreate(BaseModel):
     supplier_id: int | None = None
-    procurement_id: int | None = None
     supplier_invoice_id: int | None = None
     supplier_payment_id: int | None = None
     document_type: SupplierFinanceDocumentType
@@ -76,7 +73,6 @@ class SupplierFinanceDocumentRead(SupplierFinanceDocumentCreate):
 
 class SupplierFinanceNoteCreate(BaseModel):
     supplier_id: int | None = None
-    procurement_id: int | None = None
     supplier_invoice_id: int | None = None
     supplier_payment_id: int | None = None
     note: str = Field(min_length=1)
@@ -109,9 +105,7 @@ class OrderSummary(BaseModel):
 class SupplierInvoiceBase(BaseModel):
     supplier_id: int
     order_id: int | None = None
-    procurement_id: int | None = None
     ticket_id: int | None = None
-    supplier_offer_id: int | None = None
     delivery_batch_id: int | None = None
     logistics_id: int | None = None
     invoice_number: str = Field(min_length=1, max_length=128)
@@ -133,8 +127,6 @@ class SupplierInvoiceCreate(SupplierInvoiceBase):
 class SupplierInvoiceUpdate(BaseModel):
     supplier_id: int | None = None
     order_id: int | None = None
-    procurement_id: int | None = None
-    supplier_offer_id: int | None = None
     delivery_batch_id: int | None = None
     logistics_id: int | None = None
     invoice_number: str | None = Field(default=None, min_length=1, max_length=128)
@@ -173,18 +165,14 @@ class SupplierInvoiceRead(SupplierInvoiceBase):
 class SupplierInvoiceListItem(SupplierInvoiceRead):
     supplier: SupplierRead
     order: OrderSummary | None = None
-    procurement: ProcurementRead | None = None
     ticket: ExchangeTicketSummary | None = None
-    supplier_offer: SupplierOfferRead | None = None
     delivery_batch: DeliveryBatchRead | None = None
 
 
 class SupplierInvoiceDetail(SupplierInvoiceRead):
     supplier: SupplierRead
     order: OrderSummary | None = None
-    procurement: ProcurementRead | None = None
     ticket: ExchangeTicketSummary | None = None
-    supplier_offer: SupplierOfferRead | None = None
     delivery_batch: DeliveryBatchRead | None = None
     logistics: LogisticsRead | None = None
     items: list[SupplierInvoiceItemRead] = Field(default_factory=list)

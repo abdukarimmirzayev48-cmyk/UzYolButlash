@@ -329,7 +329,7 @@ async function renderOrdersList() {
   app.innerHTML = opsListPage({
     className: "orders-ops-page",
     title: "Buyurtmalar",
-    tabs: [{ label: "Buyurtmalar", active: true }, { label: "Partiyalar", path: "/delivery-batches" }, { label: "Xaridlar", path: "/procurements" }, { label: "Hisoblar", path: "/customer-invoices" }],
+    tabs: [{ label: "Buyurtmalar", active: true }, { label: "Partiyalar", path: "/delivery-batches" }, { label: "Hisoblar", path: "/customer-invoices" }],
     createPath: editable ? "/orders/new" : null,
     clearPath: "/orders",
     counter: `${fmt(data.total)} ta buyurtma · sahifada ${fmt(activeCount)} ta faol`,

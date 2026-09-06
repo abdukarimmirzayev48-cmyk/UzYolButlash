@@ -473,7 +473,7 @@ def main() -> None:
         "unit", "price", "quantity", "remove", "cancel", "save", "back", "add",
         "open", "leave", "manual", "allocation", "allocate", "documents",
         "method", "reference", "region", "district", "position", "comment",
-        "notes", "type", "date", "due", "procurement", "edit", "new", "total",
+        "notes", "type", "date", "due", "edit", "new", "total",
         "description", "product", "search", "filter", "with", "the", "and",
         "contact", "amount", "code", "value", "list", "row",
         # "bank" and "status" are spelled the same in Uzbek, so they are not

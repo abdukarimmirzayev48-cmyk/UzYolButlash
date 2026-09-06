@@ -190,12 +190,6 @@ const paymentStatuses = [["received", "Kelib tushgan"], ["unallocated", "Taqsiml
 const financeDocumentTypes = [["invoice_file", "Hisob fayli"], ["payment_order", "To'lov topshiriqnomasi"], ["bank_statement", "Bank ko'chirmasi"], ["reconciliation_act", "Solishtirma dalolatnoma"], ["other", "Boshqa"]];
 
 const supplierAddressTypes = [["legal", "Yuridik"], ["loading", "Yuklash"], ["warehouse", "Ombor"], ["factory", "Zavod"], ["other", "Boshqa"]];
-// Xarid bosqichlari qisqardi: mol harakati Partiyalar bo'limida kuzatiladi,
-// bu yerda takrorlanmaydi. Eski yozuvlarda uchrashi mumkin bo'lgan holatlar
-// nomi bilan ko'rinsin uchun ro'yxatdan olib tashlanmadi, faqat ajratildi.
-const procurementStatuses = [["draft", "Qoralama"], ["supplier_selected", "Ta'minotchi tanlandi"], ["supplier_confirmed", "Ta'minotchi tasdiqlandi"], ["completed", "Yakunlandi"], ["cancelled", "Bekor qilindi"], ["issue", "Muammo"]];
-const procurementLegacyStatuses = [["supplier_search", "Ta'minotchi qidirilmoqda"], ["offers_received", "Takliflar olindi"], ["purchase_approved", "Xarid tasdiqlandi"], ["waiting_supplier_ready", "Ta'minotchi tayyorligi kutilmoqda"], ["ready_for_pickup", "Yuklab olishga tayyor"], ["ready_for_delivery", "Yetkazishga tayyor"]];
-const supplierOfferStatuses = [["draft", "Qoralama"], ["sent", "Yuborilgan"], ["received", "Olingan"], ["selected", "Tanlangan"], ["partially_selected", "Qisman tanlangan"], ["rejected", "Rad etilgan"], ["expired", "Muddati o'tgan"], ["cancelled", "Bekor qilingan"]];
 const supplierInvoiceTypes = [["advance", "Avans"], ["product_purchase", "Mahsulot xaridi"], ["transport", "Transport"], ["adjustment", "Qayta hisoblash"], ["other", "Boshqa"]];
 const supplierInvoiceStatuses = [["draft", "Qoralama"], ["received", "Qabul qilindi"], ["partially_paid", "Qisman to'langan"], ["paid", "To'langan"], ["overdue", "Kechikkan"], ["cancelled", "Bekor qilingan"]];
 const supplierPaymentStatuses = [["paid", "Ta'minotchiga to'lov chiqdi"], ["unallocated", "Taqsimlanmagan"], ["partially_allocated", "Qisman taqsimlangan"], ["allocated", "Taqsimlangan"], ["cancelled", "Bekor qilingan"]];
@@ -236,7 +230,6 @@ const uzTranslations = {
   "Customer Invoices": "Mijoz hisoblari",
   "Customer Payments": "Mijoz to'lovlari",
   "Suppliers": "Ta'minotchilar",
-  "Procurements": "Xaridlar",
   "Supplier Invoices": "Ta'minotchi hisoblari",
   "Supplier Payments": "Ta'minotchi to'lovlari",
   "Reports": "Hisobotlar",
@@ -547,8 +540,6 @@ const uzTranslations = {
   "Top suppliers": "Eng katta ta'minotchilar",
   "Payable invoices": "Kreditorlik hisoblari",
   "No payables.": "Kreditorlik yo'q.",
-  "Procurement": "Xarid",
-  "Procurement number": "Xarid raqami",
   "Known supplier": "Ma'lum ta'minotchi",
   "Select client": "Mijozni tanlang",
   "Select supplier": "Ta'minotchini tanlang",
@@ -656,13 +647,11 @@ Object.assign(uzTranslations, {
   "Supplier finance document metadata can be added from detail/API workflow.": "Ta'minotchi moliya hujjatlari ma'lumotlarini detail/API orqali qo'shish mumkin.",
   "Supplier payment with optional manual invoice allocation.": "Hisobga qo'lda taqsimlash imkoniyati bor ta'minotchi to'lovi.",
   "Supplier payment document metadata can be added later.": "Ta'minotchi to'lov hujjatlari ma'lumotlarini keyin qo'shish mumkin.",
-  "Invoice, supplier, procurement, batch": "Hisob, ta'minotchi, xarid, partiya",
   "No supplier invoices found.": "Ta'minotchi hisoblari topilmadi.",
   "Supplier offer": "Ta'minotchi taklifi",
   "Supplier offer ID": "Ta'minotchi taklifi ID",
   "Delivery batch ID": "Partiya ID",
   "Logistics ID": "Logistika ID",
-  "Select procurement": "Xaridni tanlang",
   "Supplier name": "Ta'minotchi nomi",
   "Offer number": "Taklif raqami",
   "Offer date": "Taklif sanasi",

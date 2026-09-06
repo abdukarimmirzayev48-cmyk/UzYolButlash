@@ -29,7 +29,7 @@ from backend.app.models.customer_request import CompanyRegistry
 from backend.app.models.delivery_point import DeliveryPoint, DeliveryPointType
 from backend.app.models.geo import District, Region
 from backend.app.models.inventory import StockLocation, StockLocationType
-from backend.app.models.procurement import Supplier
+from backend.app.models.supplier import Supplier
 from backend.app.models.product import Product, ProductCategory
 from backend.app.models.transport import Transport
 from backend.app.schemas.client import Page

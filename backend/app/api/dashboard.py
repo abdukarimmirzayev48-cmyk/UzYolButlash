@@ -20,7 +20,7 @@ from backend.app.models.contract import Contract, ContractStatus
 from backend.app.models.delivery import BatchStatus, DeliveryBatch, DeliveryBatchItem, Logistics
 from backend.app.models.finance import CustomerInvoice, CustomerPayment, InvoiceStatus, InvoiceType, PaymentStatus
 from backend.app.models.order import Order, OrderStatus
-from backend.app.models.procurement import Procurement, Supplier
+from backend.app.models.supplier import Supplier
 from backend.app.models.supplier_finance import (
     SupplierInvoice,
     SupplierInvoiceStatus,
@@ -85,7 +85,7 @@ def load_context(db: Session) -> dict[str, Any]:
     return {
         "clients": db.scalars(select(Client).options(selectinload(Client.contracts), selectinload(Client.orders))).all(),
         "contracts": db.scalars(select(Contract).options(selectinload(Contract.client), selectinload(Contract.orders))).all(),
-        "orders": db.scalars(select(Order).options(selectinload(Order.client), selectinload(Order.contract), selectinload(Order.delivery_batches), selectinload(Order.procurement))).all(),
+        "orders": db.scalars(select(Order).options(selectinload(Order.client), selectinload(Order.contract), selectinload(Order.delivery_batches))).all(),
         "batches": db.scalars(select(DeliveryBatch).options(selectinload(DeliveryBatch.client), selectinload(DeliveryBatch.order), selectinload(DeliveryBatch.items), selectinload(DeliveryBatch.logistics))).all(),
         "stock_allocations": db.scalars(
             select(StockAllocation).options(
@@ -95,7 +95,7 @@ def load_context(db: Session) -> dict[str, Any]:
         "logistics": db.scalars(select(Logistics).options(selectinload(Logistics.batch))).all(),
         "customer_invoices": db.scalars(select(CustomerInvoice).options(selectinload(CustomerInvoice.client), selectinload(CustomerInvoice.contract), selectinload(CustomerInvoice.order), selectinload(CustomerInvoice.delivery_batch), selectinload(CustomerInvoice.allocations))).all(),
         "customer_payments": db.scalars(select(CustomerPayment).options(selectinload(CustomerPayment.client))).all(),
-        "supplier_invoices": db.scalars(select(SupplierInvoice).options(selectinload(SupplierInvoice.supplier), selectinload(SupplierInvoice.order), selectinload(SupplierInvoice.procurement), selectinload(SupplierInvoice.delivery_batch), selectinload(SupplierInvoice.allocations))).all(),
+        "supplier_invoices": db.scalars(select(SupplierInvoice).options(selectinload(SupplierInvoice.supplier), selectinload(SupplierInvoice.order), selectinload(SupplierInvoice.delivery_batch), selectinload(SupplierInvoice.allocations))).all(),
         "supplier_payments": db.scalars(select(SupplierPayment).options(selectinload(SupplierPayment.supplier))).all(),
     }
 

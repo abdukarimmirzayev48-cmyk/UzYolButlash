@@ -11,12 +11,11 @@ from sqlalchemy.orm import Session, selectinload
 
 from backend.app.core.paths import UPLOADS_DIR
 from backend.app.db.session import get_db
-from backend.app.api.procurement import sync_procurement_items_from_order
 from backend.app.models.client import Client
 from backend.app.models.contract import Contract, ContractItem, TransportPaymentType
 from backend.app.models.delivery import BatchStatus, DeliveryBatch, DeliveryBatchItem
 from backend.app.models.finance import CustomerInvoice, InvoiceStatus
-from backend.app.models.procurement import Procurement, SupplierAddress
+from backend.app.models.supplier import SupplierAddress
 from backend.app.models.user import User
 from backend.app.models.order import (
     FulfillmentType,
@@ -104,8 +103,6 @@ def load_order_detail(db: Session, order_id: int) -> Order:
             selectinload(Order.client),
             selectinload(Order.contract).selectinload(Contract.items),
             selectinload(Order.items),
-            selectinload(Order.procurement).selectinload(Procurement.items),
-            selectinload(Order.procurement).selectinload(Procurement.offers),
             selectinload(Order.delivery_batches).selectinload(DeliveryBatch.items),
             selectinload(Order.supplier_options),
             selectinload(Order.documents),
@@ -262,19 +259,16 @@ def validate_items_against_contract(
 def order_item_dependants(db: Session, order_item_id: int) -> list[str]:
     """What would be orphaned if this order line went away.
 
-    delivery_batch_items and procurement_items point at order_items with a NOT
-    NULL column, so clearing the collection made SQLAlchemy try to null them and
-    the database refused -- the edit came back as a 500 with a constraint error
-    instead of an explanation.
+    delivery_batch_items point at order_items with a NOT NULL column, so
+    clearing the collection made SQLAlchemy try to null them and the database
+    refused -- the edit came back as a 500 with a constraint error instead of
+    an explanation.
     """
     from backend.app.models.delivery import DeliveryBatchItem
-    from backend.app.models.procurement import ProcurementItem
 
     blocking = []
     if db.scalar(select(func.count()).where(DeliveryBatchItem.order_item_id == order_item_id)):
         blocking.append("yetkazib berish partiyalari")
-    if db.scalar(select(func.count()).where(ProcurementItem.order_item_id == order_item_id)):
-        blocking.append("xarid qatorlari")
     return blocking
 
 
@@ -282,8 +276,8 @@ def apply_order_items(db: Session, order: Order, contract: Contract, payloads: l
     """Update the order's lines in place instead of replacing them.
 
     Rebuilding the collection from scratch destroyed the identity of every line,
-    and anything already pointing at one -- a delivery batch, a procurement --
-    lost its target. Matching on contract_item_id keeps those links intact and
+    and anything already pointing at one -- a delivery batch, a stock
+    allocation -- lost its target. Matching on contract_item_id keeps those links intact and
     lets a line that really is being removed be refused with a reason.
     """
     contract_items = {item.id: item for item in contract.items}
@@ -770,9 +764,6 @@ def update_order(order_id: int, payload: OrderUpdate, db: Session = Depends(get_
     if payload.items is not None:
         apply_order_items(db, order, contract, payload.items)
     recalculate_order(db, order, markup_from_percent=markup_from_percent)
-    # Yangi xarid ochilmaydi; ilgari ochilgani bo'lsa, pozitsiyalari ergashadi.
-    if order.procurement:
-        sync_procurement_items_from_order(db, order.procurement)
     sync_order_status(order, db=db)
     db.commit()
     return get_order_detail(order.id, db)
@@ -825,9 +816,6 @@ def create_item(order_id: int, payload: OrderItemCreate, db: Session = Depends(g
     db.flush()
     db.refresh(order)
     recalculate_order(db, order)
-    # Yangi xarid ochilmaydi; ilgari ochilgani bo'lsa, pozitsiyalari ergashadi.
-    if order.procurement:
-        sync_procurement_items_from_order(db, order.procurement)
     sync_order_status(order, db=db)
     db.commit()
     db.refresh(item)
@@ -855,9 +843,6 @@ def update_item(order_id: int, item_id: int, payload: OrderItemUpdate, db: Sessi
     item.vat_rate = merged.vat_rate if merged.vat_rate is not None else contract_item.vat_rate
     calculate_item(item)
     recalculate_order(db, order)
-    # Yangi xarid ochilmaydi; ilgari ochilgani bo'lsa, pozitsiyalari ergashadi.
-    if order.procurement:
-        sync_procurement_items_from_order(db, order.procurement)
     sync_order_status(order, db=db)
     db.commit()
     db.refresh(item)
@@ -874,9 +859,6 @@ def delete_item(order_id: int, item_id: int, db: Session = Depends(get_db)):
     db.flush()
     db.refresh(order)
     recalculate_order(db, order)
-    # Yangi xarid ochilmaydi; ilgari ochilgani bo'lsa, pozitsiyalari ergashadi.
-    if order.procurement:
-        sync_procurement_items_from_order(db, order.procurement)
     sync_order_status(order, db=db)
     db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)

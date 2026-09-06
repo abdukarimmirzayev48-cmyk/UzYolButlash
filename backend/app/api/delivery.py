@@ -31,7 +31,7 @@ from backend.app.models.finance import CustomerInvoice
 from backend.app.models.inventory import StockAllocation
 from backend.app.models.user import User
 from backend.app.models.order import Order, OrderItem
-from backend.app.models.procurement import SupplierAddress, SupplierAddressType
+from backend.app.models.supplier import SupplierAddress, SupplierAddressType
 from backend.app.models.transport import Transport, TransportEvent, TransportEventCheckResult, TransportEventType
 from backend.app.services import delivery_stats
 from backend.app.services import delivery_method as delivery_method_service
