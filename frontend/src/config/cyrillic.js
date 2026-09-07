@@ -1675,6 +1675,7 @@ const uzCyrillic = {
   "Reys vaqtlari ketma-ketligi buzilgan": "Рейс вақтлари кетма-кетлиги бузилган",
   "Reys vaqtlari ketma-ketligi buzilgan: keyingi nuqta oldingisidan erta bo'lishi mumkin emas.": "Рейс вақтлари кетма-кетлиги бузилган: кейинги нуқта олдингисидан эрта бўлиши мумкин эмас.",
   "Reys vaqtlari kiritilmagan.": "Рейс вақтлари киритилмаган.",
+  "Reys vaqtlari, xarajat va mijoz narxi partiyani to'liq tahrirlashda kiritiladi.": "Рейс вақтлари, харажат ва мижоз нархи партияни тўлиқ таҳрирлашда киритилади.",
   "Reys yaratish": "Рейс яратиш",
   "Reysda normadan ortiq sarf aniqlandi": "Рейсда нормадан ортиқ сарф аниқланди",
   "Reyslar": "Рейслар",

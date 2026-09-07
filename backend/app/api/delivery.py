@@ -228,23 +228,34 @@ MSG_TRANSPORT_NOT_FOUND = "Tanlangan mashina topilmadi."
 MSG_TRANSPORT_UNAVAILABLE = "Mashina hozir yo'lga chiqa olmaydi"
 
 
-def apply_transport_to_logistics(db: Session, logistics: Logistics) -> None:
+def apply_transport_to_logistics(db: Session, logistics: Logistics, provided: set[str] | None = None) -> None:
     """Mashina tanlangach, raqam va haydovchi shundan to'ldiriladi.
 
     Bu maydonlarni qo'lda ham yozish mumkin edi va aynan shu sababli bazada
     bir xil mashina uch xil raqam ostida yurardi. Endi mashina tanlansa,
     matn maydonlari uning kartochkasidan ko'chiriladi -- manba bitta.
+
+    Haydovchi bundan mustasno. Bitta mashinada smenaga qarab boshqa odam
+    chiqadi, shuning uchun so'rovda haydovchi aniq ko'rsatilgan bo'lsa,
+    mashina kartochkasidagi ism uni bosib ketmaydi -- ilgari qo'lda
+    kiritilgan haydovchi jimgina yo'qolardi.
     """
     if logistics.transport_id is None:
         return
     transport = db.get(Transport, logistics.transport_id)
     if not transport:
         raise HTTPException(status_code=422, detail=MSG_TRANSPORT_NOT_FOUND)
+    given = provided if provided is not None else set()
     logistics.vehicle_number = transport.vehicle_number
     logistics.trailer_number = transport.trailer_number
-    if transport.driver_name:
+    # Mashina kartochkasidagi haydovchi -- boshlang'ich qiymat, doimiy bog'
+    # emas. U faqat maydon bo'sh bo'lganda yoki mashina shu so'rovda
+    # almashtirilganda qo'yiladi; aks holda keyingi har qanday saqlash qo'lda
+    # yozilgan haydovchini mashinanikiga qaytarib yuborardi.
+    fill = lambda name: name not in given and ("transport_id" in given or blank(getattr(logistics, name)))
+    if transport.driver_name and fill("driver_name"):
         logistics.driver_name = transport.driver_name
-    if transport.driver_phone:
+    if transport.driver_phone and fill("driver_phone"):
         logistics.driver_phone = transport.driver_phone
 
 
@@ -1364,7 +1375,7 @@ def update_logistics(logistics_id: int, payload: LogisticsUpdate, db: Session = 
         trip = trip_check_for(logistics)
         if trip.blocking:
             raise HTTPException(status_code=422, detail=trip.blocking[0])
-    apply_transport_to_logistics(db, logistics)
+    apply_transport_to_logistics(db, logistics, provided=set(data))
     sync_actual_dates_from_timeline(logistics)
     sync_fuel_and_distance(logistics)
     open_siphoning_event(db, logistics)
