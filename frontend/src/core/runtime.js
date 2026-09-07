@@ -712,6 +712,14 @@ function ruDateGrid(view, selectedIso, min, max) {
     </div>`;
 }
 
+// Yorliq bilan o'ralgan sana maydoni. `ruDateField` faqat maydonning o'zini
+// beradi, sahifalar esa uni har safar o'z yorlig'i bilan o'rab yurardi.
+function dateField(name, label, value = "", options = {}) {
+  return `<label><span class="field-label-text">${label}${options.required ? ' <span class="required-mark">*</span>' : ""}</span>
+    ${ruDateField(name, value, options)}
+  </label>`;
+}
+
 function bindRuDateFields(root = app) {
   root.querySelectorAll("[data-ru-date]").forEach((holder) => {
     if (holder.dataset.ruDateBound) return;

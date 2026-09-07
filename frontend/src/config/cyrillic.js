@@ -1364,6 +1364,7 @@ const uzCyrillic = {
   "Nuqta qo'shildi.": "Нуқта қўшилди.",
   "Nuqta saqlandi.": "Нуқта сақланди.",
   "Nuqta tanlangan bo'lsa, manzil o'shandan yoziladi. Ma'lumotnomada yo'q joy uchun bu yerga qo'lda yozish mumkin.": "Нуқта танланган бўлса, манзил ўшандан ёзилади. Маълумотномада йўқ жой учун бу ерга қўлда ёзиш мумкин.",
+  "Nuqta tanlansa, manzil uning kartochkasidan olinadi. Ma'lumotnomada yo'q joy uchun quyida qo'lda yozing.": "Нуқта танланса, манзил унинг карточкасидан олинади. Маълумотномада йўқ жой учун қуйида қўлда ёзинг.",
   "Nuqta tanlansa, manzil uning kartochkasidan olinadi: viloyat, tuman, aniq manzil, mas'ul va telefoni.": "Нуқта танланса, манзил унинг карточкасидан олинади: вилоят, туман, аниқ манзил, масъул ва телефони.",
   "Nuqta xulosasi": "Нуқта хулосаси",
   "Nuqtalar topilmadi.": "Нуқталар топилмади.",

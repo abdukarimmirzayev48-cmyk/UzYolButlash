@@ -607,6 +607,9 @@ async function enrichBatchWizardState(state, orderId) {
   // Server mahsulot turkumlaridan chiqarib beradi; operator keyin
   // 3-qadamda o'zgartira oladi.
   state.deliveryMethod ||= state.order.suggested_delivery_method || "auto";
+  // Yetkazish nuqtasi buyurtmada ko'rsatilgan bo'lsa, partiyada ham o'sha
+  // bo'ladi -- operator uni qaytadan izlamaydi.
+  state.deliveryPointId ||= state.order.delivery_point_id ? String(state.order.delivery_point_id) : "";
   try {
     const client = await api(`/api/clients/${state.order.client_id}`);
     const deliveryAddress = (client.addresses || []).find((item) => item.address_type === "delivery") || (client.addresses || [])[0];
@@ -678,9 +681,17 @@ function batchWizardSourcePanel(state) {
 }
 
 function batchWizardPlanPanel(state) {
+  const points = state.deliveryPoints || [];
   return `<div class="grid">
-    ${textField("planned_loading_date", "Reja yuklash sanasi", state.plannedLoadingDate || "", "date", { required: true })}
-    ${textField("planned_delivery_date", "Reja yetkazish sanasi", state.plannedDeliveryDate || "", "date", { required: true })}
+    ${dateField("planned_loading_date", "Reja yuklash sanasi", state.plannedLoadingDate || "", { required: true })}
+    ${dateField("planned_delivery_date", "Reja yetkazish sanasi", state.plannedDeliveryDate || "", { required: true })}
+  </div>
+  <h3 class="modal-subtitle">Yuklash nuqtasi</h3>
+  <div class="grid">${deliveryPointPicker("Yuklash nuqtasi", state.loadingPointId, points, { name: "loading_point_id" })}</div>
+  <h3 class="modal-subtitle">Yetkazish nuqtasi</h3>
+  <div class="grid">${deliveryPointPicker("Yetkazish nuqtasi", state.deliveryPointId, points)}</div>
+  <p class="form-hint">Nuqta tanlansa, manzil uning kartochkasidan olinadi. Ma'lumotnomada yo'q joy uchun quyida qo'lda yozing.</p>
+  <div class="grid">
     ${textArea("loading_address", "Yuklash manzili", state.loadingAddress || "", { required: true })}
     ${textArea("delivery_address", "Yetkazish manzili", state.deliveryAddress || "", { required: true })}
     ${textArea("notes", "Izoh", state.notes || "")}
@@ -763,6 +774,8 @@ function collectBatchWizardPayload(state) {
     delivery_method: state.deliveryMethod || null,
     supplier_id: state.order.supplier_id || null,
     supplier_name: state.supplierName || null,
+    loading_point_id: state.loadingPointId ? Number(state.loadingPointId) : null,
+    delivery_point_id: state.deliveryPointId ? Number(state.deliveryPointId) : null,
     notes: state.notes || null,
     items: selectedWizardItems(state).map((item) => ({
       order_item_id: item.order_item_id,
@@ -794,6 +807,8 @@ function syncBatchWizardInputs(state) {
   if (form.elements.planned_delivery_date) state.plannedDeliveryDate = form.elements.planned_delivery_date.value;
   if (form.elements.loading_address) state.loadingAddress = form.elements.loading_address.value.trim();
   if (form.elements.delivery_address) state.deliveryAddress = form.elements.delivery_address.value.trim();
+  if (form.elements.loading_point_id) state.loadingPointId = form.elements.loading_point_id.value;
+  if (form.elements.delivery_point_id) state.deliveryPointId = form.elements.delivery_point_id.value;
   if (form.elements.notes) state.notes = form.elements.notes.value.trim();
   if (form.elements.delivery_method) state.deliveryMethod = form.elements.delivery_method.value;
 }
@@ -801,6 +816,8 @@ function syncBatchWizardInputs(state) {
 function renderBatchWizard(state) {
   app.innerHTML = batchWizardHtml(state);
   bindBatchWizard(state);
+  bindDeliveryPointPicker(app);
+  bindRuDateFields(app);
 }
 
 function bindBatchWizard(state) {
@@ -855,6 +872,9 @@ async function batchWizardForm() {
     plannedDeliveryDate: "",
     loadingAddress: "",
     deliveryAddress: "",
+    loadingPointId: "",
+    deliveryPointId: "",
+    deliveryPoints: await deliveryPointList(),
     notes: "",
     supplierName: "",
     supplierId: null,
