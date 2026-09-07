@@ -2052,8 +2052,14 @@ function bindPanelTabs(attr, root = app) {
     panels.forEach((panel) => { panel.hidden = panel.dataset.tabPanel !== key; });
   };
   buttons.forEach((button) => button.addEventListener("click", () => show(button.dataset[camelize(attr)])));
+
+  // Manzildagi `#bo'lim` o'sha bo'limni ochadi. «Keyingi amal» tugmalari
+  // aynan shunday havola beradi (`#intakes`), lekin tab yopiq qolgani uchun
+  // bosilganda sahifa o'zgarmagandek tuyulardi.
+  const hash = location.hash.slice(1);
+  const fromHash = hash && panels.some((panel) => panel.dataset.tabPanel === hash) ? hash : null;
   const initial = buttons.find((button) => button.classList.contains("active")) || buttons[0];
-  show(initial.dataset[camelize(attr)]);
+  show(fromHash || initial.dataset[camelize(attr)]);
 }
 
 function camelize(value) {
