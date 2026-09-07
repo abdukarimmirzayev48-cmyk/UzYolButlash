@@ -589,10 +589,6 @@ function wizardProductList(items = []) {
   return items.map((item) => `${fmt(item.product_name)} (${fmtQty(item.quantity, item.unit)})`).join(", ") || dash;
 }
 
-function addressText(address = {}) {
-  return [address.region, address.district, address.address].filter(Boolean).join(", ");
-}
-
 async function enrichBatchWizardState(state, orderId) {
   state.order = await api(`/api/orders/${orderId}`);
   state.balances = await api(`/api/delivery-batches/order/${orderId}/balances`);
@@ -610,21 +606,15 @@ async function enrichBatchWizardState(state, orderId) {
   // Yetkazish nuqtasi buyurtmada ko'rsatilgan bo'lsa, partiyada ham o'sha
   // bo'ladi -- operator uni qaytadan izlamaydi.
   state.deliveryPointId ||= state.order.delivery_point_id ? String(state.order.delivery_point_id) : "";
-  try {
-    const client = await api(`/api/clients/${state.order.client_id}`);
-    const deliveryAddress = (client.addresses || []).find((item) => item.address_type === "delivery") || (client.addresses || [])[0];
-    state.deliveryAddress ||= addressText(deliveryAddress);
-  } catch {
-    state.deliveryAddress ||= "";
-  }
-  if (state.order.supplier_id) {
+  // Manzil endi mijoz va ta'minotchi kartochkasidan olinmaydi: u yerdagi
+  // yozuv ko'pincha yuridik manzil, ya'ni haydovchi bormaydigan joy.
+  // Manzil yetkazish nuqtasidan keladi, ta'minotchidan esa faqat nomi kerak.
+  if (state.order.supplier_id && !state.supplierName) {
     try {
       const supplier = await api(`/api/suppliers/${state.order.supplier_id}`);
-      const loadingAddress = (supplier.addresses || []).find((item) => item.address_type === "loading") || (supplier.addresses || []).find((item) => item.address_type === "warehouse") || (supplier.addresses || []).find((item) => item.address_type === "factory") || (supplier.addresses || [])[0];
-      state.loadingAddress ||= addressText(loadingAddress);
-      state.supplierName ||= supplier.name || "";
+      state.supplierName = supplier.name || "";
     } catch {
-      state.loadingAddress ||= "";
+      state.supplierName = state.supplierName || "";
     }
   }
 }
@@ -683,6 +673,12 @@ function batchWizardSourcePanel(state) {
 // Ikki nuqta orasidagi masofa koordinatalardan o'lchanadi. Bu taxmin --
 // to'g'ri chiziqqa yo'l koeffitsienti qo'llanadi -- shuning uchun raqam
 // maydonga taklif sifatida qo'yiladi va operator uni tuzatishi mumkin.
+function pointNameById(state, id) {
+  if (!id) return null;
+  const point = (state.deliveryPoints || []).find((item) => String(item.id) === String(id));
+  return point ? point.name : null;
+}
+
 function batchDistanceNote(state) {
   const measured = state.distance;
   if (!measured) return "";
@@ -719,17 +715,15 @@ function batchWizardPlanPanel(state) {
     ${dateField("planned_delivery_date", "Reja yetkazish sanasi", state.plannedDeliveryDate || "", { required: true })}
   </div>
   <h3 class="modal-subtitle">Yuklash nuqtasi</h3>
-  <div class="grid">${deliveryPointPicker("Yuklash nuqtasi", state.loadingPointId, points, { name: "loading_point_id" })}</div>
+  <div class="grid">${deliveryPointPicker("Yuklash nuqtasi", state.loadingPointId, points, { name: "loading_point_id", required: true })}</div>
   <h3 class="modal-subtitle">Yetkazish nuqtasi</h3>
-  <div class="grid">${deliveryPointPicker("Yetkazish nuqtasi", state.deliveryPointId, points)}</div>
-  <p class="form-hint">Nuqta tanlansa, manzil uning kartochkasidan olinadi. Ma'lumotnomada yo'q joy uchun quyida qo'lda yozing.</p>
+  <div class="grid">${deliveryPointPicker("Yetkazish nuqtasi", state.deliveryPointId, points, { required: true })}</div>
+  <p class="form-hint">Manzil nuqta kartochkasidan olinadi: viloyat, tuman, aniq manzil, mas'ul va telefoni.</p>
   <div class="grid">
     ${textField("planned_distance_km", "Reja masofa (km)", state.plannedDistanceKm || "", "number")}
   </div>
   <div data-distance-note>${batchDistanceNote(state)}</div>
   <div class="grid">
-    ${textArea("loading_address", "Yuklash manzili", state.loadingAddress || "", { required: true })}
-    ${textArea("delivery_address", "Yetkazish manzili", state.deliveryAddress || "", { required: true })}
     ${textArea("notes", "Izoh", state.notes || "")}
   </div><p class="helper-text">Haydovchi, transport raqami va haqiqiy sanalar partiya yaratilgandan keyin logistika bosqichida kiritiladi.</p>`;
 }
@@ -746,7 +740,7 @@ function batchWizardConfirmPanel(state) {
     ${section("Buyurtma", detailList([["Buyurtma raqami", state.order.order_number], ["Mijoz", state.order.client?.name], ["Shartnoma", state.order.contract?.contract_number]]))}
     ${section("Mahsulot va miqdor", detailList([["Mahsulot", selectedProducts || dash], ["Reja miqdor", fmtQty(totals.selected, state.order.items?.[0]?.unit)], ["Buyurtma qoldig'i", fmtQty(totals.remaining, state.order.items?.[0]?.unit)], ["Saqlangandan keyingi qoldiq", fmtQty(afterRemaining, state.order.items?.[0]?.unit)]]))}
     ${section("Manba va model", detailList([["Manba", optionLabel(sourceTypes, state.order.source_type)], ["Yetkazib berish modeli", optionLabel(fulfillmentTypes, state.order.fulfillment_type)], ["Yetkazish usuli", "Avto"], ["Ta'minotchi", state.supplierName]]))}
-    ${section("Reja", detailList([["Reja yuklash sanasi", state.plannedLoadingDate], ["Reja yetkazish sanasi", state.plannedDeliveryDate], ["Yuklash manzili", state.loadingAddress], ["Yetkazish manzili", state.deliveryAddress]]))}
+    ${section("Reja", detailList([["Reja yuklash sanasi", state.plannedLoadingDate], ["Reja yetkazish sanasi", state.plannedDeliveryDate], ["Yuklash nuqtasi", pointNameById(state, state.loadingPointId)], ["Yetkazish nuqtasi", pointNameById(state, state.deliveryPointId)], ["Reja masofa", state.plannedDistanceKm ? fmtQty(state.plannedDistanceKm, "km") : null]]))}
   </div>`;
 }
 
@@ -793,8 +787,10 @@ function validateBatchWizardStep(state, targetStep = state.step) {
   if (targetStep >= 3 && state.order?.fulfillment_type === "company_managed_delivery" && !state.supplierName) return "Partiya yaratish uchun avval ta'minotchini tanlang.";
   if (targetStep >= 4 && (!state.plannedLoadingDate || !state.plannedDeliveryDate)) return "Reja yuklash va yetkazish sanalari majburiy.";
   if (targetStep >= 4 && state.plannedDeliveryDate < state.plannedLoadingDate) return "Reja yetkazish sanasi reja yuklash sanasidan oldin bo'lishi mumkin emas.";
-  if (targetStep >= 4 && state.order?.fulfillment_type === "company_managed_delivery" && !state.loadingAddress) return "Yuklash manzilini kiriting.";
-  if (targetStep >= 4 && !state.deliveryAddress) return "Yetkazish manzilini kiriting.";
+  // Manzil endi qo'lda yozilmaydi -- u nuqta kartochkasidan keladi, shuning
+  // uchun so'raladigan narsa ham nuqtaning o'zi.
+  if (targetStep >= 4 && state.order?.fulfillment_type === "company_managed_delivery" && !state.loadingPointId) return "Yuklash nuqtasini tanlang.";
+  if (targetStep >= 4 && !state.deliveryPointId) return "Yetkazish nuqtasini tanlang.";
   return null;
 }
 
@@ -822,8 +818,6 @@ function collectBatchWizardPayload(state) {
     })),
     logistics: {
       status: "not_assigned",
-      loading_address: state.loadingAddress || null,
-      delivery_address: state.deliveryAddress || null,
       planned_pickup_date: state.plannedLoadingDate,
       planned_delivery_date: state.plannedDeliveryDate,
       planned_distance_km: state.plannedDistanceKm || null,
@@ -842,8 +836,6 @@ function syncBatchWizardInputs(state) {
   });
   if (form.elements.planned_loading_date) state.plannedLoadingDate = form.elements.planned_loading_date.value;
   if (form.elements.planned_delivery_date) state.plannedDeliveryDate = form.elements.planned_delivery_date.value;
-  if (form.elements.loading_address) state.loadingAddress = form.elements.loading_address.value.trim();
-  if (form.elements.delivery_address) state.deliveryAddress = form.elements.delivery_address.value.trim();
   if (form.elements.loading_point_id) state.loadingPointId = form.elements.loading_point_id.value;
   if (form.elements.delivery_point_id) state.deliveryPointId = form.elements.delivery_point_id.value;
   if (form.elements.planned_distance_km) {
@@ -920,8 +912,6 @@ async function batchWizardForm() {
     quantities: {},
     plannedLoadingDate: "",
     plannedDeliveryDate: "",
-    loadingAddress: "",
-    deliveryAddress: "",
     loadingPointId: "",
     deliveryPointId: "",
     plannedDistanceKm: "",
@@ -976,8 +966,6 @@ function collectBatchPayload(form) {
       driver_phone: field(form, "driver_phone"),
       vehicle_number: field(form, "vehicle_number"),
       trailer_number: field(form, "trailer_number"),
-      loading_address: field(form, "loading_address"),
-      delivery_address: field(form, "delivery_address"),
       planned_pickup_date: field(form, "logistics_planned_pickup_date"),
       planned_delivery_date: field(form, "logistics_planned_delivery_date"),
       actual_pickup_date: field(form, "logistics_actual_pickup_date"),
@@ -1155,10 +1143,10 @@ async function batchForm(batch = null) {
           ${textArea("check_decision", "Qaror", logistics.check_decision || "")}
           </div>
           <h3>Manzillar</h3>
-          <p class="helper-text">Nuqta tanlangan bo'lsa, manzil o'shandan yoziladi. Ma'lumotnomada yo'q joy uchun bu yerga qo'lda yozish mumkin.</p>
+          <p class="helper-text">Manzil yuqoridagi nuqtalardan yoziladi.</p>
           <div class="grid">
-          ${textArea("loading_address", "Yuklash manzili", logistics.loading_address)}
-          ${textArea("delivery_address", "Yetkazish manzili", logistics.delivery_address)}
+          ${readonlyField("loading_address_display", "Yuklash manzili", logistics.loading_address || "")}
+          ${readonlyField("delivery_address_display", "Yetkazish manzili", logistics.delivery_address || "")}
           </div>
           <h3>Reys tafsilotlari</h3>
           <div class="grid">
