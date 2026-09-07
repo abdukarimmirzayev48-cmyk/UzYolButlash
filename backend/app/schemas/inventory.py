@@ -65,6 +65,30 @@ class ExchangeTicketUpdate(BaseModel):
     created_by: str | None = None
 
 
+class ExchangeTicketIntakeRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    intake_date: date
+    quantity: Decimal
+    document_number: str | None
+    notes: str | None
+    created_by: str | None
+    created_at: datetime
+
+
+class ExchangeTicketDocumentRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    intake_id: int | None
+    document_type: str
+    title: str
+    file_url: str | None
+    uploaded_by: str | None
+    uploaded_at: datetime
+
+
 class TicketBalanceRead(BaseModel):
     """Ticket miqdori va undan zaxirada nima qolgani."""
 
@@ -127,6 +151,8 @@ class ExchangeTicketRead(BaseModel):
     created_at: datetime
     updated_at: datetime
     stock_lot: StockLotSummary | None = None
+    intakes: list[ExchangeTicketIntakeRead] = Field(default_factory=list)
+    documents: list[ExchangeTicketDocumentRead] = Field(default_factory=list)
     balance: TicketBalanceRead | None = None
 
 

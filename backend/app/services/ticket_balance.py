@@ -21,6 +21,7 @@ qolganini ayirgan qismi.
 from dataclasses import dataclass
 from decimal import Decimal
 
+MSG_OVER_INTAKE = "Ticket kvotasidan ortiq mol olib bo'lmaydi"
 MSG_QUOTA_UNUSED = "Ticket miqdori zaxiraga to'liq kirmagan"
 MSG_NOTHING_TAKEN = "Ticket bo'yicha zaxira partiyasi ochilmagan"
 

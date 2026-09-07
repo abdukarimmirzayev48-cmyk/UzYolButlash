@@ -95,6 +95,9 @@ class ExchangeTicket(Base, TimestampMixin):
 
     supplier: Mapped["Supplier"] = relationship()
     stock_lot: Mapped["StockLot | None"] = relationship(back_populates="ticket", uselist=False)
+    documents: Mapped[list["ExchangeTicketDocument"]] = relationship(
+        back_populates="ticket", cascade="all, delete-orphan", order_by="ExchangeTicketDocument.uploaded_at.desc()"
+    )
     intakes: Mapped[list["ExchangeTicketIntake"]] = relationship(
         back_populates="ticket", cascade="all, delete-orphan", order_by="ExchangeTicketIntake.intake_date"
     )
@@ -122,6 +125,39 @@ class ExchangeTicketIntake(Base, TimestampMixin):
     created_by: Mapped[str | None] = mapped_column(String(255))
 
     ticket: Mapped["ExchangeTicket"] = relationship(back_populates="intakes")
+
+
+class ExchangeTicketDocumentType(str, Enum):
+    # Birja bitimining o'zi: shu ticket bo'yicha shartnoma.
+    ticket_contract = "ticket_contract"
+    # Mol qabul qilinganini tasdiqlaydigan dalolatnoma.
+    act = "act"
+    other = "other"
+
+
+class ExchangeTicketDocument(Base):
+    """Ticket va qabul hujjatlari.
+
+    Mol zaxiraga hujjatsiz kirmasligi kerak: shartnoma bitimni, dalolatnoma
+    esa aynan shu qabulni tasdiqlaydi. Shartnoma ticketga bog'lanadi --
+    bitta bitim uchun bitta; dalolatnoma esa qabulga, chunki mol bo'lib-bo'lib
+    olinadi va har safar alohida hujjat yoziladi.
+    """
+
+    __tablename__ = "exchange_ticket_documents"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    ticket_id: Mapped[int] = mapped_column(ForeignKey("exchange_tickets.id", ondelete="CASCADE"), index=True)
+    intake_id: Mapped[int | None] = mapped_column(ForeignKey("exchange_ticket_intakes.id", ondelete="CASCADE"), index=True)
+    document_type: Mapped[ExchangeTicketDocumentType] = mapped_column(
+        SAEnum(ExchangeTicketDocumentType), nullable=False, index=True
+    )
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    file_url: Mapped[str | None] = mapped_column(Text)
+    uploaded_by: Mapped[str | None] = mapped_column(String(255))
+    uploaded_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now, nullable=False)
+
+    ticket: Mapped["ExchangeTicket"] = relationship(back_populates="documents")
 
 
 class StockLocation(Base, TimestampMixin):

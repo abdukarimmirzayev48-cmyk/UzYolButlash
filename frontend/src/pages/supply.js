@@ -506,17 +506,76 @@ function stockAllocationsTable(allocations, unit) {
   );
 }
 
+const TICKET_DOCUMENT_TYPES = {
+  ticket_contract: "Ticket shartnomasi",
+  act: "Dalolatnoma",
+  other: "Boshqa",
+};
+
+// Ticketda ikkita har xil qoldiq bor va ularni chalkashtirmaslik kerak:
+// kvotada qolgan -- ta'minotchidan yana olish mumkin bo'lgani; zaxirada erkin
+// -- olib kelingan, lekin hali buyurtmaga biriktirilmagani.
+function ticketIntakeRow(ticket, intake, editable) {
+  const act = (ticket.documents || []).find((doc) => doc.intake_id === intake.id && doc.document_type === "act");
+  return `<tr>
+    <td>${fmtDayOnly(intake.intake_date)}</td>
+    <td>${fmtQty(intake.quantity, ticket.unit)}</td>
+    <td>${fmt(intake.document_number)}</td>
+    <td>${act?.file_url ? `<a class="link-btn" target="_blank" href="${esc(act.file_url)}">Dalolatnoma</a>` : dash}</td>
+    <td>${fmt(intake.created_by)}</td>
+    <td>${editable ? `<button type="button" class="link-btn" data-intake-remove="${intake.id}">Olib tashlash</button>` : ""}</td>
+  </tr>`;
+}
+
+// Mol hujjatsiz zaxiraga kirmaydi: dalolatnoma aynan shu qabulni, ticket
+// shartnomasi esa bitimning o'zini tasdiqlaydi. Shartnoma bir marta
+// yuklanadi, keyingi qabullarda qayta so'ralmaydi.
+function ticketIntakeForm(ticket) {
+  const remaining = numberValue(ticket.balance?.remaining_on_ticket);
+  if (remaining <= 0) {
+    return `<div class="empty">Ticket kvotasi to'liq olib bo'lingan.</div>`;
+  }
+  const hasContract = (ticket.documents || []).some((doc) => doc.document_type === "ticket_contract");
+  return `<form id="ticket-intake-form" class="grid">
+    ${textField("intake_date", "Zaxiraga olingan sana", todayIso(), "date", { required: true })}
+    ${textField("quantity", "Olingan miqdor", "", "number", { required: true, min: 0, max: remaining, title: "Olingan miqdor kvotada qolgan miqdordan oshmasligi kerak." })}
+    ${textField("document_number", "Hujjat raqami (TTN)", "")}
+    <label><span class="field-label-text">Dalolatnoma <span class="required-mark" aria-hidden="true">*</span></span>
+      <input type="file" name="act_file" required />
+    </label>
+    <label><span class="field-label-text">Ticket shartnomasi${hasContract ? "" : ' <span class="required-mark" aria-hidden="true">*</span>'}</span>
+      <input type="file" name="contract_file" ${hasContract ? "" : "required"} />
+      <span class="helper-text">${hasContract ? "Allaqachon yuklangan, qayta yuklash shart emas." : "Birinchi qabulda bir marta yuklanadi."}</span>
+    </label>
+    ${textField("notes", "Izoh", "")}
+    <div class="form-footer"><button class="btn primary" type="submit">Zaxiraga olish</button></div>
+  </form>`;
+}
+
+function ticketDocumentRow(doc) {
+  return `<tr>
+    <td>${fmt(TICKET_DOCUMENT_TYPES[doc.document_type] || doc.document_type)}</td>
+    <td>${fmt(doc.title)}</td>
+    <td>${fmt(doc.uploaded_by)}</td>
+    <td>${fmtDate(doc.uploaded_at)}</td>
+    <td>${doc.file_url ? `<a class="link-btn" target="_blank" href="${esc(doc.file_url)}">Ko'rish</a>` : dash}</td>
+  </tr>`;
+}
+
 async function renderExchangeTicketDetail(id) {
   const ticket = await api(`/api/exchange-tickets/${id}`);
   const lot = ticket.stock_lot;
   const allocations = lot ? await api(`/api/stock-allocations?stock_lot_id=${lot.id}`).catch(() => []) : [];
   const balance = ticket.balance || {};
+  const editable = canEdit("taminot");
   const warnings = [...(balance.warnings || [])];
   const dueDays = daysUntil(ticket.due_date);
   if (typeof dueDays === "number" && dueDays <= 7 && !["paid", "closed", "cancelled"].includes(ticket.status)) warnings.push(`Ticket to'lov muddati tugashiga ${dueDays} kun qoldi.`);
   if (!lot) warnings.push("Zaxira partiyasi hali yaratilmagan.");
   app.innerHTML = `<div class="page">${workflowHeader({ title: ticket.ticket_number, subtitle: subtitleLine([{value:ticket.supplier_name,raw:true},{value:ticket.product_name,raw:true},{value:fmtDayOnly(ticket.ticket_date),raw:true}]), backPath: "/exchange-tickets", actions: [{ label: "Zaxirani ko'rish", path: lot ? `/stock/${lot.id}` : "/stock", primary: Boolean(lot) }, { label: "Hisob-faktura yaratish", path: `/supplier-invoices/new?ticket_id=${ticket.id}&supplier_id=${ticket.supplier_id}` }, { label: "Hujjat yuklash", path: `/exchange-tickets/${ticket.id}#documents` }] })}${workflowStatusGrid([["Ticket holati", statusBadge(ticket.status)], ["Zaxira holati", lot ? statusBadge(lot.stock_status) : statusChip({ label: "Yaratilmagan", tone: "warning" })], ["To'lov holati", statusChip({ label: optionLabel(exchangeTicketStatuses, ticket.status), tone: dueDays < 0 ? "warning" : "muted" })], ["Hujjat holati", statusChip({ label: "Keyingi bosqich", tone: "muted" })]])}${summaryCards([
       ["Ticket miqdori", fmtQty(balance.quota ?? ticket.quantity, ticket.unit)],
+      ["Zaxiraga olingan", fmtQty(balance.taken, ticket.unit)],
+      ["Kvotada qolgan", fmtQty(balance.remaining_on_ticket, ticket.unit)],
       ["Zaxirada erkin", fmtQty(balance.available, ticket.unit)],
       ["Band qilingan", fmtQty(balance.reserved, ticket.unit)],
       ["Mijozga ketgan", fmtQty(balance.shipped, ticket.unit)],
@@ -524,10 +583,50 @@ async function renderExchangeTicketDetail(id) {
       ["To'lov muddati", fmt(ticket.due_date)],
       ["Qoldiq kun", fmt(dueDays)],
     ])}${workflowWarningsPanel(warnings)}${workflowNextActionPanel(
-      !lot ? { title: "Ticketni oching -- mol zaxiraga tushadi", button: "Ticketni ochish", path: `/exchange-tickets/${ticket.id}` }
+      !lot ? { title: "Ticketni oching", button: "Ticketni ochish", path: `/exchange-tickets/${ticket.id}` }
+      : numberValue(balance.remaining_on_ticket) > 0 ? { title: "Ticket bo'yicha molni zaxiraga oling", button: "Zaxiraga olish", path: `/exchange-tickets/${ticket.id}#intakes` }
       : numberValue(balance.available) > 0 ? { title: "Zaxira buyurtmaga ajratishga tayyor", button: "Zaxirani ko'rish", path: `/stock/${lot.id}`, done: true }
-      : { title: "Ticket bo'yicha mol to'liq ishlatilgan", button: "Zaxirani ko'rish", path: `/stock/${lot.id}`, done: true })}${workflowTabs("general", [["general", "Umumiy"], ["product", "Mahsulot"], ["stock", "Zaxira"], ["finance", "Moliya"], ["documents", "Hujjatlar"], ["history", "Tarix"]], "exchange-ticket-tab")}${section("Umumiy", detailList([["Ticket raqami", ticket.ticket_number], ["Ticket sanasi", ticket.ticket_date], ["Ta'minotchi", ticket.supplier_name], ["Status", optionLabel(exchangeTicketStatuses, ticket.status)], ["Izoh", ticket.notes]]), "general")}${section("Mahsulot", detailList([["Mahsulot", ticket.product_name], ["Miqdor", fmtQty(ticket.quantity, ticket.unit)], ["Birlik narxi", fmtMoney(ticket.unit_price)], ["Oraliq summa", fmtMoney(ticket.subtotal_amount)], ["QQS", fmtMoney(ticket.vat_amount)], ["Jami summa", fmtMoney(ticket.total_amount)]]), "product")}${section("Zaxira", lot ? detailList([["Zaxira partiyasi", lot.ticket_number], ["Joylashuv", lot.location_name], ["Manzil", lot.location_address], ["Zaxiraga tushgan", fmtQty(lot.quantity_initial, lot.unit)], ["Zaxirada erkin", fmtQty(lot.quantity_available, lot.unit)], ["Band qilingan", fmtQty(lot.quantity_reserved, lot.unit)], ["Status", optionLabel(stockStatuses, lot.stock_status)]]) + `<h3 class="section-subtitle">Qaysi buyurtmalarga ketgan</h3>` + stockAllocationsTable(allocations, lot.unit) : `<div class="empty">Zaxira partiyasi hali yaratilmagan.</div>`, "stock")}${section("Moliya", detailList([["To'lov turi", optionLabel(ticketPaymentTypes, ticket.payment_type)], ["To'lov muddati, kun", ticket.payment_term_days], ["To'lov muddati", ticket.due_date], ["Qoldiq kun", dueDays], ["Kreditor summa", fmtMoney(ticket.total_amount)]]) + (["opened", "partially_paid", "overdue"].includes(ticket.status) ? `<div class="form-hint"><span>Bu ticket Kreditorlik ro'yxatida turadi. Hisob-faktura yaratilgach qarzni hisob ko'rsatadi.</span></div>` : ""), "finance")}${section("Hujjatlar", `<div class="empty" id="documents">Ticket hujjatlari keyingi bosqichda ulanadi.</div>`, "documents")}${section("Tarix", workflowTimeline([["Yaratildi", fmtDate(ticket.created_at)], ["Status", optionLabel(exchangeTicketStatuses, ticket.status)], ["Yangilandi", fmtDate(ticket.updated_at)]]), "history")}</div>`;
+      : { title: "Ticket bo'yicha mol to'liq ishlatilgan", button: "Zaxirani ko'rish", path: `/stock/${lot.id}`, done: true })}${workflowTabs("general", [["general", "Umumiy"], ["product", "Mahsulot"], ["intakes", "Zaxiraga olish"], ["stock", "Zaxira"], ["finance", "Moliya"], ["documents", "Hujjatlar"], ["history", "Tarix"]], "exchange-ticket-tab")}${section("Umumiy", detailList([["Ticket raqami", ticket.ticket_number], ["Ticket sanasi", ticket.ticket_date], ["Ta'minotchi", ticket.supplier_name], ["Status", optionLabel(exchangeTicketStatuses, ticket.status)], ["Izoh", ticket.notes]]), "general")}${section("Mahsulot", detailList([["Mahsulot", ticket.product_name], ["Miqdor", fmtQty(ticket.quantity, ticket.unit)], ["Birlik narxi", fmtMoney(ticket.unit_price)], ["Oraliq summa", fmtMoney(ticket.subtotal_amount)], ["QQS", fmtMoney(ticket.vat_amount)], ["Jami summa", fmtMoney(ticket.total_amount)]]), "product")}${section("Zaxiraga olish", `<div id="intakes">${tableOrEmpty(ticket.intakes || [], ["Sana", "Miqdor", "Hujjat raqami", "Dalolatnoma", "Kim", ""], (intake) => ticketIntakeRow(ticket, intake, editable), "Ticket bo'yicha hali mol olinmagan.")}${editable ? ticketIntakeForm(ticket) : ""}</div>`, "intakes")}${section("Zaxira", lot ? detailList([["Zaxira partiyasi", lot.ticket_number], ["Joylashuv", lot.location_name], ["Manzil", lot.location_address], ["Zaxiraga tushgan", fmtQty(lot.quantity_initial, lot.unit)], ["Zaxirada erkin", fmtQty(lot.quantity_available, lot.unit)], ["Band qilingan", fmtQty(lot.quantity_reserved, lot.unit)], ["Status", optionLabel(stockStatuses, lot.stock_status)]]) + `<h3 class="section-subtitle">Qaysi buyurtmalarga ketgan</h3>` + stockAllocationsTable(allocations, lot.unit) : `<div class="empty">Zaxira partiyasi hali yaratilmagan.</div>`, "stock")}${section("Moliya", detailList([["To'lov turi", optionLabel(ticketPaymentTypes, ticket.payment_type)], ["To'lov muddati, kun", ticket.payment_term_days], ["To'lov muddati", ticket.due_date], ["Qoldiq kun", dueDays], ["Kreditor summa", fmtMoney(ticket.total_amount)]]) + (["opened", "partially_paid", "overdue"].includes(ticket.status) ? `<div class="form-hint"><span>Bu ticket Kreditorlik ro'yxatida turadi. Hisob-faktura yaratilgach qarzni hisob ko'rsatadi.</span></div>` : ""), "finance")}${section("Hujjatlar", `<div id="documents">${tableOrEmpty(ticket.documents || [], ["Turi", "Nomi", "Yuklagan", "Sana", ""], ticketDocumentRow, "Hujjatlar hali yuklanmagan.")}</div>`, "documents")}${section("Tarix", workflowTimeline([["Yaratildi", fmtDate(ticket.created_at)], ["Status", optionLabel(exchangeTicketStatuses, ticket.status)], ["Yangilandi", fmtDate(ticket.updated_at)]]), "history")}</div>`;
   bindPanelTabs("exchange-ticket-tab");
+
+  document.querySelector("#ticket-intake-form")?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const data = new FormData();
+    data.append("intake_date", field(form, "intake_date"));
+    data.append("quantity", normalizeNumberInputValue(field(form, "quantity")));
+    if (field(form, "document_number")) data.append("document_number", field(form, "document_number"));
+    if (field(form, "notes")) data.append("notes", field(form, "notes"));
+    const act = form.elements.act_file?.files?.[0];
+    const contract = form.elements.contract_file?.files?.[0];
+    if (!act) return showToast("Dalolatnoma faylini tanlang.", true);
+    data.append("act_file", act);
+    if (contract) data.append("contract_file", contract);
+    try {
+      await apiForm(`/api/exchange-tickets/${id}/intakes`, data);
+      showToast("Mol zaxiraga olindi.");
+      await renderExchangeTicketDetail(id);
+    } catch (error) {
+      showToast(error.message, true);
+    }
+  });
+
+  app.querySelectorAll("[data-intake-remove]").forEach((button) => button.addEventListener("click", async () => {
+    const confirmed = await appDialog({
+      title: "Qabulni olib tashlash",
+      intro: "Bu miqdor zaxiradan ayiriladi. Mol allaqachon buyurtmaga biriktirilgan bo'lsa, amal bajarilmaydi.",
+      confirmLabel: "Olib tashlash",
+      tone: "danger",
+    });
+    if (!confirmed.confirmed) return;
+    try {
+      await api(`/api/exchange-tickets/${id}/intakes/${button.dataset.intakeRemove}`, { method: "DELETE" });
+      showToast("Qabul olib tashlandi.");
+      await renderExchangeTicketDetail(id);
+    } catch (error) {
+      showToast(error.message, true);
+    }
+  }));
 }
 
 const STOCK_FILTER_KEYS = ["search", "product_name", "supplier_id", "stock_status", "location_type", "due_from", "due_to", "min_available", "available_only", "reserved_only", "due_soon"];
