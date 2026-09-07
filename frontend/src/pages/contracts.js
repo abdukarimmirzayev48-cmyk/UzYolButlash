@@ -1257,7 +1257,6 @@ function daysUntilDate(value) {
   return Math.round((target - today) / 86400000);
 }
 
-const MONTH_NAMES = ["Yanvar", "Fevral", "Mart", "Aprel", "May", "Iyun", "Iyul", "Avgust", "Sentabr", "Oktabr", "Noyabr", "Dekabr"];
 
 // Plan against actual, month by month. Without this a contract for 1 000 tonnes
 // with 44 delivered and a year left to run could be badly behind or comfortably

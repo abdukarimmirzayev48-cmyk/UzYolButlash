@@ -657,14 +657,59 @@ function ruDateMask(raw) {
   return [digits.slice(0, 2), digits.slice(2, 4), digits.slice(4, 8)].filter(Boolean).join(".");
 }
 
+const MONTH_NAMES = ["Yanvar", "Fevral", "Mart", "Aprel", "May", "Iyun", "Iyul", "Avgust", "Sentabr", "Oktabr", "Noyabr", "Dekabr"];
+const WEEKDAY_SHORT = ["Dush", "Sesh", "Chor", "Pay", "Jum", "Shan", "Yak"];
+
+// Kalendarni brauzerning o'zi chizardi. Har brauzerda boshqacha ko'rinardi,
+// Safarida esa tugma bosilganda hech narsa ochilmasdi -- `type=date` u yerda
+// kalendar oynasini bermaydi. Endi oyna o'zimizniki: hamma joyda bir xil va
+// oy nomlari ham tarjima qilinadi.
 function ruDateField(name, value = "", options = {}) {
   const attrs = [options.min ? `data-min="${esc(options.min)}"` : "", options.max ? `data-max="${esc(options.max)}"` : ""].join(" ");
   return `<span class="ru-date" data-ru-date ${attrs}>
     <input type="hidden" name="${esc(name)}" value="${esc(value)}" />
     <input type="text" class="ru-date-text" data-ru-date-text inputmode="numeric" maxlength="10"
            placeholder="дд.мм.гггг" value="${esc(isoToRuDate(value))}" ${options.required ? "required" : ""} />
-    <input type="date" class="ru-date-picker" data-ru-date-picker value="${esc(value)}" tabindex="-1" aria-label="Kalendar" />
+    <button type="button" class="ru-date-button" data-ru-date-open aria-label="Kalendarni ochish" aria-expanded="false">
+      <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+    </button>
+    <div class="ru-date-pop" data-ru-date-pop hidden></div>
   </span>`;
+}
+
+function isoOf(date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+// Oy to'ri: dushanbadan boshlanadi va har doim 6 qator -- oyni almashtirganda
+// oyna balandligi sakramaydi.
+function ruDateGrid(view, selectedIso, min, max) {
+  const first = new Date(view.getFullYear(), view.getMonth(), 1);
+  const lead = (first.getDay() + 6) % 7;
+  const start = new Date(first.getFullYear(), first.getMonth(), 1 - lead);
+  const todayIsoValue = isoOf(new Date());
+  const cells = Array.from({ length: 42 }, (_, i) => {
+    const day = new Date(start.getFullYear(), start.getMonth(), start.getDate() + i);
+    const iso = isoOf(day);
+    const outside = day.getMonth() !== view.getMonth();
+    const disabled = (min && iso < min) || (max && iso > max);
+    const classes = ["ru-day"];
+    if (outside) classes.push("outside");
+    if (iso === selectedIso) classes.push("selected");
+    if (iso === todayIsoValue) classes.push("today");
+    return `<button type="button" class="${classes.join(" ")}" data-ru-day="${iso}" ${disabled ? "disabled" : ""}><span data-noloc>${day.getDate()}</span></button>`;
+  }).join("");
+  return `<div class="ru-date-head">
+      <button type="button" class="ru-date-nav" data-ru-month="-1" aria-label="Oldingi oy"><span data-noloc>‹</span></button>
+      <strong>${MONTH_NAMES[view.getMonth()]} <span data-noloc>${view.getFullYear()}</span></strong>
+      <button type="button" class="ru-date-nav" data-ru-month="1" aria-label="Keyingi oy"><span data-noloc>›</span></button>
+    </div>
+    <div class="ru-date-week">${WEEKDAY_SHORT.map((day) => `<span>${day}</span>`).join("")}</div>
+    <div class="ru-date-grid">${cells}</div>
+    <div class="ru-date-foot">
+      <button type="button" class="link-btn" data-ru-today>Bugun</button>
+      <button type="button" class="link-btn" data-ru-clear>Tozalash</button>
+    </div>`;
 }
 
 function bindRuDateFields(root = app) {
@@ -673,7 +718,11 @@ function bindRuDateFields(root = app) {
     holder.dataset.ruDateBound = "true";
     const hidden = holder.querySelector("input[type=hidden]");
     const text = holder.querySelector("[data-ru-date-text]");
-    const picker = holder.querySelector("[data-ru-date-picker]");
+    const button = holder.querySelector("[data-ru-date-open]");
+    const pop = holder.querySelector("[data-ru-date-pop]");
+    const min = holder.dataset.min || "";
+    const max = holder.dataset.max || "";
+    let view = null;
 
     // The form listens on the hidden input by name, so tell it the value moved.
     const publish = (iso) => {
@@ -683,20 +732,78 @@ function bindRuDateFields(root = app) {
       hidden.dispatchEvent(new Event("change", { bubbles: true }));
     };
 
+    const drawPop = () => {
+      pop.innerHTML = ruDateGrid(view, hidden.value, min, max);
+      localizeDom(pop);
+    };
+
+    const close = () => {
+      pop.hidden = true;
+      button.setAttribute("aria-expanded", "false");
+    };
+
+    const open = () => {
+      const current = hidden.value ? new Date(`${hidden.value}T00:00:00`) : new Date();
+      view = new Date(current.getFullYear(), current.getMonth(), 1);
+      drawPop();
+      pop.hidden = false;
+      button.setAttribute("aria-expanded", "true");
+    };
+
+    const pick = (iso) => {
+      text.value = isoToRuDate(iso);
+      text.classList.remove("invalid");
+      publish(iso);
+      close();
+    };
+
     text.addEventListener("input", () => {
       const masked = ruDateMask(text.value);
       const atEnd = text.selectionStart === text.value.length;
       text.value = masked;
       if (atEnd) text.setSelectionRange(masked.length, masked.length);
       const iso = ruDateToIso(masked);
-      picker.value = iso;
       publish(iso);
       text.classList.toggle("invalid", masked.length === 10 && !iso);
     });
-    picker.addEventListener("change", () => {
-      text.value = isoToRuDate(picker.value);
-      text.classList.remove("invalid");
-      publish(picker.value);
+
+    button.addEventListener("click", () => (pop.hidden ? open() : close()));
+
+    pop.addEventListener("click", (event) => {
+      // Oyna ichidagi bosish tashqariga chiqmaydi: oy almashtirilganda to'r
+      // qaytadan chiziladi va bosilgan tugma DOMdan chiqib ketadi -- shundan
+      // keyin «tashqarida bosildi» tekshiruvi rost bo'lib, oyna yopilardi.
+      event.stopPropagation();
+      const day = event.target.closest("[data-ru-day]");
+      if (day) {
+        pick(day.dataset.ruDay);
+        return;
+      }
+      const step = event.target.closest("[data-ru-month]");
+      if (step) {
+        view = new Date(view.getFullYear(), view.getMonth() + Number(step.dataset.ruMonth), 1);
+        drawPop();
+        return;
+      }
+      if (event.target.closest("[data-ru-today]")) {
+        pick(isoOf(new Date()));
+        return;
+      }
+      if (event.target.closest("[data-ru-clear]")) {
+        text.value = "";
+        publish("");
+        close();
+      }
+    });
+
+    document.addEventListener("click", (event) => {
+      if (!pop.hidden && !holder.contains(event.target)) close();
+    });
+    holder.addEventListener("keydown", (event) => {
+      if (event.key === "Escape" && !pop.hidden) {
+        close();
+        text.focus();
+      }
     });
   });
 }
