@@ -1727,6 +1727,28 @@ async function batchFinancePresence(batch) {
   return result;
 }
 
+// Backenddagi qoidaning aynan nusxasi: odometr -- to'suvchi, bak va tarozi
+// -- so'raladigan. Ikkovi bir joyda turmaydi, shuning uchun izoh ikkalasida
+// ham yozilgan; qoida o'zgarsa ikkalasi ham o'zgartiriladi.
+function tripDataGaps(logistics = {}) {
+  const blank = (value) => value === null || value === undefined || String(value).trim() === "";
+  const ownVehicle = Boolean(logistics.transport_id);
+  const blocking = [];
+  const soft = [];
+  if (ownVehicle) {
+    if (blank(logistics.odometer_start_km) || blank(logistics.odometer_end_km)) {
+      blocking.push("Reysni yakunlash uchun odometr ko'rsatkichlarini kiriting");
+    }
+    if (blank(logistics.fuel_before_liters) || blank(logistics.fuel_after_liters)) {
+      soft.push("Bak qoldig'i kiritilmagan");
+    }
+  }
+  if (blank(logistics.gross_weight_tons) || blank(logistics.tare_weight_tons)) {
+    soft.push("Tarozi ko'rsatkichi kiritilmagan");
+  }
+  return { blocking, soft };
+}
+
 function completionValidation(batch, finance = {}) {
   const logistics = batch.logistics || {};
   const docStatus = batchDocumentStatus(batch);
@@ -1738,7 +1760,10 @@ function completionValidation(batch, finance = {}) {
   if ((batch.items || []).some((item) => item.difference_quantity !== null && numberValue(item.difference_quantity) !== 0)) warnings.push("Yuklangan va qabul qilingan miqdor farq qiladi.");
   if (finance.checked && !(finance.customerInvoices || []).length) warnings.push("Mijoz hisob-fakturasi hali yaratilmagan.");
   if (finance.checked && !(finance.supplierInvoices || []).length) warnings.push("Ta'minotchi hisobi hali yaratilmagan.");
-  return { blockers, warnings, docStatus };
+  const trip = tripDataGaps(logistics);
+  trip.blocking.forEach((message) => blockers.push(message));
+  trip.soft.forEach((message) => warnings.push(message));
+  return { blockers, warnings, docStatus, trip };
 }
 
 function completionConfirmationModal(batch, finance = {}) {
@@ -1798,9 +1823,12 @@ async function openCompletionConfirmationModal(batch) {
     const validation = completionValidation(batch, finance);
     const missingDocs = validation.warnings.some((warning) => warning.includes("hujjat"));
     const quantityDiff = validation.warnings.some((warning) => warning.includes("farq"));
+    const tripGaps = (validation.trip?.soft || []).length > 0;
     if (!field(form, "completed_date")) return showToast("Yakunlash sanasi majburiy.", true);
+    if (validation.trip?.blocking?.length) return showToast(validation.trip.blocking[0], true);
     if (missingDocs && !confirmMsg("Hujjatlar to'liq emas. Baribir yakunlashni xohlaysizmi?")) return;
     if (quantityDiff && !confirmMsg("Yuklangan va qabul qilingan miqdor farq qiladi. Baribir yakunlashni xohlaysizmi?")) return;
+    if (tripGaps && !confirmMsg("Reys raqamlari to'liq emas. Yakunlangandan keyin ularni tiklab bo'lmaydi. Baribir yakunlansinmi?")) return;
     try {
       await api(`/api/delivery-batches/${batch.id}/complete`, {
         method: "POST",
@@ -1809,6 +1837,7 @@ async function openCompletionConfirmationModal(batch) {
           notes: field(form, "notes"),
           allow_missing_documents: missingDocs,
           allow_quantity_difference: quantityDiff,
+          allow_missing_trip_data: tripGaps,
         }),
       });
       showToast("Partiya yakunlandi.");
@@ -2064,6 +2093,16 @@ function logisticsTimelineBody(row) {
     ${workflowWarningsPanel(timeline.warnings || [])}`;
 }
 
+// Reys yopilgandan keyin bu raqamlarni tiklab bo'lmaydi, shuning uchun
+// ogohlantirish umumiy gap emas: aynan nimasi yetishmayotgani yoziladi.
+function tripGapBanner(row, tripFilled) {
+  const gaps = tripDataGaps(row);
+  if (gaps.blocking.length) return detailWarningBanner(gaps.blocking[0]);
+  if (gaps.soft.length) return detailWarningBanner(`${gaps.soft.join(", ")}. Reys yakunlanmasdan oldin to'ldiring.`);
+  if (!tripFilled) return detailWarningBanner("Reys tafsilotlari to'liq kiritilmagan. Ma'lumotlarni to'ldirish uchun tahrirlash tugmasini bosing.");
+  return "";
+}
+
 async function renderLogisticsDetail(id) {
   app.innerHTML = `<div class="page"><div class="empty">Yuklanmoqda...</div></div>`;
   const row = await api(`/api/logistics/${id}`);
@@ -2203,7 +2242,7 @@ async function renderLogisticsDetail(id) {
           ["ESP foizi", row.esp_tax_percent != null ? fmtPercent(row.esp_tax_percent) : dash],
           ["Boshqa xarajatlar", fmtMoney(row.other_expenses_amount)],
           ["Komandirovka xarajatlari", fmtMoney(row.business_trip_expenses_amount)],
-        ]) + (tripFilled ? "" : detailWarningBanner("Reys tafsilotlari to'liq kiritilmagan. Ma'lumotlarni to'ldirish uchun tahrirlash tugmasini bosing.")),
+        ]) + tripGapBanner(row, tripFilled),
       })}
 
       ${detailCard({

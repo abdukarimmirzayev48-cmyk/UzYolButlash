@@ -399,6 +399,7 @@ class DeliveryBatchCompletionConfirm(BaseModel):
     notes: str | None = None
     allow_missing_documents: bool = False
     allow_quantity_difference: bool = False
+    allow_missing_trip_data: bool = False
 
 
 class DeliveryBatchSummary(BaseModel):

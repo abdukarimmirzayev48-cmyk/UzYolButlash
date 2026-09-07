@@ -35,6 +35,7 @@ from backend.app.models.supplier import SupplierAddress, SupplierAddressType
 from backend.app.models.transport import Transport, TransportEvent, TransportEventCheckResult, TransportEventType
 from backend.app.services import delivery_stats
 from backend.app.services import delivery_method as delivery_method_service
+from backend.app.services import trip_completion_check
 from backend.app.services.delivery_method import default_method_for
 from backend.app.services.auth import get_current_user, require_edit
 from backend.app.services.order_status import sync_order_status
@@ -404,6 +405,21 @@ def validate_logistics_dates(data: dict[str, Any]) -> None:
     for (_, earlier), (_, later) in zip(known, known[1:]):
         if later < earlier:
             raise HTTPException(status_code=422, detail=MSG_TIMELINE_ORDER)
+
+
+def trip_check_for(logistics: Logistics | None) -> trip_completion_check.TripCheck:
+    """Reys yopishga tayyormi -- yoqilg'i va yuk raqamlari kiritilganmi."""
+    if not logistics:
+        return trip_completion_check.TripCheck()
+    return trip_completion_check.check_trip(
+        own_vehicle=bool(logistics.transport_id),
+        odometer_start=logistics.odometer_start_km,
+        odometer_end=logistics.odometer_end_km,
+        fuel_before=logistics.fuel_before_liters,
+        fuel_after=logistics.fuel_after_liters,
+        gross_weight=logistics.gross_weight_tons,
+        tare_weight=logistics.tare_weight_tons,
+    )
 
 
 def sync_logistics_status(logistics: Logistics, batch: DeliveryBatch, requested_status: LogisticsStatus | None = None) -> None:
@@ -1053,11 +1069,20 @@ def complete_batch(batch_id: int, payload: DeliveryBatchCompletionConfirm, db: S
         calculate_batch_item(item)
     if any(item.difference_quantity is not None and item.difference_quantity != 0 for item in batch.items) and not payload.allow_quantity_difference:
         raise HTTPException(status_code=409, detail="Yuklangan va qabul qilingan miqdor farq qiladi.")
+    # Reys raqamlari shu yerda so'raladi: yopilgandan keyin ularni tiklab
+    # bo'lmaydi -- mashina yo'lda, tarozi ko'rsatkichi o'chgan.
+    trip = trip_check_for(logistics)
+    if trip.blocking:
+        raise HTTPException(status_code=422, detail=trip.blocking[0])
+    if trip.soft and not payload.allow_missing_trip_data:
+        raise HTTPException(status_code=409, detail=f"{trip_completion_check.MSG_TRIP_DATA_MISSING}: {', '.join(trip.soft)}")
 
     batch.status = BatchStatus.completed
     if logistics.status in {LogisticsStatus.delivered, LogisticsStatus.accepted, LogisticsStatus.completed}:
         logistics.status = LogisticsStatus.completed
     note_parts = [f"Yakunlash sanasi: {payload.completed_date.isoformat()}"]
+    if trip.soft:
+        note_parts.append(f"{trip_completion_check.MSG_TRIP_DATA_SKIPPED}: {', '.join(trip.soft)}")
     if payload.notes:
         note_parts.append(payload.notes)
         batch.notes = payload.notes
@@ -1335,6 +1360,10 @@ def update_logistics(logistics_id: int, payload: LogisticsUpdate, db: Session = 
     validate_logistics_dates(data)
     requested_status = data.get("status")
     update_model(logistics, data)
+    if requested_status == LogisticsStatus.completed:
+        trip = trip_check_for(logistics)
+        if trip.blocking:
+            raise HTTPException(status_code=422, detail=trip.blocking[0])
     apply_transport_to_logistics(db, logistics)
     sync_actual_dates_from_timeline(logistics)
     sync_fuel_and_distance(logistics)
