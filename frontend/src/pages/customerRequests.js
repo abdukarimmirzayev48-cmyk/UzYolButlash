@@ -856,8 +856,9 @@ async function refreshRequestPoints(form) {
     || requestProductMethods[form.elements.product_id?.value]
     || "";
   const current = select.value;
+  let points;
   try {
-    deliveryPickerItems = await deliveryPointList(null, null, method);
+    points = await deliveryPointList(null, null, method);
   } catch (error) {
     showToast(error.message, true);
     return;
@@ -865,18 +866,19 @@ async function refreshRequestPoints(form) {
   // Viloyat ro'yxati ham yangilanadi -- yonidagi sonlar yangi usulga
   // qarab o'zgaradi. Ro'yxatning o'zi ma'lumotnomadan, ya'ni to'liq.
   const holder = form.querySelector("[data-point-picker]");
+  if (holder) setPointPickerItems(holder, points);
   const regionSelect = holder?.querySelector("[data-point-region]");
   if (regionSelect) {
-    regionSelect.innerHTML = `<option value="">Barchasi</option>${pickerRegionOptions("")}`;
+    regionSelect.innerHTML = `<option value="">Barchasi</option>${pickerRegionOptions(points, "")}`;
   }
   select.setAttribute("data-selected", "");
   bindDeliveryPointPicker(app);
-  const stillThere = deliveryPickerItems.some((item) => String(item.id) === current);
+  const stillThere = points.some((item) => String(item.id) === current);
   select.value = stillThere ? current : "";
   if (hint) {
     // Ro'yxatda nima borligini aytamiz: bo'sh ro'yxat sabab bilan
     // ko'rsatilsa, xodim usulni o'zgartirish kerakligini tushunadi.
-    hint.innerHTML = `<div class="form-hint"><span>Ro'yxatda</span> <span data-noloc>${deliveryPickerItems.length}</span> <span>ta nuqta bor</span></div>`;
+    hint.innerHTML = `<div class="form-hint"><span>Ro'yxatda</span> <span data-noloc>${points.length}</span> <span>ta nuqta bor</span></div>`;
     localizeDom(hint);
   }
   if (!stillThere && current) showToast("Tanlangan nuqta bu mahsulotga to'g'ri kelmadi, qaytadan tanlang.", true);

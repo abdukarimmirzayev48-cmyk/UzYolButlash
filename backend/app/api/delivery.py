@@ -178,6 +178,12 @@ def apply_delivery_point_address(db: Session, batch: DeliveryBatch, logistics: L
     address = delivery_point_address(db, batch.delivery_point_id)
     if address:
         logistics.delivery_address = address
+    # Yuklash tomoni ham xuddi shunday: nuqta tanlangan bo'lsa, manzil
+    # ma'lumotnomadan olinadi va ta'minotchi kartochkasidagi erkin matn
+    # ustidan yoziladi.
+    loading = delivery_point_address(db, batch.loading_point_id)
+    if loading:
+        logistics.loading_address = loading
 
 
 def delivery_point_address(db: Session, point_id: int | None) -> str | None:

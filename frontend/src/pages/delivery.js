@@ -894,6 +894,7 @@ function collectBatchPayload(form) {
     created_by: field(form, "created_by"),
     items: collectBatchItems(form),
     delivery_point_id: field(form, "delivery_point_id") ? Number(field(form, "delivery_point_id")) : null,
+    loading_point_id: field(form, "loading_point_id") ? Number(field(form, "loading_point_id")) : null,
     logistics: {
       status: field(form, "logistics_status") || "not_assigned",
       carrier_id: field(form, "carrier_id") ? Number(field(form, "carrier_id")) : null,
@@ -1047,9 +1048,11 @@ async function batchForm(batch = null) {
         ${detailCard({ icon: "list", title: "Logistika ma'lumotlari", body: `
           <h3>Logistika xulosasi</h3>
           ${logisticsSummary}
+          <h3>Yuklash nuqtasi</h3>
+          <div class="grid">${deliveryPointPicker("Yuklash nuqtasi", batch?.loading_point_id, deliveryPoints, { name: "loading_point_id" })}</div>
           <h3>Yetkazish nuqtasi</h3>
           <div class="grid">${deliveryPointPicker("Yetkazish nuqtasi", batch?.delivery_point_id ?? order?.delivery_point_id, deliveryPoints)}</div>
-          <p class="form-hint">Nuqta tanlansa, yetkazish manzili uning kartochkasidan olinadi.</p>
+          <p class="form-hint">Nuqta tanlansa, manzil uning kartochkasidan olinadi: viloyat, tuman, aniq manzil, mas'ul va telefoni.</p>
           <h3>Transport biriktirish</h3>
           <div class="grid">
           <label>Transport<select name="transport_id"><option value="">Transportni tanlang</option>${transportOptions}</select></label>
@@ -1079,6 +1082,7 @@ async function batchForm(batch = null) {
           ${textArea("check_decision", "Qaror", logistics.check_decision || "")}
           </div>
           <h3>Manzillar</h3>
+          <p class="helper-text">Nuqta tanlangan bo'lsa, manzil o'shandan yoziladi. Ma'lumotnomada yo'q joy uchun bu yerga qo'lda yozish mumkin.</p>
           <div class="grid">
           ${textArea("loading_address", "Yuklash manzili", logistics.loading_address)}
           ${textArea("delivery_address", "Yetkazish manzili", logistics.delivery_address)}

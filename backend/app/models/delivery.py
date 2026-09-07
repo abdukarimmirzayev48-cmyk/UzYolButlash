@@ -106,6 +106,10 @@ class DeliveryBatch(Base, TimestampMixin):
     # Bitum qayerga yetkaziladi. Nuqta ma'lumotnomasidan tanlanadi va
     # manzil bu yerda qayta yozilmaydi.
     delivery_point_id: Mapped[int | None] = mapped_column(ForeignKey("delivery_points.id", ondelete="SET NULL"), index=True)
+    # Yuklash nuqtasi ham ma'lumotnomadan tanlanadi. Ilgari faqat erkin matn
+    # bor edi va u ta'minotchi kartochkasidan ko'chirilardi -- ya'ni bitta
+    # bazaning manzili har partiyada boshqacha yozilishi mumkin edi.
+    loading_point_id: Mapped[int | None] = mapped_column(ForeignKey("delivery_points.id", ondelete="SET NULL"), index=True)
     supplier_id: Mapped[int | None] = mapped_column(index=True)
     supplier_name: Mapped[str | None] = mapped_column(String(255), index=True)
     notes: Mapped[str | None] = mapped_column(Text)
@@ -117,7 +121,10 @@ class DeliveryBatch(Base, TimestampMixin):
     difference_resolved_at: Mapped[datetime | None] = mapped_column(DateTime)
     difference_resolved_by: Mapped[str | None] = mapped_column(String(255))
 
-    delivery_point: Mapped["DeliveryPoint | None"] = relationship(lazy="selectin")
+    # Ikkita nuqta bitta jadvalga qaraydi, shuning uchun har biriga qaysi
+    # ustundan borishi aniq ko'rsatiladi.
+    delivery_point: Mapped["DeliveryPoint | None"] = relationship(lazy="selectin", foreign_keys=[delivery_point_id])
+    loading_point: Mapped["DeliveryPoint | None"] = relationship(lazy="selectin", foreign_keys=[loading_point_id])
     client: Mapped["Client"] = relationship(back_populates="delivery_batches")
     contract: Mapped["Contract"] = relationship(back_populates="delivery_batches")
     order: Mapped["Order"] = relationship(back_populates="delivery_batches")

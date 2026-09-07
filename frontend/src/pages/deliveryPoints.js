@@ -722,7 +722,12 @@ async function bindStationLookup(root = app) {
 // Viloyat «Barchasi» dan boshlanadi -- kaskad toraytiradi, lekin hech
 // narsani yashirmaydi. Viloyati ko'rsatilmagan nuqta ham yo'qolib qolmaydi.
 
-let deliveryPickerItems = [];
+// Bir sahifada bittadan ortiq tanlagich bo'lishi mumkin -- partiyada
+// yuklash va yetkazish nuqtasi ikkalasi ham shu tanlagich bilan tanlanadi.
+// Shuning uchun ro'yxat umumiy o'zgaruvchida emas, har bir tanlagichning
+// o'zida saqlanadi.
+const deliveryPickerStore = new Map();
+let deliveryPickerSeq = 0;
 
 async function deliveryPointList(selectedId = null, clientId = null, method = null) {
   await loadGeoRegions();
@@ -744,20 +749,22 @@ function pointOptionLabel(item) {
   return `${item.name}${item.full_address ? ` — ${item.full_address}` : ""}`;
 }
 
-function deliveryPointPicker(label, selectedId, items, { required = false } = {}) {
-  deliveryPickerItems = items || [];
-  const selected = deliveryPickerItems.find((item) => item.id === Number(selectedId)) || null;
+function deliveryPointPicker(label, selectedId, items, { required = false, name = "delivery_point_id" } = {}) {
+  const key = `pp${++deliveryPickerSeq}`;
+  const rows = items || [];
+  deliveryPickerStore.set(key, rows);
+  const selected = rows.find((item) => item.id === Number(selectedId)) || null;
   const option = (value, text, active) => `<option value="${esc(value)}" ${active ? "selected" : ""}>${esc(text)}</option>`;
-  return `<div class="point-picker" data-point-picker>
+  return `<div class="point-picker" data-point-picker="${key}">
     <label><span class="field-label-text">Viloyat</span>
-      <select data-point-region>${option("", "Barchasi", !selected?.region)}${pickerRegionOptions(selected?.region)}</select>
+      <select data-point-region>${option("", "Barchasi", !selected?.region)}${pickerRegionOptions(rows, selected?.region)}</select>
     </label>
     <label><span class="field-label-text">Tuman</span>
       <select data-point-district>${option("", "Barchasi", true)}</select>
     </label>
     <label class="form-field"><span class="field-label-text">${esc(label)}${required ? ' <span class="required-mark">*</span>' : ""}</span>
-      ${selectSearch("delivery_point_id", "Nuqta nomi yoki manzili bo'yicha qidiring")}
-      <select name="delivery_point_id" data-selected="${esc(selectedId ?? "")}" ${required ? "required" : ""}><option value="">Tanlanmagan</option></select>
+      ${selectSearch(name, "Nuqta nomi yoki manzili bo'yicha qidiring")}
+      <select name="${esc(name)}" data-selected="${esc(selectedId ?? "")}" ${required ? "required" : ""}><option value="">Tanlanmagan</option></select>
     </label>
   </div>`;
 }
@@ -772,39 +779,49 @@ function pickerCount(items) {
   return `<span data-noloc> (${items})</span>`;
 }
 
-function pickerRegionOptions(current) {
+function pickerRegionOptions(rows, current) {
   return (geoRegionsCache || [])
     .map((region) => {
-      const count = deliveryPickerItems.filter((item) => item.region === region.name).length;
+      const count = rows.filter((item) => item.region === region.name).length;
       return `<option value="${esc(region.name)}" ${region.name === current ? "selected" : ""}>${esc(region.name)} (${count})</option>`;
     })
     .join("");
 }
 
-function pickerDistrictOptions(regionName, current) {
+function pickerDistrictOptions(rows, regionName, current) {
   const region = (geoRegionsCache || []).find((item) => item.name === regionName);
   if (!region) return "";
   return region.districts
     .map((district) => {
-      const count = deliveryPickerItems.filter((item) => item.region === regionName && item.district === district.name).length;
+      const count = rows.filter((item) => item.region === regionName && item.district === district.name).length;
       return `<option value="${esc(district.name)}" ${district.name === current ? "selected" : ""}>${esc(district.name)} (${count})</option>`;
     })
     .join("");
 }
 
+// Tanlagichning ro'yxatini almashtirish: talabnomada mahsulot o'zgarsa,
+// nuqtalar ro'yxati ham boshqasiga almashadi.
+function setPointPickerItems(holder, rows) {
+  deliveryPickerStore.set(holder.dataset.pointPicker, rows || []);
+}
+
 function bindDeliveryPointPicker(root = app) {
-  const holder = root.querySelector("[data-point-picker]");
-  if (!holder) return;
+  root.querySelectorAll("[data-point-picker]").forEach((holder) => bindOnePointPicker(root, holder));
+}
+
+function bindOnePointPicker(root, holder) {
+  const rows = deliveryPickerStore.get(holder.dataset.pointPicker) || [];
   const regionSelect = holder.querySelector("[data-point-region]");
   const districtSelect = holder.querySelector("[data-point-district]");
-  const pointSelect = holder.querySelector('[name="delivery_point_id"]');
+  const pointSelect = holder.querySelector("select[data-selected]");
+  if (!regionSelect || !districtSelect || !pointSelect) return;
   const wanted = Number(pointSelect.getAttribute("data-selected") || 0)
-    || Number(deliveryPickerItems.find((item) => item.id === Number(pointSelect.value))?.id || 0);
+    || Number(rows.find((item) => item.id === Number(pointSelect.value))?.id || 0);
 
   function visible() {
     const region = regionSelect.value;
     const district = districtSelect.value;
-    return deliveryPickerItems.filter((item) => (!region || item.region === region) && (!district || item.district === district));
+    return rows.filter((item) => (!region || item.region === region) && (!district || item.district === district));
   }
 
   function paintPoints(keepId) {
@@ -823,7 +840,7 @@ function bindDeliveryPointPicker(root = app) {
 
   function paintDistricts(keepDistrict, keepId) {
     const region = regionSelect.value;
-    districtSelect.innerHTML = `<option value="">Barchasi</option>${region ? pickerDistrictOptions(region, keepDistrict) : ""}`;
+    districtSelect.innerHTML = `<option value="">Barchasi</option>${region ? pickerDistrictOptions(rows, region, keepDistrict) : ""}`;
     // Viloyat tanlanmaganda tuman ham tanlanmaydi: 209 ta tumanni bitta
     // ro'yxatda ko'rsatish foydasiz.
     districtSelect.disabled = !region;
@@ -833,6 +850,6 @@ function bindDeliveryPointPicker(root = app) {
   regionSelect.addEventListener("change", () => paintDistricts("", ""));
   districtSelect.addEventListener("change", () => paintPoints(""));
 
-  const start = deliveryPickerItems.find((item) => item.id === wanted);
+  const start = rows.find((item) => item.id === wanted);
   paintDistricts(start?.district || "", wanted);
 }
