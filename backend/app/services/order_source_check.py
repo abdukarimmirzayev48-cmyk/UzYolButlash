@@ -59,13 +59,20 @@ UZBEK_REGIONS = (
     "хоразм",
 )
 
-# Where the Jarqo'rg'on source actually is.
-JARKURGAN_REGIONS = ("surxondaryo", "сурхондарё")
+# Ikkala ishlab chiqarish nuqtamiz ham Surxondaryoda. Sherobod uchun qoida
+# yozilmagan edi: ro'yxatda variant turardi, lekin uni hech narsa
+# tekshirmasdi -- ya'ni Sherobod deb belgilangan buyurtmaga istalgan
+# hududdagi ta'minotchi biriktirilaverardi.
+SURXONDARYO_REGIONS = ("surxondaryo", "сурхондарё")
+JARKURGAN_REGIONS = SURXONDARYO_REGIONS
 JARKURGAN_DISTRICTS = ("jarqo'rg'on", "жарқўрғон", "жаркурган")
+SHEROBOD_REGIONS = SURXONDARYO_REGIONS
+SHEROBOD_DISTRICTS = ("sherobod", "шеробод", "шерабад")
 
 MSG_RUSSIA_LOCAL_SUPPLIER = "Manba «Rossiyadan to'g'ridan-to'g'ri», ta'minotchi esa O'zbekistonda ro'yxatdan o'tgan"
 MSG_LOCAL_FOREIGN_SUPPLIER = "Manba «O'zbekistondan», ta'minotchining O'zbekistonda manzili yo'q"
 MSG_JARKURGAN_ELSEWHERE = "Manba «Jarqo'rg'on», ta'minotchi esa boshqa hududda"
+MSG_SHEROBOD_ELSEWHERE = "Manba «Sherobod», ta'minotchi esa boshqa hududda"
 
 
 def normalise(value: str | None) -> str:
@@ -112,4 +119,9 @@ def check_source(*, source_type: str, addresses: list[dict]) -> list[str]:
             district.startswith(prefix) for district in districts for prefix in JARKURGAN_DISTRICTS
         ):
             warnings.append(MSG_JARKURGAN_ELSEWHERE)
+    elif source_type == "sherobod":
+        if not regions.intersection(SHEROBOD_REGIONS) and not any(
+            district.startswith(prefix) for district in districts for prefix in SHEROBOD_DISTRICTS
+        ):
+            warnings.append(MSG_SHEROBOD_ELSEWHERE)
     return warnings

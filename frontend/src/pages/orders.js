@@ -334,14 +334,14 @@ async function renderOrdersList() {
     clearPath: "/orders",
     counter: `${fmt(data.total)} ta buyurtma · sahifada ${fmt(activeCount)} ta faol`,
     formId: "order-search-form",
-    filters: `<input name="search" placeholder="Qidirish..." value="${esc(params.get("search") || "")}" /><select name="delivery"><option value="">Yetkazish muddati</option>${[["overdue", "Muddati o'tgan"], ["soon", "7 kun ichida"]].map(([key, label]) => `<option value="${key}" ${params.get("delivery") === key ? "selected" : ""}>${label}</option>`).join("")}</select><input name="order_number" placeholder="Buyurtma raqami" value="${esc(params.get("order_number") || "")}" /><input name="client_name" placeholder="Mijoz" value="${esc(params.get("client_name") || "")}" /><select name="status"><option value="">Status</option>${orderStatuses.map(([key, label]) => `<option value="${key}" ${params.get("status") === key ? "selected" : ""}>${label}</option>`).join("")}</select>`,
+    filters: `<input name="search" placeholder="Qidirish..." value="${esc(params.get("search") || "")}" /><select name="delivery"><option value="">Yetkazish muddati</option>${[["overdue", "Muddati o'tgan"], ["soon", "7 kun ichida"]].map(([key, label]) => `<option value="${key}" ${params.get("delivery") === key ? "selected" : ""}>${label}</option>`).join("")}</select><input name="order_number" placeholder="Buyurtma raqami" value="${esc(params.get("order_number") || "")}" /><input name="client_name" placeholder="Mijoz" value="${esc(params.get("client_name") || "")}" /><select name="status"><option value="">Status</option>${orderStatuses.map(([key, label]) => `<option value="${key}" ${params.get("status") === key ? "selected" : ""}>${label}</option>`).join("")}</select><select name="source_type"><option value="">Manba turi</option>${sourceTypes.map(([key, label]) => `<option value="${key}" ${params.get("source_type") === key ? "selected" : ""}>${label}</option>`).join("")}</select><select name="fulfillment_type"><option value="">Yetkazib berish modeli</option>${fulfillmentTypes.map(([key, label]) => `<option value="${key}" ${params.get("fulfillment_type") === key ? "selected" : ""}>${label}</option>`).join("")}</select>`,
     headers: ["Buyurtma raqami", "Sana", "Yetkazish muddati", "Mijoz", "Shartnoma", "Mahsulot", "Miqdor", "Yetkazilgan", "Qoldiq", "Manba", "Model", "Ta'minotchi", "Jami summa", "Status", ""],
     rows: data.items.map((order) => `<tr><td><button class="ops-primary-link" data-nav="/orders/${order.id}">${fmt(order.order_number)}</button></td><td data-noloc>${fmtDayOnly(order.order_date)}</td><td>${orderDueCell(order)}</td><td>${fmt(order.client?.name)}</td><td>${fmt(order.contract?.contract_number)}</td><td>${fmt(order.product)}</td><td>${fmtQty(order.total_quantity)}</td><td>${fmtQty(order.delivered_quantity)}</td><td class="${numberValue(order.remaining_quantity) > 0 ? "ops-warning" : ""}">${fmtQty(order.remaining_quantity)}</td><td>${fmt(optionLabel(sourceTypes, order.source_type))}</td><td>${fmt(optionLabel(fulfillmentTypes, order.fulfillment_type))}</td><td>${fmt(order.supplier_name)}</td><td class="ops-money">${fmtMoney(order.total_amount)}</td><td>${statusBadge(order.status)}</td><td><div class="ops-row-actions"><button class="link-btn" data-nav="/orders/${order.id}">Ochish</button><button class="link-btn" data-nav="/orders/${order.id}?tab=supplier">Ta'minotchi</button>${canEdit("yetkazib_berish") ? `<button class="link-btn" data-nav="/delivery-batches/new?order_id=${order.id}">Partiya</button>` : ""}</div></td></tr>`).join(""),
     emptyText: "Buyurtmalar topilmadi.",
     colspan: 15,
     footer: opsFooter(data, "order"),
   });
-  bindOpsSearch("order-search-form", "/orders", ["search", "order_number", "client_name", "status", "delivery"]);
+  bindOpsSearch("order-search-form", "/orders", ["search", "order_number", "client_name", "status", "delivery", "source_type", "fulfillment_type"]);
   bindOpsPagination("order", "/orders");
 }
 
@@ -553,14 +553,46 @@ function stockSuggestionPanel(state) {
     </div>${action}</section>`;
 }
 
+// Manba turi ta'minotchi hududiga mos kelmasa, buni saqlangandan keyin emas,
+// shu yerda aytish kerak. Ta'minotchi faqat zaxira yo'lida oldindan ma'lum
+// bo'ladi -- to'g'ridan-to'g'ri xaridda u buyurtma yaratilgach tanlanadi va
+// tekshiruv kartochkada ishlaydi.
+// Xabar har bir manba uchun to'liq yozilgan: lug'at yig'ma qatorni tanimaydi,
+// shuning uchun «Manba «X», ...» ni o'rnida qurish tarjimasiz qoldirardi.
+const SOURCE_REGION_RULES = {
+  jarkurgan: {
+    keys: ["surxondaryo", "сурхондарё", "jarqo'rg'on", "жарқўрғон"],
+    message: "Manba «Jarqo'rg'on», tanlangan zaxira esa boshqa hududda",
+  },
+  sherobod: {
+    keys: ["surxondaryo", "сурхондарё", "sherobod", "шеробод"],
+    message: "Manba «Sherobod», tanlangan zaxira esa boshqa hududda",
+  },
+};
+
+function orderSourceHintPanel(state) {
+  const lot = (state.stockLots || []).find((item) => Number(item.id) === Number(state.stockLotId));
+  if (!lot || !lot.supplier_name) return "";
+  const rule = SOURCE_REGION_RULES[state.sourceType];
+  const address = `${lot.location_address || ""} ${lot.location_name || ""}`.toLowerCase().replace(/[‘’]/g, "'");
+  if (rule && !rule.keys.some((key) => address.includes(key))) {
+    return workflowWarningsPanel([`${rule.message}: ${lot.location_name || lot.supplier_name}`]);
+  }
+  return `<p class="helper-text"><span>Mol shu ta'minotchidan olinadi:</span> <b data-noloc>${fmt(lot.supplier_name)}</b></p>`;
+}
+
 function orderWizardSourcePanel(state) {
   const sourceHelp = state.sourceType === "supplier_held_stock"
     ? "Mahsulot bizga tegishli, lekin ta'minotchi omborida turadi. Keyingi bosqichda mavjud zaxiradan ajratiladi."
     : state.fulfillmentType === "company_managed_delivery"
       ? "Yetkazib berish kompaniya tomonidan boshqariladi. Partiya yaratilganda logistika yozuvi avtomatik ochiladi."
       : "Mahsulot ta'minotchidan mijozga to'g'ridan-to'g'ri yetkaziladi.";
-  const totals = orderWizardTotals(state);
-  return `${stockSuggestionPanel(state)}<div class="grid">${selectField("source_type", "Manba turi", sourceTypes, state.sourceType, { required: true })}${selectField("fulfillment_type", "Yetkazib berish modeli", fulfillmentTypes, state.fulfillmentType, { required: true })}${moneyInputField("markup_amount", "Ustama summasi", state.markupAmount)}</div><div data-markup-note>${orderMarkupNote(totals)}</div><div class="empty compact">${sourceHelp}</div>`;
+  // Ustama bu yerdan olib tashlandi: xuddi shu maydon Narx bosqichida ham
+  // so'ralardi va qaysi biri asosiy ekani tushunarsiz edi. Manba turi esa
+  // bo'sh boshlanadi -- «Boshqa» standart bo'lganda ko'p buyurtma o'sha
+  // javobsiz holatda qolib ketardi.
+  const sourceOptions = [["", "Manba turini tanlang"], ...sourceTypes];
+  return `${stockSuggestionPanel(state)}<div class="grid">${selectField("source_type", "Manba turi", sourceOptions, state.sourceType, { required: true })}${selectField("fulfillment_type", "Yetkazib berish modeli", fulfillmentTypes, state.fulfillmentType, { required: true })}</div><div class="empty compact">${sourceHelp}</div>${orderSourceHintPanel(state)}`;
 }
 
 function orderWizardStockPanel(state) {
@@ -769,7 +801,7 @@ async function renderOrderWizard() {
   const state = {
     step: 1,
     orderDate: todayIso(),
-    sourceType: params.get("source_type") || "other",
+    sourceType: params.get("source_type") || "",
     fulfillmentType: "direct_supplier_to_customer",
     markupAmount: "",
     logisticsPrice: "0",

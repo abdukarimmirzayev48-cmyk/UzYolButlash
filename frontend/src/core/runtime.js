@@ -1821,6 +1821,8 @@ const OPS_FILTER_LABELS = {
   order_number: "Buyurtma raqami",
   client_name: "Mijoz",
   location_type: "Joylashuv",
+  source_type: "Manba turi",
+  fulfillment_type: "Yetkazib berish modeli",
 };
 
 function normalizeOpsFilters(filters = "") {
