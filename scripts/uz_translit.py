@@ -178,6 +178,11 @@ WORD_FIXES = {
     "тиккет": "тикет",
     "Тиккет": "Тикет",
     "ТИККЕТ": "ТИКЕТ",
+    # Xalqaro so'zlarda «ое» emas, «оэ» yoziladi: коэффициент, поэзия.
+    # Transliteratsiya buni bilmaydi -- «koeffitsient» dan «коеффициент»
+    # chiqaradi.
+    "коеффициент": "коэффициент",
+    "Коеффициент": "Коэффициент",
 }
 
 _WORD_FIX_RE = re.compile("|".join(re.escape(key) for key in WORD_FIXES))

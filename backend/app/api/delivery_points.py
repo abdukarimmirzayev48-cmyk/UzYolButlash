@@ -12,6 +12,7 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session, selectinload
 
 from backend.app.db.session import get_db
+from backend.app.services import point_distance
 from backend.app.models.client import Client
 from backend.app.models.delivery_point import (
     SELECTABLE_STATUSES,
@@ -202,6 +203,26 @@ def export_delivery_points(
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": f'attachment; filename="{"temiryol-stansiyalari" if station else "abz-nuqtalari"}.xlsx"'},
     )
+
+
+@router.get("/distance")
+def points_distance(from_id: int, to_id: int, db: Session = Depends(get_db)) -> dict:
+    """Ikki nuqta orasidagi masofa -- ma'lumotnomadagi koordinatalardan.
+
+    Literal manzil `/{point_id}` dan oldin turishi shart, aks holda «distance»
+    nuqta identifikatori deb o'qiladi.
+    """
+    origin = db.get(DeliveryPoint, from_id)
+    destination = db.get(DeliveryPoint, to_id)
+    result = point_distance.between_points(origin, destination)
+    return {
+        "from": {"id": from_id, "name": origin.name if origin else None},
+        "to": {"id": to_id, "name": destination.name if destination else None},
+        "straight_km": result["straight_km"],
+        "road_km": result["road_km"],
+        "road_factor": point_distance.ROAD_FACTOR,
+        "reason": result["reason"],
+    }
 
 
 @router.get("", response_model=Page[DeliveryPointRead])

@@ -76,6 +76,7 @@ const uzCyrillic = {
   "Amallar": "Амаллар",
   "Amallar tarixi": "Амаллар тарихи",
   "Amallar → To'liq tahrirlash": "Амаллар → Тўлиқ таҳрирлаш",
+  "Aniq masofani bilsangiz, maydonda to'g'rilang.": "Аниқ масофани билсангиз, майдонда тўғриланг.",
   "Aniq vaqt kiritilsa, haqiqiy sanalar shundan to'ldiriladi.": "Аниқ вақт киритилса, ҳақиқий саналар шундан тўлдирилади.",
   "Aniqlik darajasi": "Аниқлик даражаси",
   "Aprel": "Апрел",
@@ -1179,6 +1180,7 @@ const uzCyrillic = {
   "Mashinani tanlang.": "Машинани танланг.",
   "Masofa": "Масофа",
   "Masofa (km)": "Масофа (км)",
+  "Masofani o'lchab bo'lmadi:": "Масофани ўлчаб бўлмади:",
   "Mavjud": "Мавжуд",
   "Mavjud buyurtma bo'yicha qisman jo'natma.": "Мавжуд буюртма бўйича қисман жўнатма.",
   "Mavjud buyurtma bo'yicha qisman yetkazib berish.": "Мавжуд буюртма бўйича қисман етказиб бериш.",
@@ -1381,12 +1383,14 @@ const uzCyrillic = {
   "Nuqta xulosasi": "Нуқта хулосаси",
   "Nuqtalar topilmadi.": "Нуқталар топилмади.",
   "Nuqtani xaritadan belgilang yoki manzilni qidiring. Xaritadagi belgi to'liq manzilga mos bo'lishi kerak.": "Нуқтани харитадан белгиланг ёки манзилни қидиринг. Харитадаги белги тўлиқ манзилга мос бўлиши керак.",
+  "Nuqtaning koordinatasi ko'rsatilmagan": "Нуқтанинг координатаси кўрсатилмаган",
   "Nusxalab bo'lmadi.": "Нусхалаб бўлмади.",
   "Nusxalandi.": "Нусхаланди.",
   "O'chirdi": "Ўчирди",
   "O'chirildi.": "Ўчирилди.",
   "O'chirilgan": "Ўчирилган",
   "O'chirish": "Ўчириш",
+  "O'lchandi:": "Ўлчанди:",
   "O'lchov birligi": "Ўлчов бирлиги",
   "O'lchov birligi (t, kg, m³ va h.k.)": "Ўлчов бирлиги (т, кг, м³ ва ҳ.к.)",
   "O'lchov birligi kiritilishi shart.": "Ўлчов бирлиги киритилиши шарт.",
@@ -2796,6 +2800,7 @@ const uzCyrillic = {
   "ta talabnoma": "та талабнома",
   "ta turkum": "та туркум",
   "ta yozuv": "та ёзув",
+  "to'g'ri chiziq": "тўғри чизиқ",
   "to'langan": "тўланган",
   "to'ldirilgan": "тўлдирилган",
   "to'ldirilishi shart": "тўлдирилиши шарт",
@@ -2804,6 +2809,7 @@ const uzCyrillic = {
   "uzyolbutlash.publicRequestDraft": "узёлбутлаш.публикРеқуестДрафт",
   "vaqt formati noto'g'ri": "вақт формати нотўғри",
   "yil": "йил",
+  "yo'l koeffitsienti": "йўл коэффициенти",
   "— Belgilanmagan": "— Белгиланмаган",
   "— Hisob-kitob qilinmagan": "— Ҳисоб-китоб қилинмаган",
   "— kasallik varaqasida": "— касаллик варақасида",
@@ -2910,7 +2916,7 @@ const uzCyrillicPairs = [["o'", "ў"], ["O'", "Ў"], ["g'", "ғ"], ["G'", "Ғ"],
 const uzCyrillicProtected = ["UzYolButlash", "Bitum ERP", "MAN TGS", "Hikvision", "Telegram", "ERP", "PDF", "CSV", "XLSX", "Excel", "API", "ID", "SMS", "URL", "Email", "UZS", "USD", "EUR", "RUB", "KZT", "Didox", "Rouming", "MXIK", "IKPU", "STIR", "GPS", "Ctrl"];
 // Oddiy o'girish xato qiladigan alohida so'zlar. Python tomonidagi
 // scripts/uz_translit.py WORD_FIXES bilan bir xil bo'lishi shart.
-const uzCyrillicWordFixes = {"тиккет": "тикет", "Тиккет": "Тикет", "ТИККЕТ": "ТИКЕТ"};
+const uzCyrillicWordFixes = {"тиккет": "тикет", "Тиккет": "Тикет", "ТИККЕТ": "ТИКЕТ", "коеффициент": "коэффициент", "Коеффициент": "Коэффициент"};
 const _uzWordFixRe = new RegExp(Object.keys(uzCyrillicWordFixes).join("|"), "g");
 
 const _uzKeepRe = new RegExp(

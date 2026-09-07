@@ -35,6 +35,7 @@ from backend.app.models.supplier import SupplierAddress, SupplierAddressType
 from backend.app.models.transport import Transport, TransportEvent, TransportEventCheckResult, TransportEventType
 from backend.app.services import delivery_stats
 from backend.app.services import delivery_method as delivery_method_service
+from backend.app.services import point_distance
 from backend.app.services import trip_completion_check
 from backend.app.services.delivery_method import default_method_for
 from backend.app.services.auth import get_current_user, require_edit
@@ -184,6 +185,25 @@ def apply_delivery_point_address(db: Session, batch: DeliveryBatch, logistics: L
     loading = delivery_point_address(db, batch.loading_point_id)
     if loading:
         logistics.loading_address = loading
+    apply_planned_distance(db, batch, logistics)
+
+
+def apply_planned_distance(db: Session, batch: DeliveryBatch, logistics: Logistics) -> None:
+    """Ikki nuqta orasidagi masofani o'lchab, reja masofasiga yozadi.
+
+    Reja masofasi qo'lda yozilardi va odatda bo'sh qolardi, holbuki yoqilg'i
+    hisobida «rejadan ortiq yurilgan» aynan shunga solishtiriladi. Qo'lda
+    kiritilgan qiymat ustun turadi: o'lchov taxminiy, operator bilgani aniq.
+    """
+    if logistics.planned_distance_km is not None:
+        return
+    from backend.app.models.delivery_point import DeliveryPoint
+
+    origin = db.get(DeliveryPoint, batch.loading_point_id) if batch.loading_point_id else None
+    destination = db.get(DeliveryPoint, batch.delivery_point_id) if batch.delivery_point_id else None
+    measured = point_distance.between_points(origin, destination)
+    if measured["road_km"] is not None:
+        logistics.planned_distance_km = measured["road_km"]
 
 
 def delivery_point_address(db: Session, point_id: int | None) -> str | None:

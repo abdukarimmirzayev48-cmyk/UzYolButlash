@@ -680,6 +680,38 @@ function batchWizardSourcePanel(state) {
   <p class="form-hint">Mahsulot turkumidan oldindan tanlangan. Bu partiya boshqacha ketayotgan bo'lsa, o'zgartiring.</p><div class="empty compact">${companyManaged ? "Bu partiya kompaniya tomonidan boshqariladigan logistika orqali yetkaziladi. Partiya yaratilgandan so'ng logistika yozuvi avtomatik ochiladi." : "Bu partiya ta'minotchidan mijozga to'g'ridan-to'g'ri yetkaziladi. Logistika ma'lumotlari minimal ko'rinishda yuritiladi."}</div>`;
 }
 
+// Ikki nuqta orasidagi masofa koordinatalardan o'lchanadi. Bu taxmin --
+// to'g'ri chiziqqa yo'l koeffitsienti qo'llanadi -- shuning uchun raqam
+// maydonga taklif sifatida qo'yiladi va operator uni tuzatishi mumkin.
+function batchDistanceNote(state) {
+  const measured = state.distance;
+  if (!measured) return "";
+  if (measured.reason) {
+    return `<p class="helper-text"><span>Masofani o'lchab bo'lmadi:</span> <span>${esc(measured.reason)}</span></p>`;
+  }
+  return `<p class="helper-text"><span>O'lchandi:</span> <b data-noloc>${fmtQty(measured.road_km, "km")}</b> · <span>to'g'ri chiziq</span> <b data-noloc>${fmtQty(measured.straight_km, "km")}</b> · <span>yo'l koeffitsienti</span> <b data-noloc>${esc(measured.road_factor)}</b>. <span>Aniq masofani bilsangiz, maydonda to'g'rilang.</span></p>`;
+}
+
+async function refreshBatchDistance(state, form) {
+  const from = state.loadingPointId;
+  const to = state.deliveryPointId;
+  if (!from || !to) {
+    state.distance = null;
+    return;
+  }
+  state.distance = await api(`/api/delivery-points/distance?from_id=${from}&to_id=${to}`).catch(() => null);
+  // Operator o'zi raqam yozgan bo'lsa, o'lchov uni bosib ketmaydi.
+  if (state.distance?.road_km && !state.distanceTouched) {
+    state.plannedDistanceKm = String(state.distance.road_km);
+    if (form?.elements.planned_distance_km) form.elements.planned_distance_km.value = state.plannedDistanceKm;
+  }
+  const holder = form?.querySelector("[data-distance-note]");
+  if (holder) {
+    holder.innerHTML = batchDistanceNote(state);
+    localizeDom(holder);
+  }
+}
+
 function batchWizardPlanPanel(state) {
   const points = state.deliveryPoints || [];
   return `<div class="grid">
@@ -691,6 +723,10 @@ function batchWizardPlanPanel(state) {
   <h3 class="modal-subtitle">Yetkazish nuqtasi</h3>
   <div class="grid">${deliveryPointPicker("Yetkazish nuqtasi", state.deliveryPointId, points)}</div>
   <p class="form-hint">Nuqta tanlansa, manzil uning kartochkasidan olinadi. Ma'lumotnomada yo'q joy uchun quyida qo'lda yozing.</p>
+  <div class="grid">
+    ${textField("planned_distance_km", "Reja masofa (km)", state.plannedDistanceKm || "", "number")}
+  </div>
+  <div data-distance-note>${batchDistanceNote(state)}</div>
   <div class="grid">
     ${textArea("loading_address", "Yuklash manzili", state.loadingAddress || "", { required: true })}
     ${textArea("delivery_address", "Yetkazish manzili", state.deliveryAddress || "", { required: true })}
@@ -790,6 +826,7 @@ function collectBatchWizardPayload(state) {
       delivery_address: state.deliveryAddress || null,
       planned_pickup_date: state.plannedLoadingDate,
       planned_delivery_date: state.plannedDeliveryDate,
+      planned_distance_km: state.plannedDistanceKm || null,
       cost_amount: "0",
       customer_price: "0",
       paid_by: "company",
@@ -809,6 +846,11 @@ function syncBatchWizardInputs(state) {
   if (form.elements.delivery_address) state.deliveryAddress = form.elements.delivery_address.value.trim();
   if (form.elements.loading_point_id) state.loadingPointId = form.elements.loading_point_id.value;
   if (form.elements.delivery_point_id) state.deliveryPointId = form.elements.delivery_point_id.value;
+  if (form.elements.planned_distance_km) {
+    const typed = form.elements.planned_distance_km.value.trim();
+    if (typed !== state.plannedDistanceKm) state.distanceTouched = true;
+    state.plannedDistanceKm = typed;
+  }
   if (form.elements.notes) state.notes = form.elements.notes.value.trim();
   if (form.elements.delivery_method) state.deliveryMethod = form.elements.delivery_method.value;
 }
@@ -818,6 +860,14 @@ function renderBatchWizard(state) {
   bindBatchWizard(state);
   bindDeliveryPointPicker(app);
   bindRuDateFields(app);
+  const form = document.querySelector("#batch-wizard-form");
+  ["loading_point_id", "delivery_point_id"].forEach((name) => {
+    form?.elements[name]?.addEventListener("change", async () => {
+      syncBatchWizardInputs(state);
+      await refreshBatchDistance(state, form);
+    });
+  });
+  if (state.step === 4) refreshBatchDistance(state, form);
 }
 
 function bindBatchWizard(state) {
@@ -874,6 +924,9 @@ async function batchWizardForm() {
     deliveryAddress: "",
     loadingPointId: "",
     deliveryPointId: "",
+    plannedDistanceKm: "",
+    distance: null,
+    distanceTouched: false,
     deliveryPoints: await deliveryPointList(),
     notes: "",
     supplierName: "",
