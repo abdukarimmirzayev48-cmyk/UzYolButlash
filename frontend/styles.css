@@ -6980,13 +6980,26 @@ body.public-layout.sidebar-collapsed .app-shell {
   display: block;
   width: 100%;
   border: 0;
+  /* Qatorlar orasida ingichka chiziq: uzun ro'yxatda qaysi nom qayerda
+     tugashini ajratib turadi. Oxirgisida chiziq qolmaydi. */
+  border-bottom: 1px solid var(--line);
   border-radius: 5px;
   background: none;
   color: inherit;
-  padding: 8px 10px;
+  padding: 9px 10px;
   font: inherit;
   text-align: left;
   cursor: pointer;
+}
+
+.combo-option:last-child {
+  border-bottom: 0;
+}
+
+/* Guruh sarlavhasidan oldingi qator chizig'i ortiqcha: sarlavhaning o'zi
+   ajratib turadi. */
+.combo-group + .combo-option {
+  border-top: 0;
 }
 
 .combo-option:hover,

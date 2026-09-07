@@ -320,6 +320,17 @@ async function renderExchangeTicketsList() {
   bindOpsPagination("exchange-ticket", "/exchange-tickets");
 }
 
+// Shartnomadagi bilan bir xil qoida: bazaga doim QQSsiz narx yoziladi.
+// Bozorda narx ko'pincha «QQS bilan» aytiladi, shuning uchun kiritilgan
+// raqamdan soliq ajratib olinadi -- aks holda summa QQS ustiga QQS bo'lardi.
+function ticketNetUnitPrice(form) {
+  const price = numberValue(field(form, "unit_price"));
+  const rate = numberValue(field(form, "vat_rate") || 12);
+  const withVat = form.elements.price_includes_vat?.checked;
+  if (!withVat || rate <= 0) return price;
+  return price / (1 + rate / 100);
+}
+
 function exchangeTicketPayload(form) {
   const supplierId = field(form, "supplier_id");
   const productId = field(form, "product_id");
@@ -331,12 +342,14 @@ function exchangeTicketPayload(form) {
     product_name: field(form, "product_name"),
     unit: field(form, "unit") || "tonna",
     quantity: field(form, "quantity"),
-    unit_price: field(form, "unit_price") || "0",
+    unit_price: String(ticketNetUnitPrice(form) || 0),
     vat_rate: field(form, "vat_rate") || "12",
     payment_type: field(form, "payment_type") || "forward",
     payment_term_days: Number(field(form, "payment_term_days") || 90),
     notes: field(form, "notes"),
-    created_by: field(form, "created_by"),
+    // Kim yaratgani profildan olinadi: qo'lda yozilganda har xil ism
+    // tushardi va yozuvni kimga bog'lash noaniq bo'lardi.
+    created_by: currentUser?.full_name || currentUser?.username || null,
     open_immediately: true,
   };
 }
@@ -362,6 +375,15 @@ function bindTicketPaymentType(form) {
   }));
 }
 
+// Birlik qo'lda yozilardi va bitta mahsulot «t», «tn», «tonna» bo'lib uch
+// xil yozilishi mumkin edi. Ro'yxat mahsulotlar ma'lumotnomasidagi
+// qiymatlardan yig'iladi -- ya'ni bazada bori.
+function ticketUnitOptions(products, selected) {
+  const units = [...new Set((products || []).map((item) => item.unit).filter(Boolean))].sort();
+  if (!units.length) units.push("tonna");
+  return units.map((unit) => `<option value="${esc(unit)}" ${unit === selected ? "selected" : ""}>${esc(unit)}</option>`).join("");
+}
+
 function exchangeTicketProductOptions(products) {
   const grouped = new Map();
   (products || []).forEach((product) => {
@@ -382,7 +404,17 @@ function bindExchangeTicketProduct(form) {
     const option = select.options[select.selectedIndex];
     const name = option?.dataset.name || "";
     form.elements.product_name.value = name;
-    if (name && option.dataset.unit) form.elements.unit.value = option.dataset.unit;
+    // Birlik endi ro'yxat: mahsulotning birligi ro'yxatda bo'lmasa (eski
+    // yozuvda boshqacha yozilgan bo'lishi mumkin) u qo'shib qo'yiladi,
+    // aks holda tanlov jimgina o'tmay qolardi.
+    const unit = option?.dataset.unit;
+    if (name && unit) {
+      const list = form.elements.unit;
+      if (![...list.options].some((row) => row.value === unit)) {
+        list.append(new Option(unit, unit));
+      }
+      list.value = unit;
+    }
   };
   select.addEventListener("change", () => {
     apply();
@@ -410,8 +442,8 @@ function updateExchangeTicketTotals(form) {
   const ticketDate = field(form, "ticket_date");
   const term = Number(field(form, "payment_term_days") || 90);
   const quantity = numberValue(field(form, "quantity"));
-  const unitPrice = numberValue(field(form, "unit_price"));
   const vatRate = numberValue(field(form, "vat_rate") || 12);
+  const unitPrice = ticketNetUnitPrice(form);
   const subtotal = quantity * unitPrice;
   const vat = subtotal * vatRate / 100;
   const due = ticketDate ? new Date(ticketDate) : null;
@@ -432,12 +464,12 @@ async function renderNewExchangeTicket() {
   // a hand-typed name that nothing else in the system can match.
   const productOptions = exchangeTicketProductOptions(products);
   const today = todayIso();
-  app.innerHTML = `<div class="page"><div class="page-header"><div class="page-title"><h1>Yangi birja ticketi</h1><p>Ticket ochilganda ta'minotchi omboridagi kompaniya zaxirasi yaratiladi.</p></div><div class="actions"><button class="btn" data-nav="/exchange-tickets">Orqaga</button></div></div><form id="exchange-ticket-form">${section("Ticket ma'lumotlari", `<div class="grid">${textField("ticket_number", "Ticket raqami")}${textField("ticket_date", "Ticket sanasi", today, "date")}<label>Ta'minotchi<select name="supplier_id"><option value="">Tanlang</option>${supplierOptions}</select></label><label><span class="field-label-text">Mahsulot <span class="required-mark" aria-hidden="true">*</span></span>${selectSearch("product_id", "Mahsulot nomi bo'yicha qidiring")}<select name="product_id" data-ticket-product required><option value="">Mahsulotni tanlang</option>${productOptions}</select></label><input type="hidden" name="product_name" value="" />${textField("quantity", "Miqdor", "", "number")}${textField("unit", "Birlik", "tonna")}${textField("unit_price", "Birlik narxi", "", "number")}${textField("vat_rate", "QQS %", 12, "number")}<label><span class="field-label-text">To'lov turi <span class="required-mark" aria-hidden="true">*</span></span>
+  app.innerHTML = `<div class="page"><div class="page-header"><div class="page-title"><h1>Yangi birja ticketi</h1><p>Ticket ochilganda ta'minotchi omboridagi kompaniya zaxirasi yaratiladi.</p></div><div class="actions"><button class="btn" data-nav="/exchange-tickets">Orqaga</button></div></div><form id="exchange-ticket-form">${section("Ticket ma'lumotlari", `<div class="grid">${textField("ticket_number", "Ticket raqami")}${textField("ticket_date", "Ticket sanasi", today, "date")}<label>Ta'minotchi<select name="supplier_id"><option value="">Tanlang</option>${supplierOptions}</select></label><label><span class="field-label-text">Mahsulot <span class="required-mark" aria-hidden="true">*</span></span>${selectSearch("product_id", "Mahsulot nomi bo'yicha qidiring")}<select name="product_id" data-ticket-product required><option value="">Mahsulotni tanlang</option>${productOptions}</select></label><input type="hidden" name="product_name" value="" />${textField("quantity", "Miqdor", "", "number")}<label><span class="field-label-text">Birlik</span><select name="unit" data-noloc>${ticketUnitOptions(products, "")}</select></label>${textField("unit_price", "Birlik narxi", "", "number")}${textField("vat_rate", "QQS %", 12, "number")}<label class="inline-check price-vat-toggle"><input type="checkbox" name="price_includes_vat" /><span>Kiritilgan birlik narxi QQS bilan</span></label><label><span class="field-label-text">To'lov turi <span class="required-mark" aria-hidden="true">*</span></span>
       <div class="choice-row">
         ${TICKET_PAYMENT_TYPES.map(([key, label, days]) => `<button type="button" class="task-chip ${key === "forward" ? "active" : ""}" data-payment-type="${key}" data-days="${days}">${label}</button>`).join("")}
       </div>
       <input type="hidden" name="payment_type" value="forward" />
-    </label>${textField("payment_term_days", "To'lov muddati, kun", 90, "number")}${readonlyField("due_date_preview", "To'lov muddati", "")}${textField("created_by", "Yaratgan")}${textArea("notes", "Izoh")}</div>`)}${section("Hisob-kitob", summaryCards([["To'lov muddati", `<span data-ticket-due>${dash}</span>`], ["Oraliq summa", `<span data-ticket-subtotal>${dash}</span>`], ["QQS", `<span data-ticket-vat>${dash}</span>`], ["Jami summa", `<span data-ticket-total>${dash}</span>`]]))}<div class="form-footer"><button class="btn" type="button" data-nav="/exchange-tickets">Bekor qilish</button><button class="btn primary">Ticketni ochish</button></div></form></div>`;
+    </label>${textField("payment_term_days", "To'lov muddati, kun", 90, "number")}${textArea("notes", "Izoh")}</div>`)}<p class="helper-text">Belgi qo'yilsa, kiritilgan raqamdan soliq ajratiladi va bazaga QQSsiz narx yoziladi.</p>${section("Hisob-kitob", summaryCards([["To'lov muddati", `<span data-ticket-due>${dash}</span>`], ["Oraliq summa", `<span data-ticket-subtotal>${dash}</span>`], ["QQS", `<span data-ticket-vat>${dash}</span>`], ["Jami summa", `<span data-ticket-total>${dash}</span>`]]))}<div class="form-footer"><button class="btn" type="button" data-nav="/exchange-tickets">Bekor qilish</button><button class="btn primary">Ticketni ochish</button></div></form></div>`;
   const form = document.querySelector("#exchange-ticket-form");
   bindSelectSearch(form);
   bindExchangeTicketProduct(form);
