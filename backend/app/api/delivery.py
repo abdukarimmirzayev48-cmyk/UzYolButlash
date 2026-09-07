@@ -228,6 +228,19 @@ MSG_TRANSPORT_NOT_FOUND = "Tanlangan mashina topilmadi."
 MSG_TRANSPORT_UNAVAILABLE = "Mashina hozir yo'lga chiqa olmaydi"
 
 
+def apply_measurements(logistics: Logistics, payload, fields: tuple[str, ...]) -> None:
+    """Bosqich oynasida o'lchangan raqamlarni reysga ko'chiradi.
+
+    Faqat yuborilgani yoziladi: bo'sh qoldirilgan maydon avvalgi qiymatni
+    o'chirib yubormasligi kerak -- xuddi shu bosqich ikkinchi marta
+    ochilganda avval kiritilgani yo'qolardi.
+    """
+    given = payload.model_dump(exclude_unset=True)
+    for name in fields:
+        if name in given and given[name] is not None:
+            setattr(logistics, name, given[name])
+
+
 def apply_transport_to_logistics(db: Session, logistics: Logistics, provided: set[str] | None = None) -> None:
     """Mashina tanlangach, raqam va haydovchi shundan to'ldiriladi.
 
@@ -1015,6 +1028,10 @@ def confirm_batch_loading(batch_id: int, payload: DeliveryBatchLoadingConfirm, d
         if payload.notes:
             item.comment = payload.notes
 
+    apply_measurements(logistics, payload, (
+        "odometer_start_km", "fuel_before_liters", "gross_weight_tons",
+        "tare_weight_tons", "loading_temperature_c", "loading_seal", "departed_at",
+    ))
     logistics.actual_pickup_date = payload.actual_loading_date
     logistics.status = LogisticsStatus.loaded
     batch.actual_loading_date = payload.actual_loading_date
@@ -1047,6 +1064,7 @@ def confirm_batch_delivery(batch_id: int, payload: DeliveryBatchDeliveryConfirm,
     if payload.actual_delivery_date < actual_loading_date:
         raise HTTPException(status_code=422, detail="Haqiqiy yetkazish sanasi haqiqiy yuklash sanasidan oldin bo'lishi mumkin emas.")
 
+    apply_measurements(logistics, payload, ("unloading_temperature_c", "unloading_seal", "arrived_at"))
     logistics.actual_delivery_date = payload.actual_delivery_date
     logistics.status = LogisticsStatus.delivered
     batch.actual_delivery_date = payload.actual_delivery_date
@@ -1080,8 +1098,11 @@ def complete_batch(batch_id: int, payload: DeliveryBatchCompletionConfirm, db: S
         calculate_batch_item(item)
     if any(item.difference_quantity is not None and item.difference_quantity != 0 for item in batch.items) and not payload.allow_quantity_difference:
         raise HTTPException(status_code=409, detail="Yuklangan va qabul qilingan miqdor farq qiladi.")
-    # Reys raqamlari shu yerda so'raladi: yopilgandan keyin ularni tiklab
-    # bo'lmaydi -- mashina yo'lda, tarozi ko'rsatkichi o'chgan.
+    # Bazaga qaytgach olinadigan raqamlar shu oynada kiritiladi, shuning uchun
+    # tekshiruvdan oldin yoziladi -- aks holda hozirgina kiritilgani hisobga
+    # olinmay, oyna bekorga ogohlantirardi.
+    apply_measurements(logistics, payload, ("odometer_end_km", "fuel_after_liters", "fuel_added_liters", "returned_at"))
+    sync_fuel_and_distance(logistics)
     trip = trip_check_for(logistics)
     if trip.blocking:
         raise HTTPException(status_code=422, detail=trip.blocking[0])

@@ -117,6 +117,10 @@ _KEEP_RE = re.compile(
     r"|\b\w+(?:_\w+)+\b"               # snake_case / CONST_CASE identifiers
     r"|\b\w+\.(?:env|md|py|js|json|csv|pdf)\b"   # file names
     r"|\b\d[\w.,/:-]*"                 # anything starting with a digit
+    # O'lchov belgilari: «°C» dagi C alohida so'z emas, shuning uchun uni
+    # PROTECTED ushlamaydi va transliteratsiya uni «°К» ga aylantirardi --
+    # Selsiy o'rniga kirillcha «К» chiqib qolardi.
+    r"|°[CFcf]\b"                      # °C, °F
 )
 
 

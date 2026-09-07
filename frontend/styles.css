@@ -9684,3 +9684,16 @@ body.map-modal-open {
   font-size: 11px;
   line-height: 1;
 }
+
+/* Oyna ichidagi bo'lim sarlavhasi: bir formada ikki xil savol bo'lganda
+   (tasdiqlash va o'lchovlar) ularni ajratib turadi. */
+.modal-subtitle {
+  margin: 18px 0 4px;
+  font-size: 14px;
+  font-weight: 650;
+  color: var(--text);
+}
+
+.modal-subtitle + .helper-text {
+  margin: 0 0 10px;
+}

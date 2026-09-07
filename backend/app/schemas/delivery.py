@@ -351,15 +351,34 @@ class DeliveryBatchUpdate(BaseModel):
 
 
 class DeliveryBatchLoadingConfirm(BaseModel):
+    """Yuklash paytida o'lchanadigan narsalar shu yerda so'raladi.
+
+    Odometr, bak qoldig'i, tarozi va temperatura -- hammasi mashina yuklash
+    nuqtasida turganda olinadi. Ilgari ular faqat «to'liq tahrirlash»
+    formasida bo'lgani uchun hech kim kiritmasdi.
+    """
+
     actual_loading_date: date
     loaded_quantity: Decimal = Field(gt=0)
     notes: str | None = None
     allow_over_planned: bool = False
+    odometer_start_km: Decimal | None = Field(default=None, ge=0)
+    fuel_before_liters: Decimal | None = Field(default=None, ge=0)
+    gross_weight_tons: Decimal | None = Field(default=None, ge=0)
+    tare_weight_tons: Decimal | None = Field(default=None, ge=0)
+    loading_temperature_c: Decimal | None = None
+    loading_seal: str | None = None
+    departed_at: datetime | None = None
 
 
 class DeliveryBatchDeliveryConfirm(BaseModel):
+    """Ob'ektda o'lchanadigan narsalar: temperatura va plomba."""
+
     actual_delivery_date: date
     notes: str | None = None
+    unloading_temperature_c: Decimal | None = None
+    unloading_seal: str | None = None
+    arrived_at: datetime | None = None
 
 
 class DeliveryBatchAcceptanceItem(BaseModel):
@@ -395,8 +414,14 @@ class DeliveryBatchTransportCheck(BaseModel):
 
 
 class DeliveryBatchCompletionConfirm(BaseModel):
+    """Bazaga qaytgach yopiladigan raqamlar."""
+
     completed_date: date
     notes: str | None = None
+    odometer_end_km: Decimal | None = Field(default=None, ge=0)
+    fuel_after_liters: Decimal | None = Field(default=None, ge=0)
+    fuel_added_liters: Decimal | None = Field(default=None, ge=0)
+    returned_at: datetime | None = None
     allow_missing_documents: bool = False
     allow_quantity_difference: bool = False
     allow_missing_trip_data: bool = False

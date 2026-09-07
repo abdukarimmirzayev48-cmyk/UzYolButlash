@@ -439,6 +439,18 @@ function carrierDisplay(logistics = {}) {
   return logistics.transport ? null : logistics.carrier_name || null;
 }
 
+// Bo'sh qoldirilgan maydon jo'natilmaydi: server `exclude_unset` bilan
+// ishlaydi, ya'ni yuborilmagani avvalgi qiymatini saqlaydi. Bo'sh qator
+// yuborilsa, avval kiritilgani o'chib ketardi.
+function measurements(form, names) {
+  const payload = {};
+  names.forEach((name) => {
+    const value = field(form, name);
+    if (value !== "" && value !== null && value !== undefined) payload[name] = value;
+  });
+  return payload;
+}
+
 function applySelectedTransport(form) {
   const selected = form.elements.transport_id?.selectedOptions?.[0];
   if (!selected?.value) return;
@@ -1424,6 +1436,19 @@ function loadingConfirmationModal(batch) {
           <div class="grid">
             ${textField("actual_loading_date", "Haqiqiy yuklash sanasi", today, "date", { required: true })}
             ${textField("loaded_quantity", "Yuklangan miqdor", quantity || "", "number", { required: true })}
+          </div>
+          <h3 class="modal-subtitle">Chiqishdagi o'lchovlar</h3>
+          <p class="helper-text">Bu raqamlar faqat mashina yuklash nuqtasida turganda olinadi. Keyin ularni tiklab bo'lmaydi.</p>
+          <div class="grid">
+            ${textField("odometer_start_km", "Odometr: chiqishda", logistics.odometer_start_km || "", "number")}
+            ${textField("fuel_before_liters", "Bakdagi yoqilg'i: chiqishda", logistics.fuel_before_liters || "", "number")}
+            ${textField("gross_weight_tons", "Tarozi: brutto", logistics.gross_weight_tons || "", "number")}
+            ${textField("tare_weight_tons", "Tarozi: tara", logistics.tare_weight_tons || "", "number")}
+            ${textField("loading_temperature_c", "Yuklash temperaturasi, °C", logistics.loading_temperature_c || "", "number")}
+            ${textField("loading_seal", "Yuklash plombasi", logistics.loading_seal || "")}
+            ${textField("departed_at", "Yo'lga chiqdi", isoToLocalInput(logistics.departed_at), "datetime-local")}
+          </div>
+          <div class="grid">
             ${textArea("notes", "Izoh", "")}
           </div>
         </div>
@@ -1618,6 +1643,7 @@ function openLoadingConfirmationModal(batch) {
           loaded_quantity: field(form, "loaded_quantity"),
           notes: field(form, "notes"),
           allow_over_planned: allowOverPlanned,
+          ...measurements(form, ["odometer_start_km", "fuel_before_liters", "gross_weight_tons", "tare_weight_tons", "loading_temperature_c", "loading_seal", "departed_at"]),
         }),
       });
       showToast("Yuklash tasdiqlandi.");
@@ -1674,6 +1700,15 @@ function deliveryConfirmationModal(batch) {
               min: actualLoadingDate || undefined,
               title: "Haqiqiy yetkazish sanasi haqiqiy yuklash sanasidan oldin bo'lishi mumkin emas.",
             })}
+            ${textField("arrived_at", "Ob'ektga yetdi", isoToLocalInput(logistics.arrived_at), "datetime-local")}
+          </div>
+          <h3 class="modal-subtitle">Ob'ektdagi o'lchovlar</h3>
+          <p class="helper-text">Plomba yuklashdagisi bilan solishtiriladi, temperatura esa bitumning yaroqliligini ko'rsatadi.</p>
+          <div class="grid">
+            ${textField("unloading_temperature_c", "Tushirish temperaturasi, °C", logistics.unloading_temperature_c || "", "number")}
+            ${textField("unloading_seal", "Tushirish plombasi", logistics.unloading_seal || "")}
+          </div>
+          <div class="grid">
             ${textArea("notes", "Izoh", "")}
           </div>
         </div>
@@ -1712,6 +1747,7 @@ function openDeliveryConfirmationModal(batch) {
         body: JSON.stringify({
           actual_delivery_date: actualDeliveryDate,
           notes: field(form, "notes"),
+          ...measurements(form, ["unloading_temperature_c", "unloading_seal", "arrived_at"]),
         }),
       });
       showToast("Yetkazish tasdiqlandi.");
@@ -1809,6 +1845,16 @@ function completionConfirmationModal(batch, finance = {}) {
           ])}</div>
           <div class="grid">
             ${textField("completed_date", "Yakunlash sanasi", today, "date", { required: true })}
+            ${textField("returned_at", "Bazaga qaytdi", isoToLocalInput(logistics.returned_at), "datetime-local")}
+          </div>
+          <h3 class="modal-subtitle">Qaytishdagi o'lchovlar</h3>
+          <p class="helper-text">Yoqilg'i hisobi shu raqamlar bilan yopiladi: normadan chetlanish shundan hisoblanadi.</p>
+          <div class="grid">
+            ${textField("odometer_end_km", "Odometr: qaytishda", logistics.odometer_end_km || "", "number")}
+            ${textField("fuel_after_liters", "Bakdagi yoqilg'i: qaytishda", logistics.fuel_after_liters || "", "number")}
+            ${textField("fuel_added_liters", "Yo'lda quyildi", logistics.fuel_added_liters || "", "number")}
+          </div>
+          <div class="grid">
             ${textArea("notes", "Yakunlash izohi", "")}
           </div>
         </div>
@@ -1851,6 +1897,7 @@ async function openCompletionConfirmationModal(batch) {
           allow_missing_documents: missingDocs,
           allow_quantity_difference: quantityDiff,
           allow_missing_trip_data: tripGaps,
+          ...measurements(form, ["odometer_end_km", "fuel_after_liters", "fuel_added_liters", "returned_at"]),
         }),
       });
       showToast("Partiya yakunlandi.");
