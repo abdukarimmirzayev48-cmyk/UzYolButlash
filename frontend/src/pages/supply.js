@@ -699,9 +699,69 @@ async function renderStockLotDetail(id) {
   app.innerHTML = `<div class="page">${workflowHeader({ title: lot.product_name, subtitle: subtitleLine([{value:lot.supplier_name,raw:true},{value:lot.ticket_number,raw:true},{value:optionLabel(stockStatuses, lot.stock_status)}]), backPath: "/stock", actions: [{ label: "Buyurtmaga ajratish", path: `/orders/new?source_type=supplier_held_stock&stock_lot_id=${lot.id}`, primary: true }, { label: "Ticketni ochish", path: `/exchange-tickets/${lot.ticket_id}` }] })}${workflowStatusGrid([["Zaxira holati", statusBadge(lot.stock_status)], ["Mavjud miqdor", fmtQty(lot.quantity_available, lot.unit)], ["Band qilingan", fmtQty(lot.quantity_reserved, lot.unit)], ["To'lov muddati", fmt(lot.due_date)]])}${summaryCards([["Dastlabki miqdor", fmtQty(lot.quantity_initial, lot.unit)], ["Mavjud miqdor", fmtQty(lot.quantity_available, lot.unit)], ["Band qilingan miqdor", fmtQty(lot.quantity_reserved, lot.unit)], ["Birlik xarid narxi", fmtMoney(lot.unit_cost)], ["Mavjud qiymat", fmtMoney(stockValue(lot))]])}${workflowWarningsPanel(warnings)}${workflowNextActionPanel(numberValue(lot.quantity_available) > 0 ? { title: "Zaxirani buyurtmaga ajratish mumkin", button: "Buyurtma yaratish", path: `/orders/new?source_type=supplier_held_stock&stock_lot_id=${lot.id}` } : { title: "Zaxira ishlatilgan", button: "Harakatlar tarixi", path: `/stock/${lot.id}`, done: true })}${section("Ticket va ta'minotchi", detailList([["Ticket", lot.ticket_number], ["Ta'minotchi", lot.supplier_name], ["Joylashuv", lot.location_name], ["Manzil", lot.location_address], ["To'lov muddati", lot.due_date]]))}${section("Miqdor xulosasi", detailList([["Dastlabki miqdor", fmtQty(lot.quantity_initial, lot.unit)], ["Mavjud miqdor", fmtQty(lot.quantity_available, lot.unit)], ["Band qilingan miqdor", fmtQty(lot.quantity_reserved, lot.unit)], ["Status", optionLabel(stockStatuses, lot.stock_status)]]))}${section("Qaysi buyurtmalarga ketgan", stockAllocationsTable(lot.allocations || [], lot.unit))}${section("Zaxira harakatlari", tableOrEmpty(lot.movements || [], ["Sana", "Turi", "Miqdor", "Izoh"], (movement) => `<tr><td>${fmtDate(movement.created_at)}</td><td>${fmt(optionLabel(stockMovementTypes, movement.movement_type))}</td><td>${fmtQty(movement.quantity, lot.unit)}</td><td>${fmt(movement.notes)}</td></tr>`, "Harakatlar yo'q."))}</div>`;
 }
 
+// Ombor joyi ta'minotchining o'zi bilan bir joyda turadi: u ayni shu
+// ta'minotchining bazasi yoki terminali va alohida ma'lumotnomada
+// izlanadigan narsa emas.
+function supplierLocationsSection(supplier, locations, editable) {
+  const rows = tableOrEmpty(locations, ["Nomi", "Turi", "Joylashuv", "Partiyalar", ""], (row) => `<tr>
+    <td data-noloc><strong>${esc(row.name)}</strong></td>
+    <td>${fmt(optionLabel(stockLocationTypes, row.location_type))}</td>
+    <td data-noloc>${fmt([row.region, row.district, row.address].filter(Boolean).join(", "))}</td>
+    <td data-noloc>${fmt(row.lot_count)}</td>
+    <td>${editable ? `<button class="link-btn danger" type="button" data-delete-location="${row.id}" data-name="${esc(row.name)}">O'chirish</button>` : ""}</td>
+  </tr>`, "Bu ta'minotchida ombor joyi kiritilmagan.");
+  const form = editable ? `<details class="action-form-box"><summary>Yangi ombor joyi qo'shish</summary>
+    <form id="supplier-location-form"><div class="grid">
+      ${textField("name", "Nomi", "", "text", { required: true, maxlength: 255 })}
+      ${selectField("location_type", "Turi", stockLocationTypes, "supplier_storage")}
+      ${geoRegionField("")}
+      ${geoDistrictField("", "")}
+      ${textArea("address", "Manzil", "")}
+    </div><div class="form-footer"><button class="btn primary" type="submit">Qo'shish</button></div></form>
+  </details>` : "";
+  return section("Ombor joylari", `<p class="helper-text">Zaxira partiyasi turadigan joylar. Partiya turgan ombor o'chirilmaydi.</p>${rows}${form}`, "locations");
+}
+
+function bindSupplierLocations(supplierId, reload) {
+  bindGeoFields(app);
+  document.querySelector("#supplier-location-form")?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const form = event.currentTarget;
+    try {
+      await api("/api/references/stock-locations", {
+        method: "POST",
+        body: JSON.stringify({
+          name: field(form, "name"),
+          location_type: field(form, "location_type"),
+          supplier_id: Number(supplierId),
+          region: field(form, "region"),
+          district: field(form, "district"),
+          address: field(form, "address"),
+        }),
+      });
+      showToast("Ombor joyi qo'shildi.");
+      await reload();
+    } catch (error) {
+      showToast(error.message, true);
+    }
+  });
+  app.querySelectorAll("[data-delete-location]").forEach((button) => button.addEventListener("click", async () => {
+    if (!confirmMsg(`«${button.dataset.name}» ombor joyi o'chiriladi. Davom etasizmi?`)) return;
+    try {
+      await api(`/api/references/stock-locations/${button.dataset.deleteLocation}`, { method: "DELETE" });
+      showToast("Ombor joyi o'chirildi.");
+      await reload();
+    } catch (error) {
+      showToast(error.message, true);
+    }
+  }));
+}
+
 async function renderSupplierDetail(id) {
   const s = await api(`/api/suppliers/${id}`);
   const supplierStock = await api(`/api/stock-lots?supplier_id=${id}&page_size=100`).catch(() => ({ items: [] }));
+  const locations = await api(`/api/references/stock-locations?supplier_id=${id}`).catch(() => []);
+  await loadGeoRegions();
   const editable = canEdit("taminot");
   const warnings = [];
   if (!s.inn || !s.phone) warnings.push("Asosiy rekvizitlar to'liq emas.");
@@ -712,8 +772,9 @@ async function renderSupplierDetail(id) {
   if (editable) headerActions.push({label:"Birja ticketi",path:"/exchange-tickets/new",primary:true});
   headerActions.push({label:"Hujjat yuklash",path:`/suppliers/${s.id}#documents`});
   const nextAction = !s.contacts?.length?{title:"Kontakt qo'shing",...(editable?{button:"To'liq tahrirlash",path:`/suppliers/${s.id}/edit`}:{})}:!s.bank_accounts?.length?{title:"Bank rekvizitlarini qo'shing",...(editable?{button:"To'liq tahrirlash",path:`/suppliers/${s.id}/edit`}:{})}:!hasDocs(s)?{title:"Ta'minotchi hujjatini yuklang",button:"Hujjatlar",path:`/suppliers/${s.id}#documents`}:{title:"Ta'minotchi kartasi tayyor",button:"Bizning zaxira",path:"/stock",done:true};
-  app.innerHTML = `<div class="page">${workflowHeader({title:s.name,subtitle:subtitleLine([{value:"STIR"},{value:s.inn,raw:true},{value:"Telefon"},{value:s.phone,raw:true}]),backPath:"/suppliers",fullEditPath:editable ? `/suppliers/${s.id}/edit` : "",actions:headerActions})}${workflowStatusGrid([["Kontaktlar",statusChip(s.contacts?.length?{label:`${s.contacts.length} ta`,tone:"success"}:{label:"Kutilmoqda",tone:"warning"})],["Manzillar",statusChip(s.addresses?.length?{label:`${s.addresses.length} ta`,tone:"success"}:{label:"Kutilmoqda",tone:"muted"})],["Bizning zaxira",statusChip(supplierStock.items.length?{label:`${supplierStock.items.length} partiya`,tone:"success"}:{label:"Yo'q",tone:"muted"})],["Hujjatlar",statusChip(hasDocs(s)?{label:"Yuklangan",tone:"success"}:{label:"Kutilmoqda",tone:"warning"})]])}${summaryCards([["Jami mahsulot miqdori", fmtQty(supplierStock.items.reduce((sum, lot) => sum + numberValue(lot.quantity_initial), 0))], ["Mavjud zaxira", fmtQty(supplierStock.items.reduce((sum, lot) => sum + numberValue(lot.quantity_available), 0))], ["Band qilingan zaxira", fmtQty(supplierStock.items.reduce((sum, lot) => sum + numberValue(lot.quantity_reserved), 0))], ["To'lov muddati yaqin", fmt(supplierStock.items.filter((lot) => { const d = daysUntil(lot.due_date); return typeof d === "number" && d <= 7; }).length)]])}${workflowWarningsPanel(warnings)}${workflowNextActionPanel(nextAction)}${workflowTabs("general",[["general","Umumiy"],["stock","Bizning zaxira"],["contacts","Kontaktlar"],["addresses","Manzillar"],["bank","Rekvizitlar"],["documents","Hujjatlar"],["history","Tarix"]],"supplier-tab")}${section("Umumiy ma'lumotlar", detailList([["Nomi",s.name],["STIR",s.inn],["OKED",s.oked],["Telefon",s.phone],["Email",s.email],["Izoh",s.notes],["Yaratilgan",fmtDate(s.created_at)],["Yangilangan",fmtDate(s.updated_at)]]),"general")}${section("Bizning zaxira", tableOrEmpty(supplierStock.items,["Mahsulot","Ticket","Dastlabki miqdor","Mavjud","Band qilingan","Birlik xarid narxi","To'lov muddati","Status"],(lot)=>`<tr><td><button class="link-btn" data-nav="/stock/${lot.id}">${fmt(lot.product_name)}</button></td><td>${fmt(lot.ticket_number)}</td><td>${fmtQty(lot.quantity_initial,lot.unit)}</td><td>${fmtQty(lot.quantity_available,lot.unit)}</td><td>${fmtQty(lot.quantity_reserved,lot.unit)}</td><td>${fmtMoney(lot.unit_cost)}</td><td>${fmt(lot.due_date)}</td><td>${statusBadge(lot.stock_status)}</td></tr>`,"Bu ta'minotchida kompaniya zaxirasi yo'q."),"stock")}${section("Kontaktlar", tableOrEmpty(s.contacts,["Ism","Lavozim","Telefon","Email","Asosiy"],(c)=>`<tr><td>${fmt(c.full_name)}</td><td>${fmt(c.position)}</td><td>${fmt(c.phone)}</td><td>${fmt(c.email)}</td><td>${c.is_primary ? '<span class="pill">Asosiy</span>' : dash}</td></tr>`,"Kontaktlar yo'q."),"contacts")}${section("Manzillar", tableOrEmpty(s.addresses,["Turi","Hudud","Tuman","Manzil"],(a)=>`<tr><td>${fmt(optionLabel(supplierAddressTypes,a.address_type))}</td><td>${fmt(a.region)}</td><td>${fmt(a.district)}</td><td>${fmt(a.address)}</td></tr>`,"Manzillar yo'q."),"addresses")}${section("Rekvizitlar", tableOrEmpty(s.bank_accounts,["Bank","MFO","Hisob raqami","Asosiy"],(b)=>`<tr><td>${fmt(b.bank_name)}</td><td>${fmt(b.mfo)}</td><td>${fmt(b.account_number)}</td><td>${b.is_primary ? '<span class="pill">Asosiy</span>' : dash}</td></tr>`,"Bank rekvizitlari yo'q."),"bank")}<div id="documents">${section("Hujjatlar", tableOrEmpty(s.documents,["Hujjat nomi","Turi","Yuklangan"],(d)=>`<tr><td>${fmt(d.title)}</td><td>${fmt(d.document_type)}</td><td>${fmtDate(d.uploaded_at)}</td></tr>`,"Hujjatlar yo'q."),"documents")}</div>${section("Tarix", tableOrEmpty(s.notes_history,["Sana","Foydalanuvchi","Izoh"],(n)=>`<tr><td>${fmtDate(n.created_at)}</td><td>${fmt(n.created_by)}</td><td>${fmt(n.note)}</td></tr>`,"Tarix yozuvlari yo'q."),"history")}</div>`;
+  app.innerHTML = `<div class="page">${workflowHeader({title:s.name,subtitle:subtitleLine([{value:"STIR"},{value:s.inn,raw:true},{value:"Telefon"},{value:s.phone,raw:true}]),backPath:"/suppliers",fullEditPath:editable ? `/suppliers/${s.id}/edit` : "",actions:headerActions})}${workflowStatusGrid([["Kontaktlar",statusChip(s.contacts?.length?{label:`${s.contacts.length} ta`,tone:"success"}:{label:"Kutilmoqda",tone:"warning"})],["Manzillar",statusChip(s.addresses?.length?{label:`${s.addresses.length} ta`,tone:"success"}:{label:"Kutilmoqda",tone:"muted"})],["Bizning zaxira",statusChip(supplierStock.items.length?{label:`${supplierStock.items.length} partiya`,tone:"success"}:{label:"Yo'q",tone:"muted"})],["Hujjatlar",statusChip(hasDocs(s)?{label:"Yuklangan",tone:"success"}:{label:"Kutilmoqda",tone:"warning"})]])}${summaryCards([["Jami mahsulot miqdori", fmtQty(supplierStock.items.reduce((sum, lot) => sum + numberValue(lot.quantity_initial), 0))], ["Mavjud zaxira", fmtQty(supplierStock.items.reduce((sum, lot) => sum + numberValue(lot.quantity_available), 0))], ["Band qilingan zaxira", fmtQty(supplierStock.items.reduce((sum, lot) => sum + numberValue(lot.quantity_reserved), 0))], ["To'lov muddati yaqin", fmt(supplierStock.items.filter((lot) => { const d = daysUntil(lot.due_date); return typeof d === "number" && d <= 7; }).length)]])}${workflowWarningsPanel(warnings)}${workflowNextActionPanel(nextAction)}${workflowTabs("general",[["general","Umumiy"],["stock","Bizning zaxira"],["locations","Ombor joylari"],["contacts","Kontaktlar"],["addresses","Manzillar"],["bank","Rekvizitlar"],["documents","Hujjatlar"],["history","Tarix"]],"supplier-tab")}${section("Umumiy ma'lumotlar", detailList([["Nomi",s.name],["STIR",s.inn],["OKED",s.oked],["Telefon",s.phone],["Email",s.email],["Izoh",s.notes],["Yaratilgan",fmtDate(s.created_at)],["Yangilangan",fmtDate(s.updated_at)]]),"general")}${section("Bizning zaxira", tableOrEmpty(supplierStock.items,["Mahsulot","Ticket","Dastlabki miqdor","Mavjud","Band qilingan","Birlik xarid narxi","To'lov muddati","Status"],(lot)=>`<tr><td><button class="link-btn" data-nav="/stock/${lot.id}">${fmt(lot.product_name)}</button></td><td>${fmt(lot.ticket_number)}</td><td>${fmtQty(lot.quantity_initial,lot.unit)}</td><td>${fmtQty(lot.quantity_available,lot.unit)}</td><td>${fmtQty(lot.quantity_reserved,lot.unit)}</td><td>${fmtMoney(lot.unit_cost)}</td><td>${fmt(lot.due_date)}</td><td>${statusBadge(lot.stock_status)}</td></tr>`,"Bu ta'minotchida kompaniya zaxirasi yo'q."),"stock")}${supplierLocationsSection(s, locations, editable)}${section("Kontaktlar", tableOrEmpty(s.contacts,["Ism","Lavozim","Telefon","Email","Asosiy"],(c)=>`<tr><td>${fmt(c.full_name)}</td><td>${fmt(c.position)}</td><td>${fmt(c.phone)}</td><td>${fmt(c.email)}</td><td>${c.is_primary ? '<span class="pill">Asosiy</span>' : dash}</td></tr>`,"Kontaktlar yo'q."),"contacts")}${section("Manzillar", tableOrEmpty(s.addresses,["Turi","Hudud","Tuman","Manzil"],(a)=>`<tr><td>${fmt(optionLabel(supplierAddressTypes,a.address_type))}</td><td>${fmt(a.region)}</td><td>${fmt(a.district)}</td><td>${fmt(a.address)}</td></tr>`,"Manzillar yo'q."),"addresses")}${section("Rekvizitlar", tableOrEmpty(s.bank_accounts,["Bank","MFO","Hisob raqami","Asosiy"],(b)=>`<tr><td>${fmt(b.bank_name)}</td><td>${fmt(b.mfo)}</td><td>${fmt(b.account_number)}</td><td>${b.is_primary ? '<span class="pill">Asosiy</span>' : dash}</td></tr>`,"Bank rekvizitlari yo'q."),"bank")}<div id="documents">${section("Hujjatlar", tableOrEmpty(s.documents,["Hujjat nomi","Turi","Yuklangan"],(d)=>`<tr><td>${fmt(d.title)}</td><td>${fmt(d.document_type)}</td><td>${fmtDate(d.uploaded_at)}</td></tr>`,"Hujjatlar yo'q."),"documents")}</div>${section("Tarix", tableOrEmpty(s.notes_history,["Sana","Foydalanuvchi","Izoh"],(n)=>`<tr><td>${fmtDate(n.created_at)}</td><td>${fmt(n.created_by)}</td><td>${fmt(n.note)}</td></tr>`,"Tarix yozuvlari yo'q."),"history")}</div>`;
   bindPanelTabs("supplier-tab");
+  bindSupplierLocations(id, () => renderSupplierDetail(id));
 }
 
 async function fetchSuppliersOptions(selectedId = null) {

@@ -310,7 +310,33 @@ class ClientListItem(ClientRead):
     last_activity: datetime | None = None
 
 
+class ClientRegistryInfo(BaseModel):
+    """Korxonalar reyestridagi rasmiy ma'lumot.
+
+    Reyestr alohida ma'lumotnoma edi va mijoz bilan bir xil tashkilotlarni
+    saqlab turardi -- 267 mijozning hammasi STIRi bo'yicha reyestrda ham bor.
+    Endi u mijoz kartochkasining bir bo'limi.
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    company_name: str
+    region: str | None = None
+    oked: str | None = None
+    activity_type: str | None = None
+    director_full_name: str | None = None
+    legal_address: str | None = None
+    bank_name: str | None = None
+    bank_account: str | None = None
+    mfo: str | None = None
+    phone: str | None = None
+
+
 class ClientDetail(ClientRead):
+    # Nomi ataylab uzun: `registry` SQLAlchemy deklarativ bazasining o'z
+    # atributi va `from_attributes` uni mijoznikidek o'qib, validatsiyani
+    # yiqitardi.
+    company_registry: ClientRegistryInfo | None = None
     contacts: list[ClientContactRead] = Field(default_factory=list)
     addresses: list[ClientAddressRead] = Field(default_factory=list)
     bank_accounts: list[ClientBankAccountRead] = Field(default_factory=list)

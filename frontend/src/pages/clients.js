@@ -213,8 +213,8 @@ async function renderClientsList() {
 
   app.innerHTML = opsListPage({
     className: "clients-ops-page",
-    title: "Mijozlar",
-    tabs: [{ label: "Mijozlar", active: true }, { label: "Shartnomalar", path: "/contracts" }, { label: "Buyurtmalar", path: "/orders" }],
+    title: "Tizim tashkilotlari",
+    tabs: [{ label: "Tizim tashkilotlari", active: true }, { label: "Shartnomalar", path: "/contracts" }, { label: "Buyurtmalar", path: "/orders" }],
     createPath: editable ? "/clients/new" : null,
     createLabel: "Yangi mijoz",
     clearPath: "/clients",
@@ -240,7 +240,7 @@ async function renderClientsList() {
       <td class="ops-num">${fmt(client.active_orders)}</td>
       <td><div class="ops-row-actions">${editable ? `<a class="link-btn" href="/clients/${client.id}/edit" data-nav="/clients/${client.id}/edit">Tahrirlash</a>` : `<a class="link-btn" href="/clients/${client.id}" data-nav="/clients/${client.id}">Ko'rish</a>`}</div></td>
     </tr>`).join(""),
-    emptyText: "Mijozlar topilmadi.",
+    emptyText: "Tashkilotlar topilmadi.",
     colspan,
     footer: opsFooter(data, "client"),
   });
@@ -330,7 +330,7 @@ function tabs(active) {
 }
 
 function generalTab(client) {
-  return section("Umumiy ma'lumotlar", detailList([
+  return `${section("Umumiy ma'lumotlar", detailList([
     ["Nomi", client.name],
     ["STIR", client.inn],
     ["OKED", client.oked],
@@ -339,7 +339,30 @@ function generalTab(client) {
     ["Izohlar", client.notes],
     ["Yaratilgan", fmtDate(client.created_at)],
     ["Yangilangan", fmtDate(client.updated_at)],
-  ]));
+  ]))}${registrySection(client)}`;
+}
+
+// Reyestr alohida ma'lumotnoma edi va aynan shu tashkilotlarni ikkinchi
+// marta saqlab turardi. Endi u kartochkaning bir bo'limi: rasmiy nom,
+// direktor, yuridik manzil va bank rekvizitlari -- talabnoma to'ldirishda
+// tashqi manbadan kelgan holicha.
+function registrySection(client) {
+  const registry = client.company_registry;
+  if (!registry) {
+    return section("Reyestr ma'lumoti", `<div class="empty">Bu STIR bo'yicha reyestrda yozuv topilmadi.</div>`);
+  }
+  return section("Reyestr ma'lumoti", `${detailList([
+    ["Rasmiy nomi", registry.company_name],
+    ["Hudud", registry.region],
+    ["OKED", registry.oked],
+    ["Faoliyat turi", registry.activity_type],
+    ["Rahbar", registry.director_full_name],
+    ["Yuridik manzil", registry.legal_address],
+    ["Bank", registry.bank_name],
+    ["Hisob raqami", registry.bank_account],
+    ["MFO", registry.mfo],
+    ["Telefon", registry.phone],
+  ])}<p class="helper-text">Bu ma'lumot tashqi reyestrdan keladi va tizimda tahrirlanmaydi.</p>`);
 }
 
 function contactsTab(client) {

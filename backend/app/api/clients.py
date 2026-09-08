@@ -8,6 +8,7 @@ from sqlalchemy import func, nullslast, or_, select, true
 from sqlalchemy.orm import Session, selectinload
 
 from backend.app.db.session import get_db
+from backend.app.models.customer_request import CompanyRegistry
 from backend.app.models.client import (
     AddressType,
     Client,
@@ -35,6 +36,7 @@ from backend.app.schemas.client import (
     ClientContactUpdate,
     ClientCreate,
     ClientDetail,
+    ClientRegistryInfo,
     ClientDocumentCreate,
     ClientDocumentRead,
     ClientDocumentUpdate,
@@ -436,6 +438,13 @@ def get_client_detail(client_id: int, db: Session = Depends(get_db)):
     if not client:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Mijoz topilmadi.")
     detail = ClientDetail.model_validate(client)
+    # Reyestr alohida sahifa emas, shu kartochkaning bir bo'limi: STIR
+    # bo'yicha topiladi, chunki reyestrda tashkilot aynan shu kalit bilan
+    # yotadi.
+    if client.inn:
+        registry = db.scalars(select(CompanyRegistry).where(CompanyRegistry.inn == client.inn)).first()
+        if registry:
+            detail.company_registry = ClientRegistryInfo.model_validate(registry)
     detail.active_contracts = sum(1 for contract in client.contracts if contract.status in {"signed", "active"})
     detail.active_orders = sum(1 for order in client.orders if order.status not in {"cancelled", "closed", "delivered"})
     return detail

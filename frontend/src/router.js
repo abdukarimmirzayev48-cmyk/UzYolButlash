@@ -89,10 +89,14 @@ async function render() {
     // ---- Ma'lumotnomalar ----
     } else if (location.pathname === "/references") {
       await renderReferencesHome();
+    // Eski manzillar yangi joyiga olib boradi: reyestr endi tashkilot
+    // kartochkasining bo'limi, ombor joylari esa ta'minotchi kartochkasida.
     } else if (location.pathname === "/company-registry") {
-      await renderCompanyRegistryPage();
+      navigate("/clients");
+      return;
     } else if (location.pathname === "/stock-locations") {
-      await renderStockLocationsPage();
+      navigate("/suppliers");
+      return;
     } else if (location.pathname === "/delivery-points/new") {
       await renderDeliveryPointForm();
     } else if (/^\/delivery-points\/\d+$/.test(location.pathname)) {

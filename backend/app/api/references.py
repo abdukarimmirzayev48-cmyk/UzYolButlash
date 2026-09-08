@@ -193,13 +193,17 @@ def get_location_or_404(db: Session, location_id: int) -> StockLocation:
 
 
 @router.get("/stock-locations", response_model=list[StockLocationRow])
-def list_stock_locations(db: Session = Depends(get_db), search: str | None = None):
+def list_stock_locations(db: Session = Depends(get_db), search: str | None = None, supplier_id: int | None = None):
     stmt = select(StockLocation).options(
         selectinload(StockLocation.supplier), selectinload(StockLocation.stock_lots)
     )
     if search:
         value = f"%{search}%"
         stmt = stmt.where(or_(StockLocation.name.ilike(value), StockLocation.address.ilike(value)))
+    # Ombor joyi endi ta'minotchi kartochkasida boshqariladi, shuning uchun
+    # ro'yxatni bitta ta'minotchi bo'yicha ham so'rash mumkin.
+    if supplier_id:
+        stmt = stmt.where(StockLocation.supplier_id == supplier_id)
     return [location_row(row) for row in db.scalars(stmt.order_by(StockLocation.name)).unique()]
 
 
