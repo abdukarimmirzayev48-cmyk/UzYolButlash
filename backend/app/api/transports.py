@@ -938,11 +938,25 @@ def live_payload(transport: Transport) -> dict:
             "engine_on": bool(status.get("engineOn")),
             "last_message_at": status.get("lastMessageAt"),
             "last_message_text": status.get("lastMessageText"),
-            "fuel_liters": (v.get("fuel") or {}).get("tankLiters"),
+            "fuel_liters": plausible_fuel((v.get("fuel") or {}).get("tankLiters")),
             "driver_name": (v.get("driver") or {}).get("name"),
             "map_url": map_url(location.get("lat"), location.get("lng")),
         },
     }
+
+
+def plausible_fuel(liters):
+    """Buzuq datchik ko'rsatkichini ko'rsatmaymiz.
+
+    83 mashinadan 19 tasi manfiy qiymat qaytaradi ("-17143 litr"), ya'ni
+    datchik ulanmagan yoki kalibrlanmagan. Bunday sonni kartochkada
+    chizish -- foydalanuvchini chalg'itish; «-» ko'rsatgan ma'qul.
+    """
+    try:
+        value = float(liters)
+    except (TypeError, ValueError):
+        return None
+    return liters if 0 <= value <= 2000 else None
 
 
 def map_url(lat, lng) -> str | None:
