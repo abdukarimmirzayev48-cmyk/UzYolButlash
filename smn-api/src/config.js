@@ -11,6 +11,9 @@ export const config = {
   username: req('SMN_USERNAME'),
   password: req('SMN_PASSWORD'),
   port: Number(process.env.PORT || 3000),
+  // Standart holatda faqat loopback'da tinglaymiz: bu proksi SMN parolini
+  // saqlaydi, shuning uchun tashqi tarmoqqa ochiq bo'lmasligi kerak.
+  host: process.env.HOST || '127.0.0.1',
   apiKey: process.env.API_KEY || '',
   cacheTtlMs: Number(process.env.CACHE_TTL_SECONDS || 15) * 1000,
   keepaliveMs: Number(process.env.KEEPALIVE_MINUTES || 5) * 60 * 1000,

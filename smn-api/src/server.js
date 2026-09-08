@@ -108,8 +108,8 @@ app.get('/api/vehicles/:id/track', wrap(async (req, res) => {
 function startOfToday() { const d = new Date(); d.setHours(0, 0, 0, 0); return d; }
 
 // ── Ishga tushirish ─────────────────────────────────────────────────
-app.listen(config.port, async () => {
-  console.log(`SMN API → http://localhost:${config.port}`);
+app.listen(config.port, config.host, async () => {
+  console.log(`SMN API → http://${config.host}:${config.port}`);
   try {
     await smn.login();
     console.log('SMN sessiyasi ochildi ✓');
