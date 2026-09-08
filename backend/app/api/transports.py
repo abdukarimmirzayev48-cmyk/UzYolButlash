@@ -294,6 +294,7 @@ def transport_monitoring(db: Session = Depends(get_db)):
         if transport.status in UNAVAILABLE_STATUSES:
             summary["maintenance"] += 1
             idle_rows.append({
+                "transport_id": transport.id,
                 "vehicle_number": transport.vehicle_number,
                 "driver_name": transport.driver_name,
                 "status": transport.status,
@@ -307,6 +308,7 @@ def transport_monitoring(db: Session = Depends(get_db)):
         if not active_log:
             summary["idle"] += 1
             idle_rows.append({
+                "transport_id": transport.id,
                 "vehicle_number": transport.vehicle_number,
                 "driver_name": transport.driver_name,
                 "status": transport.status,
@@ -329,6 +331,7 @@ def transport_monitoring(db: Session = Depends(get_db)):
 
         distinct_clients = {row.batch.client_id for row in vehicle_logs if row.batch}
         working_rows.append({
+            "transport_id": transport.id,
             "vehicle_number": transport.vehicle_number,
             "driver_name": transport.driver_name,
             "work_status": work_status,
@@ -908,8 +911,54 @@ def smn_objects(db: Session = Depends(get_db)) -> dict:
     return {"available": True, "reason": None, "objects": objects}
 
 
+@router.get("/live")
+def transports_live(db: Session = Depends(get_db)) -> dict:
+    """Butun park -- bitta so'rovda.
+
+    Ro'yxat sahifasida har mashina uchun alohida so'rov yuborish SMNni
+    ham, sahifani ham bo'g'adi: jonli ro'yxat baribir hammasini birdan
+    qaytaradi.
+    """
+    linked = list(db.scalars(select(Transport).where(Transport.smn_object_id.isnot(None))))
+    if not linked:
+        return {"available": False, "reason": smn.MSG_NOT_LINKED, "vehicles": {}}
+    result = smn.vehicles()
+    if not result.ok:
+        return {"available": False, "reason": result.error, "vehicles": {}}
+    by_object = {v.get("id"): v for v in (result.data or [])}
+    vehicles = {}
+    for transport in linked:
+        raw = by_object.get(transport.smn_object_id)
+        if raw:
+            vehicles[str(transport.id)] = vehicle_fields(raw)
+    return {"available": True, "reason": None, "vehicles": vehicles}
+
+
+def vehicle_fields(v: dict) -> dict:
+    """SMN javobidan interfeys ishlatadigan maydonlar."""
+    location = v.get("location") or {}
+    status = v.get("status") or {}
+    return {
+        "object_id": v.get("id"),
+        "plate": v.get("plate"),
+        "lat": location.get("lat"),
+        "lng": location.get("lng"),
+        "angle": location.get("angle"),
+        "satellites": location.get("satellites"),
+        "speed": v.get("speed"),
+        "online": bool(status.get("online")),
+        "moving": bool(status.get("moving")),
+        "engine_on": bool(status.get("engineOn")),
+        "last_message_at": status.get("lastMessageAt"),
+        "last_message_text": status.get("lastMessageText"),
+        "fuel_liters": plausible_fuel((v.get("fuel") or {}).get("tankLiters")),
+        "driver_name": (v.get("driver") or {}).get("name"),
+        "map_url": map_url(location.get("lat"), location.get("lng")),
+    }
+
+
 def live_payload(transport: Transport) -> dict:
-    """Mashinaning monitoringdagi hozirgi holati.
+    """Bitta mashinaning monitoringdagi hozirgi holati.
 
     Bog'lanmagan yoki monitoring o'chiq bo'lsa ham javob qaytadi -- sabab
     bilan. Kartochka shu sababni ko'rsatadi va yiqilmaydi.
@@ -919,30 +968,7 @@ def live_payload(transport: Transport) -> dict:
     result = smn.vehicle(transport.smn_object_id)
     if not result.ok:
         return {"available": False, "reason": result.error, "vehicle": None}
-    v = result.data or {}
-    location = v.get("location") or {}
-    status = v.get("status") or {}
-    return {
-        "available": True,
-        "reason": None,
-        "vehicle": {
-            "object_id": v.get("id"),
-            "plate": v.get("plate"),
-            "lat": location.get("lat"),
-            "lng": location.get("lng"),
-            "angle": location.get("angle"),
-            "satellites": location.get("satellites"),
-            "speed": v.get("speed"),
-            "online": bool(status.get("online")),
-            "moving": bool(status.get("moving")),
-            "engine_on": bool(status.get("engineOn")),
-            "last_message_at": status.get("lastMessageAt"),
-            "last_message_text": status.get("lastMessageText"),
-            "fuel_liters": plausible_fuel((v.get("fuel") or {}).get("tankLiters")),
-            "driver_name": (v.get("driver") or {}).get("name"),
-            "map_url": map_url(location.get("lat"), location.get("lng")),
-        },
-    }
+    return {"available": True, "reason": None, "vehicle": vehicle_fields(result.data or {})}
 
 
 def plausible_fuel(liters):

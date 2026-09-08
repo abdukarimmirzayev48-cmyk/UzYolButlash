@@ -2946,7 +2946,8 @@ tr:last-child td {
 }
 
 td > small.muted,
-td > small.text-danger {
+td > small.text-danger,
+td > small.muted > a {
   display: block;
   font-size: 11px;
   line-height: 1.4;

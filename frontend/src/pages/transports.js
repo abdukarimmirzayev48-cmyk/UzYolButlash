@@ -685,10 +685,28 @@ async function renderTransportEvents() {
   bindTransportEventActions(data.items, rerender, editable);
 }
 
+// Jonli joylashuv: koordinata xaritaga havola bo'lib turadi, yonida
+// harakat holati. Monitoring bo'lmasa qo'lda yozilgan matn qoladi -- u
+// deyarli doim bo'sh, lekin bor bo'lsa yo'qotmaymiz.
+function liveLocationCell(vehicle, fallbackText) {
+  if (!vehicle || vehicle.lat == null || vehicle.lng == null) return fmt(fallbackText);
+  const state = vehicle.online
+    ? (vehicle.moving ? { label: "Harakatda", tone: "success" } : { label: "To'xtagan", tone: "muted" })
+    : { label: "Aloqa yo'q", tone: "warning" };
+  return `${statusChip(state)}
+    <small class="muted"><a href="${esc(vehicle.map_url)}" target="_blank" rel="noopener" data-noloc>${vehicle.lat}, ${vehicle.lng}</a></small>`;
+}
+
 async function renderTransportMonitoring() {
   app.innerHTML = `<div class="page"><div class="empty">Yuklanmoqda...</div></div>`;
-  const data = await api("/api/transports/monitoring");
+  const [data, live] = await Promise.all([
+    api("/api/transports/monitoring"),
+    // Monitoring yiqilsa sahifa baribir ochilishi kerak -- ilgari bu
+    // ustunlar qo'lda to'ldirilardi va deyarli doim bo'sh turardi.
+    api("/api/transports/live").catch(() => null),
+  ]);
   const s = data.summary;
+  const liveOf = (row) => (live?.vehicles || {})[String(row.transport_id)] || null;
   app.innerHTML = opsPageShell(
     "Transport monitoring",
     [{ label: "Partiyalar", path: "/delivery-batches" }, { label: "Logistika", path: "/logistics" }, { label: "Transportlar", path: "/transports" }, { label: "Hodisalar", path: "/transport-events" }, { label: "TO va ta'mir", path: "/transport-repairs" }, { label: "Xulosa", path: "/fleet-summary" }, { label: "Monitoring", active: true }],
@@ -705,13 +723,13 @@ async function renderTransportMonitoring() {
     ${section("Ish holatidagi avtomashinalar", opsTableOrEmpty(
       data.working,
       ["Transport", "Haydovchi", "Holati", "Yuk (t)", "Jo'nash nuqtasi", "Hozirgi joylashuvi", "Borish manzili", "Masofa (km)", "GSM (litr)", "Tashkilotlar soni"],
-      (row) => `<tr><td>${fmt(row.vehicle_number)}</td><td>${fmt(row.driver_name)}</td><td>${fmt(transportWorkStatusLabels[row.work_status] || row.work_status)}</td><td>${fmtQty(row.cargo_tonnage)}</td><td>${fmt(row.departure_point)}</td><td>${fmt(row.current_location)}</td><td>${fmt(row.destination)}</td><td>${row.distance_km != null ? fmtQty(row.distance_km, "km") : dash}</td><td>${row.fuel_liters != null ? fmtQty(row.fuel_liters, "litr") : dash}</td><td>${fmt(row.assigned_orgs_count)}</td></tr>`,
+      (row) => `<tr><td>${fmt(row.vehicle_number)}</td><td>${fmt(row.driver_name)}</td><td>${fmt(transportWorkStatusLabels[row.work_status] || row.work_status)}</td><td>${fmtQty(row.cargo_tonnage)}</td><td>${fmt(row.departure_point)}</td><td>${liveLocationCell(liveOf(row), row.current_location)}</td><td>${fmt(row.destination)}</td><td>${row.distance_km != null ? fmtQty(row.distance_km, "km") : dash}</td><td>${row.fuel_liters != null ? fmtQty(row.fuel_liters, "litr") : dash}</td><td>${fmt(row.assigned_orgs_count)}</td></tr>`,
       "Hozircha ish holatidagi avtomashina yo'q."
     ))}
     ${section("Ishsiz / ta'mirdagi avtomashinalar", opsTableOrEmpty(
       data.idle,
-      ["Transport", "Haydovchi", "Holati", "Oxirgi buyurtma", "Oxirgi reys holati", "Izoh"],
-      (row) => `<tr><td>${fmt(row.vehicle_number)}</td><td>${fmt(row.driver_name)}</td><td>${statusBadge(row.status)}</td><td>${fmt(row.last_order_number)}</td><td>${row.last_logistics_status ? fmt(optionLabel(logisticsStatuses, row.last_logistics_status)) : dash}</td><td>${fmt(row.notes)}</td></tr>`,
+      ["Transport", "Haydovchi", "Holati", "Hozirgi joylashuvi", "Oxirgi buyurtma", "Oxirgi reys holati", "Izoh"],
+      (row) => `<tr><td>${fmt(row.vehicle_number)}</td><td>${fmt(row.driver_name)}</td><td>${statusBadge(row.status)}</td><td>${liveLocationCell(liveOf(row), null)}</td><td>${fmt(row.last_order_number)}</td><td>${row.last_logistics_status ? fmt(optionLabel(logisticsStatuses, row.last_logistics_status)) : dash}</td><td>${fmt(row.notes)}</td></tr>`,
       "Hozircha ishsiz avtomashina yo'q."
     ))}
     ${section("Yo'nalishlar bo'yicha", opsTableOrEmpty(
