@@ -2228,9 +2228,41 @@ function tripGapBanner(row, tripFilled) {
   return "";
 }
 
+// Monitoringdagi jonli holat. Tashqi tizim -- shuning uchun panel har doim
+// chiziladi: ma'lumot bo'lmasa, nima uchun yo'qligi yoziladi. Marshrutning
+// o'zi bu yerda ko'rsatilmaydi: bir kunlik yo'l yarim megabaytga yaqin
+// bo'ladi, buning o'rniga SMN monitoringiga havola beriladi.
+const SMN_SITE_URL = "https://smpo-yaat.uzavtoyul.uz/main.htm";
+
+function liveVehicleBody(live) {
+  if (!live?.available) {
+    return `<div class="empty compact">${esc(live?.reason || "Jonli holat mavjud emas")}</div>
+      <p class="helper-text"><a class="link-btn" href="${SMN_SITE_URL}" target="_blank" rel="noopener">SMN monitoringida ochish</a></p>`;
+  }
+  const v = live.vehicle;
+  const state = v.online ? (v.moving ? { label: "Harakatda", tone: "success" } : { label: "To'xtagan", tone: "muted" }) : { label: "Aloqa yo'q", tone: "warning" };
+  return `${workflowStatusGrid([
+    ["Holati", statusChip(state)],
+    ["Tezlik", v.speed != null ? fmtQty(v.speed, "km/soat") : dash],
+    ["Dvigatel", statusChip(v.engine_on ? { label: "Yoniq", tone: "success" } : { label: "O'chiq", tone: "muted" })],
+    ["Oxirgi xabar", fmt(v.last_message_text)],
+  ])}
+  ${detailFieldGrid([
+    ["Koordinata", v.lat != null ? `${v.lat}, ${v.lng}` : dash],
+    ["Yo'nalish", v.angle != null ? `${v.angle}°` : dash],
+    ["Sun'iy yo'ldoshlar", fmt(v.satellites)],
+    ["Bakdagi yoqilg'i", v.fuel_liters != null ? fmtQty(v.fuel_liters, "litr") : dash],
+  ])}
+  <p class="helper-text">
+    ${v.map_url ? `<a class="link-btn" href="${esc(v.map_url)}" target="_blank" rel="noopener">Xaritada ko'rish</a> · ` : ""}
+    <a class="link-btn" href="${SMN_SITE_URL}" target="_blank" rel="noopener">SMN monitoringida ochish</a>
+  </p>`;
+}
+
 async function renderLogisticsDetail(id) {
   app.innerHTML = `<div class="page"><div class="empty">Yuklanmoqda...</div></div>`;
   const row = await api(`/api/logistics/${id}`);
+  const live = await api(`/api/logistics/${id}/live`).catch(() => null);
   const batch = row.batch || {};
   const number = logisticsNumber(row, batch);
   const tone = logisticsStatusTone(row.status);
@@ -2292,6 +2324,11 @@ async function renderLogisticsDetail(id) {
           ["Yetkazib berish modeli", optionLabel(fulfillmentTypes, batch.fulfillment_type)],
           ["Yetkazish usuli", optionLabel(deliveryMethods, row.delivery_method)],
         ]),
+      })}
+
+      ${detailCard({
+        icon: "route", title: "Jonli holat",
+        body: liveVehicleBody(live),
       })}
 
       ${detailCard({
@@ -2361,6 +2398,7 @@ async function renderLogisticsDetail(id) {
           ["Bo'sh probeg", row.empty_mileage_km != null ? fmtQty(row.empty_mileage_km, "km") : dash],
           ["Umumiy probeg", row.loaded_mileage_km != null || row.empty_mileage_km != null ? fmtQty(numberValue(row.loaded_mileage_km) + numberValue(row.empty_mileage_km), "km") : dash],
           ["Tonna-km", dash],
+          ["Monitoring bo'yicha probeg", row.measured_distance_km != null ? fmtQty(row.measured_distance_km, "km") : dash],
           ["GSM sarfi", row.fuel_consumption_liters != null ? fmtQty(row.fuel_consumption_liters, "litr") : dash],
           ["GSM qiymati (QQSsiz)", fmtMoney(row.fuel_cost_amount)],
           ["Haydovchi ish haqi", fmtMoney(row.driver_wage_amount)],

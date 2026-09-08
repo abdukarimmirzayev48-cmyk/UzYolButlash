@@ -23,6 +23,7 @@ from backend.app.models.transport import (
     TransportStatus,
 )
 from backend.app.schemas.client import Page
+from backend.app.services import smn
 from backend.app.services import fleet_export, fleet_summary, logistics_timeline, repair_workflow, transport_events, transport_readiness, transport_repairs, transport_usage
 from backend.app.models.user import User
 from backend.app.services.auth import get_current_user, require_edit
@@ -876,6 +877,87 @@ def delete_event(event_id: int, db: Session = Depends(get_db)):
     db.delete(get_event_or_404(db, event_id))
     db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+# Literal manzillar `/{transport_id}` dan oldin turishi shart, aks holda
+# «smn-objects» transport identifikatori deb o'qiladi.
+@router.get("/smn-objects")
+def smn_objects(db: Session = Depends(get_db)) -> dict:
+    """Monitoringdagi mashinalar -- biriktirish ro'yxati uchun.
+
+    Yonida qaysi transportga allaqachon biriktirilgani ko'rsatiladi: bitta
+    obyektni ikkita transportga bog'lab qo'yish oson xato.
+    """
+    result = smn.vehicles()
+    if not result.ok:
+        return {"available": False, "reason": result.error, "objects": []}
+    taken = {
+        t.smn_object_id: t.vehicle_number
+        for t in db.scalars(select(Transport).where(Transport.smn_object_id.isnot(None)))
+    }
+    objects = [
+        {
+            "id": v.get("id"),
+            "plate": v.get("plate") or v.get("name"),
+            "online": bool((v.get("status") or {}).get("online")),
+            "linked_to": taken.get(v.get("id")),
+        }
+        for v in result.data
+    ]
+    objects.sort(key=lambda row: str(row["plate"] or ""))
+    return {"available": True, "reason": None, "objects": objects}
+
+
+def live_payload(transport: Transport) -> dict:
+    """Mashinaning monitoringdagi hozirgi holati.
+
+    Bog'lanmagan yoki monitoring o'chiq bo'lsa ham javob qaytadi -- sabab
+    bilan. Kartochka shu sababni ko'rsatadi va yiqilmaydi.
+    """
+    if not transport.smn_object_id:
+        return {"available": False, "reason": smn.MSG_NOT_LINKED, "vehicle": None}
+    result = smn.vehicle(transport.smn_object_id)
+    if not result.ok:
+        return {"available": False, "reason": result.error, "vehicle": None}
+    v = result.data or {}
+    location = v.get("location") or {}
+    status = v.get("status") or {}
+    return {
+        "available": True,
+        "reason": None,
+        "vehicle": {
+            "object_id": v.get("id"),
+            "plate": v.get("plate"),
+            "lat": location.get("lat"),
+            "lng": location.get("lng"),
+            "angle": location.get("angle"),
+            "satellites": location.get("satellites"),
+            "speed": v.get("speed"),
+            "online": bool(status.get("online")),
+            "moving": bool(status.get("moving")),
+            "engine_on": bool(status.get("engineOn")),
+            "last_message_at": status.get("lastMessageAt"),
+            "last_message_text": status.get("lastMessageText"),
+            "fuel_liters": (v.get("fuel") or {}).get("tankLiters"),
+            "driver_name": (v.get("driver") or {}).get("name"),
+            "map_url": map_url(location.get("lat"), location.get("lng")),
+        },
+    }
+
+
+def map_url(lat, lng) -> str | None:
+    if lat is None or lng is None:
+        return None
+    return f"https://maps.google.com/?q={lat},{lng}"
+
+
+@router.get("/{transport_id}/live")
+def transport_live(transport_id: int, db: Session = Depends(get_db)) -> dict:
+    """Transport kartochkasidagi jonli holat."""
+    transport = db.get(Transport, transport_id)
+    if not transport:
+        raise HTTPException(status_code=404, detail="Transport topilmadi.")
+    return live_payload(transport)
 
 
 @router.get("/{transport_id}", response_model=TransportRead)

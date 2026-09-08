@@ -35,7 +35,9 @@ from backend.app.models.supplier import SupplierAddress, SupplierAddressType
 from backend.app.models.transport import Transport, TransportEvent, TransportEventCheckResult, TransportEventType
 from backend.app.services import delivery_stats
 from backend.app.services import delivery_method as delivery_method_service
+from backend.app.api.transports import live_payload as transport_live_payload
 from backend.app.services import point_distance
+from backend.app.services import smn
 from backend.app.services import trip_completion_check
 from backend.app.services.delivery_method import default_method_for
 from backend.app.services.auth import get_current_user, require_edit
@@ -1129,6 +1131,10 @@ def complete_batch(batch_id: int, payload: DeliveryBatchCompletionConfirm, db: S
     # olinmay, oyna bekorga ogohlantirardi.
     apply_measurements(logistics, payload, ("odometer_end_km", "fuel_after_liters", "fuel_added_liters", "returned_at"))
     sync_fuel_and_distance(logistics)
+    # Reys yopilayotgan payt -- masofani monitoringdan olishning eng to'g'ri
+    # vaqti: sanalar allaqachon ma'lum va marshrut hali so'ralmagan.
+    # Muvaffaqiyatsizlik yakunlashni to'smaydi, sababi izohga yoziladi.
+    distance_problem = apply_measured_distance(db, logistics)
     trip = trip_check_for(logistics)
     if trip.blocking:
         raise HTTPException(status_code=422, detail=trip.blocking[0])
@@ -1141,6 +1147,10 @@ def complete_batch(batch_id: int, payload: DeliveryBatchCompletionConfirm, db: S
     note_parts = [f"Yakunlash sanasi: {payload.completed_date.isoformat()}"]
     if trip.soft:
         note_parts.append(f"{trip_completion_check.MSG_TRIP_DATA_SKIPPED}: {', '.join(trip.soft)}")
+    if logistics.measured_distance_km is not None:
+        note_parts.append(f"Monitoring bo'yicha probeg: {logistics.measured_distance_km} km")
+    elif distance_problem:
+        note_parts.append(f"Probegni monitoringdan olib bo'lmadi: {distance_problem}")
     if payload.notes:
         note_parts.append(payload.notes)
         batch.notes = payload.notes
@@ -1406,6 +1416,72 @@ def get_logistics_detail(logistics_id: int, db: Session = Depends(get_db)):
         documents=logistics.documents,
         notes_history=logistics.notes_history,
     )
+
+
+@logistics_router.get("/{logistics_id}/live")
+def logistics_live(logistics_id: int, db: Session = Depends(get_db)) -> dict:
+    """Reysdagi mashina hozir qayerda.
+
+    Javob har doim keladi -- monitoring o'chiq yoki mashina biriktirilmagan
+    bo'lsa, sababi bilan. Reys kartochkasi tashqi tizim tufayli yiqilmasligi
+    kerak.
+    """
+    logistics = db.get(Logistics, logistics_id)
+    if not logistics:
+        raise HTTPException(status_code=404, detail="Logistika topilmadi.")
+    if not logistics.transport_id:
+        return {"available": False, "reason": "Reysga parkdagi mashina biriktirilmagan", "vehicle": None}
+    transport = db.get(Transport, logistics.transport_id)
+    if not transport:
+        return {"available": False, "reason": "Transport topilmadi", "vehicle": None}
+    return transport_live_payload(transport)
+
+
+def trip_window(logistics: Logistics) -> tuple[date, date] | None:
+    """Reys qaysi kunlarni qamragan.
+
+    Vaqt nuqtalari bo'lsa ular aniqroq; bo'lmasa haqiqiy yuklash va yetkazish
+    sanalari olinadi. Ikkalasi ham bo'lmasa masofani so'rashning ma'nosi yo'q.
+    """
+    start = logistics.departed_at.date() if logistics.departed_at else logistics.actual_pickup_date
+    end = logistics.returned_at.date() if logistics.returned_at else logistics.actual_delivery_date
+    end = end or start
+    start = start or end
+    if not start or not end:
+        return None
+    return (start, end) if start <= end else (end, start)
+
+
+def apply_measured_distance(db: Session, logistics: Logistics) -> str | None:
+    """Reys masofasini monitoringdan oladi.
+
+    Odometr SMNda deyarli hamma mashinada nol, marshrut masofasi esa aniq
+    ishlaydi -- shuning uchun manba aynan u. Qo'lda kiritilgan masofa ustun
+    turadi: o'lchov yordam, buyruq emas.
+    """
+    transport = db.get(Transport, logistics.transport_id) if logistics.transport_id else None
+    if not transport or not transport.smn_object_id:
+        return smn.MSG_NOT_LINKED
+    window = trip_window(logistics)
+    if not window:
+        return "Reys sanalari kiritilmagan"
+    result = smn.track(transport.smn_object_id, window[0], window[1])
+    if not result.ok:
+        return result.error
+    distance = (result.data or {}).get("distanceKm")
+    if distance is None:
+        return "Monitoringda bu kunlar uchun marshrut yo'q"
+    logistics.measured_distance_km = Decimal(str(distance))
+    # GPS masofasi ilgari qo'lda kiritilardi va odatda bo'sh qolardi -- shu
+    # sababdan «odometr va GPS mos emas» tekshiruvi umuman ishlamasdi.
+    # Monitoring o'lchagan probeg aynan shu raqam.
+    if logistics.gps_distance_km is None:
+        logistics.gps_distance_km = Decimal(str(distance))
+    # Umumiy masofa odometrdan olinadi -- u haydovchi qayd etgan rasmiy
+    # raqam. Monitoring uni tekshiradi, o'rniga yozilmaydi.
+    if logistics.distance_km is None:
+        logistics.distance_km = Decimal(str(distance))
+    return None
 
 
 @logistics_router.patch("/{logistics_id}", response_model=LogisticsRead, dependencies=[Depends(require_edit("yetkazib_berish"))])

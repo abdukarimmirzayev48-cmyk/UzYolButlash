@@ -238,6 +238,10 @@ class Logistics(Base, TimestampMixin):
     odometer_end_km: Mapped[Decimal | None] = mapped_column(Numeric(10, 1))
     gps_distance_km: Mapped[Decimal | None] = mapped_column(Numeric(10, 2))
     planned_distance_km: Mapped[Decimal | None] = mapped_column(Numeric(10, 2))
+    # Monitoringdan o'lchangan haqiqiy probeg. `distance_km` dan alohida
+    # saqlanadi: u qo'lda tuzatilishi mumkin, bu esa tashqi tizim aytgani --
+    # ikkalasini solishtirib ko'rish kerak bo'ladi.
+    measured_distance_km: Mapped[Decimal | None] = mapped_column(Numeric(10, 2))
     driver_wage_amount: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
     esp_tax_percent: Mapped[Decimal | None] = mapped_column(Numeric(5, 2), default=Decimal("12"))
     other_expenses_amount: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))

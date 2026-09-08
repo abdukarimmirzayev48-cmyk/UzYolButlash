@@ -194,6 +194,7 @@ function transportFormHtml(item = {}, employees = []) {
         ${textField("capacity_tons", "Sisterna sig'imi, t", item.capacity_tons || "", "number")}
         ${textField("base_location", "Baza / bo'linma", item.base_location || "")}
         ${textField("tracker_id", "GPS trekeri ID", item.tracker_id || "")}
+        ${smnObjectField(item)}
       </div>`)}
       ${section("Haydovchi va mas'ul", `<div class="grid">
         ${selectField("driver_employee_id", "Biriktirilgan haydovchi", employeeOptions, item.driver_employee_id != null ? String(item.driver_employee_id) : "")}
@@ -230,6 +231,34 @@ function transportFormHtml(item = {}, employees = []) {
   </div>`;
 }
 
+// Monitoringdagi mashina bilan bog'lanish. Ro'yxat SMNdan keladi; band
+// bo'lganlari yonida qaysi transportga biriktirilgani yoziladi, chunki
+// bitta obyektni ikkitasiga bog'lab qo'yish oson xato.
+let smnObjectsCache = null;
+
+async function loadSmnObjects() {
+  if (smnObjectsCache) return smnObjectsCache;
+  smnObjectsCache = await api("/api/transports/smn-objects").catch(() => ({ available: false, reason: "SMN monitoringiga ulanib bo'lmadi", objects: [] }));
+  return smnObjectsCache;
+}
+
+function smnObjectField(item) {
+  const data = smnObjectsCache || { available: false, objects: [] };
+  if (!data.available) {
+    return `<label><span class="field-label-text">SMN monitoringi</span>
+      <input name="smn_object_id" value="${esc(item?.smn_object_id ?? "")}" placeholder="Obyekt raqami" />
+      <span class="helper-text">${esc(data.reason || "Ro'yxat yuklanmadi")} — raqamni qo'lda kiriting.</span></label>`;
+  }
+  const options = data.objects.map((row) => {
+    const busy = row.linked_to && String(row.id) !== String(item?.smn_object_id ?? "");
+    const label = `${row.plate}${row.online ? "" : " ·"}${busy ? ` — ${row.linked_to}` : ""}`;
+    return `<option value="${row.id}" ${String(row.id) === String(item?.smn_object_id ?? "") ? "selected" : ""} ${busy ? "disabled" : ""}>${esc(label)}</option>`;
+  }).join("");
+  return `<label><span class="field-label-text">SMN monitoringi</span>
+    <select name="smn_object_id" data-noloc><option value="">Biriktirilmagan</option>${options}</select>
+    <span class="helper-text">Jonli holat shu bog'lanish orqali keladi.</span></label>`;
+}
+
 const TRANSPORT_NUMERIC_FIELDS = ["capacity_tons", "fuel_tank_liters", "fuel_norm_loaded", "fuel_norm_empty", "service_interval_km", "last_service_km"];
 const TRANSPORT_TEXT_FIELDS = [
   "driver_phone", "vehicle_number", "trailer_number", "vehicle_type", "capacity",
@@ -244,6 +273,7 @@ function collectTransportPayload(form) {
   const payload = {
     driver_employee_id: driverEmployeeId ? Number(driverEmployeeId) : null,
     production_year: productionYear ? Number(productionYear) : null,
+    smn_object_id: field(form, "smn_object_id") ? Number(field(form, "smn_object_id")) : null,
     status: field(form, "status") || "free",
   };
   for (const name of TRANSPORT_TEXT_FIELDS) payload[name] = field(form, name);
@@ -308,6 +338,7 @@ async function activeEmployeesForDriverSelect() {
 
 async function renderNewTransport() {
   const employees = await activeEmployeesForDriverSelect();
+  await loadSmnObjects();
   app.innerHTML = transportFormHtml({}, employees);
   bindTransportForm();
 }
@@ -316,6 +347,7 @@ async function renderEditTransport(id) {
   const [item, employees] = await Promise.all([
     api(`/api/transports/${id}`),
     activeEmployeesForDriverSelect(),
+    loadSmnObjects(),
   ]);
   app.innerHTML = transportFormHtml(item, employees);
   bindTransportForm(item);

@@ -45,6 +45,11 @@ HIKVISION_PASSWORD = os.getenv("HIKVISION_PASSWORD", "")
 
 # Signs the login session cookie. Set SESSION_SECRET_KEY in .env for real
 # deployments — this fallback is stable across dev restarts but is not secret.
+# SMN (O'zavtoyo'l monitoring) proxysi. Parol shu yerda emas, proxyning
+# o'zida turadi -- ERP faqat toza JSON oladi.
+SMN_API_URL = os.getenv("SMN_API_URL", "").rstrip("/")
+SMN_API_KEY = os.getenv("SMN_API_KEY", "")
+
 SESSION_SECRET_KEY = os.getenv("SESSION_SECRET_KEY", "uzyolbutlash-dev-session-secret-change-me")
 
 # Telegram bot for drivers (trip notifications, fuel/odometer check-ins, stop

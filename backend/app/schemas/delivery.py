@@ -94,6 +94,7 @@ class LogisticsBase(BaseModel):
     odometer_end_km: Decimal | None = Field(default=None, ge=0)
     gps_distance_km: Decimal | None = Field(default=None, ge=0)
     planned_distance_km: Decimal | None = Field(default=None, ge=0)
+    measured_distance_km: Decimal | None = Field(default=None, ge=0)
     departed_at: datetime | None = None
     loading_started_at: datetime | None = None
     loading_finished_at: datetime | None = None
@@ -170,6 +171,7 @@ class LogisticsFuelPosition(BaseModel):
     gps_distance_km: Decimal | None = None
     gps_difference_km: Decimal | None = None
     planned_distance_km: Decimal | None = None
+    measured_distance_km: Decimal | None = None
     overrun_km: Decimal | None = None
     warnings: list[str] = Field(default_factory=list)
 

@@ -91,6 +91,10 @@ class Transport(Base, TimestampMixin):
     driver_name: Mapped[str | None] = mapped_column(String(255), index=True)
     driver_phone: Mapped[str | None] = mapped_column(String(64), index=True)
     vehicle_number: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    # SMN monitoringidagi obyekt raqami. Davlat raqami bo'yicha topish
+    # ishonchsiz -- SMNda 83 ta mashina bor va yozilishi har xil bo'lishi
+    # mumkin, shuning uchun bog'lanish bir marta aniq ko'rsatiladi.
+    smn_object_id: Mapped[int | None] = mapped_column(index=True)
     trailer_number: Mapped[str | None] = mapped_column(String(64), index=True)
     vehicle_type: Mapped[str | None] = mapped_column(String(64), index=True)
     capacity: Mapped[str | None] = mapped_column(String(64))

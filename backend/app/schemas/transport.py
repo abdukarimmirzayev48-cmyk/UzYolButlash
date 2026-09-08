@@ -20,6 +20,7 @@ class TransportBase(BaseModel):
     driver_employee_id: int | None = None
     driver_phone: str | None = None
     vehicle_number: str = Field(min_length=1, max_length=64)
+    smn_object_id: int | None = None
     trailer_number: str | None = None
     vehicle_type: str | None = None
     capacity: str | None = None
@@ -52,6 +53,7 @@ class TransportUpdate(BaseModel):
     driver_employee_id: int | None = None
     driver_phone: str | None = None
     vehicle_number: str | None = Field(default=None, min_length=1, max_length=64)
+    smn_object_id: int | None = None
     trailer_number: str | None = None
     vehicle_type: str | None = None
     capacity: str | None = None
@@ -106,6 +108,7 @@ class TransportEventVehicle(BaseModel):
 
     id: int
     vehicle_number: str
+    smn_object_id: int | None = None
     driver_name: str | None = None
 
 
@@ -358,6 +361,7 @@ class TransportEventSummary(BaseModel):
 class FleetVehicleRow(BaseModel):
     transport_id: int
     vehicle_number: str
+    smn_object_id: int | None = None
     driver_name: str | None = None
     status: str
     trip_count: int = 0

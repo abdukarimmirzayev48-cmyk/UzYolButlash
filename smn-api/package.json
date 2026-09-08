@@ -1,0 +1,20 @@
+{
+  "name": "smn-api",
+  "version": "1.0.0",
+  "description": "O'zavtoyo'l SMN monitoring uchun toza REST API (proxy). Jonli avtomobil ma'lumotlari, detal va marshrut/tarix.",
+  "type": "module",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js"
+  },
+  "engines": { "node": ">=18" },
+  "dependencies": {
+    "axios": "^1.7.7",
+    "axios-cookiejar-support": "^5.0.3",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.0",
+    "fast-xml-parser": "^4.5.0",
+    "tough-cookie": "^5.0.0"
+  }
+}
