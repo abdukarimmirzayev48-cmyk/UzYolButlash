@@ -326,11 +326,56 @@ Attendance comes from real access-control terminals over ISAPI (HTTP +
 Drivers pair via a one-time code from the employee page, then report fuel level,
 odometer + photos, and stop alerts. See the one-poller warning in §9.
 
+### SMN vehicle monitoring (O'zavtoyo'l)
+
+Live GPS for the ten company trucks. The ERP never talks to SMN directly — it
+goes through **`smn-api/`**, a small Node proxy in this repo that holds the SMN
+login and turns its session-based site into a REST API.
+
+```text
+ERP  --SMN_API_URL / SMN_API_KEY-->  smn-api (127.0.0.1:3100)  -->  smpo-yaat.uzavtoyul.uz
+```
+
+On the VPS it is `smn-api.service` (systemd), running from
+`/opt/uzyolbutlash/smn-api` with its own `.env` (chmod 600, gitignored).
+It binds to **loopback only** — it stores the SMN password, so never expose it.
+
+Four traps, all of them cost real time to find; the fixes are in the code but
+the reasons are here:
+
+1. The live list needs an `updtime` query parameter, or SMN returns an HTML
+   error page instead of JSON.
+2. `/main.htm` must be fetched **after login and before the live list** — the
+   list throws a server-side `NULL_POINTER_ERROR` otherwise, because that page
+   is what seeds the map state into the session.
+3. The track endpoint returns **JSON, not KML**, because the client sends
+   `X-Requested-With: XMLHttpRequest`. A KML parser silently yields 0 points.
+4. The login page always contains the word "captcha" (16 times), so matching on
+   that word reports every wrong password as `CAPTCHA_REQUIRED`.
+
+What SMN does **not** give you, and what we do instead:
+
+| Wanted | SMN | What we do |
+|---|---|---|
+| Tank litres, now | ✅ `bakTotalLitr` | 19 of 83 sensors return negative values — `plausible_fuel()` filters them |
+| Tank litres, history | ❌ | `transport_fuel_samples`, filled every 10 min by `services/fuel_watch.py` |
+| Total odometer | ❌ | `odometer` is a *session* counter (0 parked, 76 while moving); we compare **deltas** between two driver reports instead |
+| Distance travelled | ✅ track points | `distanceKm` is per whole day — `services/track_distance.py` narrows it to the trip window |
+
+`Transport.smn_object_id` links a truck to a monitoring object; link them by
+plate with `scripts/link_smn_transports.py --apply`.
+
 ### Scheduler
 
 `run_reminder_sweep` every 15 minutes: deadline reminders (1 day / 1 hour out) and
 an overdue sweep. It is **idempotent** — it dedups against existing `Notification`
 rows, so repeated runs never duplicate. Preserve that property.
+
+`_run_fuel_watch_job` every 10 minutes: one SMN call for the whole fleet, one
+`transport_fuel_samples` row per linked truck, plus back-filling
+`sensor_distance_km` on driver reports. `_run_fuel_prune_job` daily drops
+samples older than 180 days. Both swallow their exceptions — monitoring going
+down must never stop the scheduler.
 
 ### Scripts
 
@@ -339,6 +384,7 @@ rows, so repeated runs never duplicate. Preserve that property.
 | `generate_cyrillic_dict.py` | regenerate the Cyrillic dictionary (§6) |
 | `uz_translit.py` | the transliterator + OVERRIDES/PROTECTED |
 | `hikvision_sync_agent.py` + `.bat` | office-LAN attendance agent |
+| `link_smn_transports.py` | link trucks to SMN monitoring objects by plate |
 | `seed_more_demo_data.py` | demo data |
 | `import_registry_as_clients.py`, `merge_company_registry_into_clients.py` | company registry import |
 
