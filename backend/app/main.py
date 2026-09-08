@@ -1,3 +1,5 @@
+import logging
+
 from fastapi import Depends, FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, RedirectResponse
@@ -36,6 +38,7 @@ from backend.app.api.products import products_router
 from backend.app.core.config import CORS_ORIGINS, SESSION_SECRET_KEY
 from backend.app.core.paths import FRONTEND_DIR, UPLOADS_DIR
 from backend.app.db.session import SessionLocal
+from backend.app.services import fuel_watch
 from backend.app.services.audit import AuditMiddleware
 from backend.app.services.auth import get_current_user
 from backend.app.services.notifications import (
@@ -145,10 +148,43 @@ def _run_reminder_sweep_job() -> None:
         db.close()
 
 
+def _run_fuel_watch_job() -> None:
+    """Monitoring datchigidan namuna olish.
+
+    Yoqilg'i tarixini SMN saqlamaydi -- marshrut javobida faqat koordinata
+    va tezlik bor. Reys yopilganda «boshida bakda qancha edi» degan savolga
+    javob bo'lishi uchun namunani o'z vaqtida o'zimiz yozib qo'yamiz.
+    """
+    db = SessionLocal()
+    try:
+        fuel_watch.collect_samples(db)
+        fuel_watch.fill_checkin_distances(db)
+    except Exception:
+        # Fon vazifasi: monitoring yiqilsa ham rejalashtiruvchi to'xtamasin.
+        logging.getLogger(__name__).exception("fuel watch job failed")
+    finally:
+        db.close()
+
+
+def _run_fuel_prune_job() -> None:
+    db = SessionLocal()
+    try:
+        fuel_watch.prune_samples(db)
+    except Exception:
+        logging.getLogger(__name__).exception("fuel prune job failed")
+    finally:
+        db.close()
+
+
 @app.on_event("startup")
 def start_scheduler() -> None:
     scheduler = BackgroundScheduler()
     scheduler.add_job(_run_reminder_sweep_job, "interval", minutes=15, id="task_reminder_sweep")
+    # 10 daqiqa -- sliv odatda bir necha daqiqada bo'ladi, undan siyrak
+    # namuna uni butunlay o'tkazib yuboradi. Bitta so'rov butun parkni
+    # qaytaradi, ya'ni SMNga yuk qo'shmaydi.
+    scheduler.add_job(_run_fuel_watch_job, "interval", minutes=10, id="transport_fuel_watch")
+    scheduler.add_job(_run_fuel_prune_job, "interval", hours=24, id="transport_fuel_prune")
     scheduler.start()
 
 

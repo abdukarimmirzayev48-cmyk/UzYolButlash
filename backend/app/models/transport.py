@@ -260,6 +260,18 @@ class TransportCheckIn(Base):
     odometer_photo_url: Mapped[str | None] = mapped_column(String(500))
     fuel_liters: Mapped[Decimal | None] = mapped_column(Numeric(10, 2))
     fuel_photo_url: Mapped[str | None] = mapped_column(String(500))
+
+    # Monitoring ko'rsatkichi -- haydovchi aytgan raqamning yonida turishi
+    # uchun. Ilgari haydovchi aytgan yoqilg'ini haydovchi aytgan yoqilg'i
+    # bilan solishtirardik, ya'ni sliv nazorati aslida nazorat emas edi.
+    sensor_fuel_liters: Mapped[Decimal | None] = mapped_column(Numeric(10, 2))
+    # Oldingi hisobotdan beri monitoring o'lchagan masofa. SMN jonli
+    # ro'yxatidagi `odometer` -- umumiy probeg emas, sessiya hisoblagichi;
+    # shuning uchun spidometrni to'g'ridan-to'g'ri solishtirib bo'lmaydi,
+    # faqat ikki hisobot orasidagi farqni solishtiramiz.
+    sensor_distance_km: Mapped[Decimal | None] = mapped_column(Numeric(10, 2))
+    sensor_distance_checked_at: Mapped[datetime | None] = mapped_column(DateTime)
+
     note: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now, nullable=False, index=True)
 
@@ -339,3 +351,31 @@ class TransportRepairPart(Base):
     note: Mapped[str | None] = mapped_column(Text)
 
     repair: Mapped[TransportRepair] = relationship(back_populates="parts")
+
+
+class TransportFuelSample(Base):
+    """Monitoring datchigidan olingan yoqilg'i namunasi.
+
+    SMN marshrut javobida faqat vaqt, koordinata, tezlik va burchak bor --
+    yoqilg'i qatori yo'q. Ya'ni «reys boshida bakda qancha edi, oxirida
+    qancha qoldi» degan savolga monitoringning o'zi javob bermaydi.
+    Shuning uchun tarixni o'zimiz yig'amiz: har 10 daqiqada bitta so'rov
+    butun parkni qaytaradi, undan har bir bog'langan mashina uchun bitta
+    qator yoziladi.
+
+    Sliv shubhasi aynan shu jadvaldan chiqadi: mashina turgan joyda bak
+    keskin kamaysa, buni haydovchining hisobotisiz ham ko'rish mumkin.
+    """
+
+    __tablename__ = "transport_fuel_samples"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    transport_id: Mapped[int] = mapped_column(ForeignKey("transports.id", ondelete="CASCADE"), nullable=False, index=True)
+    captured_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, index=True)
+    fuel_liters: Mapped[Decimal | None] = mapped_column(Numeric(10, 2))
+    lat: Mapped[Decimal | None] = mapped_column(Numeric(10, 7))
+    lng: Mapped[Decimal | None] = mapped_column(Numeric(10, 7))
+    speed: Mapped[Decimal | None] = mapped_column(Numeric(6, 1))
+    engine_on: Mapped[bool | None] = mapped_column(Boolean)
+    moving: Mapped[bool | None] = mapped_column(Boolean)
+    online: Mapped[bool | None] = mapped_column(Boolean)

@@ -2165,6 +2165,28 @@ function unitField(label, value, unit, icon) {
 const litersField = (label, value, icon = "droplet") => unitField(label, value, "litr", icon);
 const kmField = (label, value) => unitField(label, value, "km", "route");
 
+// Datchik paneli haydovchi raqamlaridan alohida turadi. Sabab oddiy:
+// bittasi hisobot, ikkinchisi o'lchov. Ularni bitta jadvalga qo'shib
+// yuborilsa, qaysi raqam qayerdan kelgani ko'rinmay qoladi -- nizoda esa
+// aynan shu savol so'raladi.
+function logisticsSensorFuelPanel(fuel) {
+  const has = ["sensor_before_liters", "sensor_after_liters", "sensor_drop_liters"]
+    .some((key) => fuel[key] !== null && fuel[key] !== undefined);
+  if (!has) return "";
+  const dropTone = fuel.sensor_drop_liters ? "danger" : "muted";
+  return `<div class="detail-two-col">
+    ${detailTonePanel({ label: "Monitoring datchigi", tone: "muted", icon: "droplet", body: `
+      ${litersField("Chiqishda", fuel.sensor_before_liters)}
+      ${litersField("Qaytishda", fuel.sensor_after_liters)}
+      ${litersField("Datchik bo'yicha sarf", fuel.sensor_actual_liters)}
+    `})}
+    ${detailTonePanel({ label: "Taqqoslash", tone: dropTone, icon: "alert", body: `
+      ${litersField("Hisobot bilan farq", fuel.sensor_difference_liters)}
+      ${litersField("Turgan joyda kamaygan", fuel.sensor_drop_liters)}
+    `})}
+  </div>`;
+}
+
 function logisticsFuelBody(row) {
   const fuel = row.fuel;
   if (!fuel) return `<div class="empty">Yoqilg'i ma'lumotlari kiritilmagan.</div>`;
@@ -2193,6 +2215,7 @@ function logisticsFuelBody(row) {
         ${kmField("Rejadan ortiq", fuel.overrun_km)}
       `})}
     </div>
+    ${logisticsSensorFuelPanel(fuel)}
     ${fuel.liters_per_100km !== null && fuel.liters_per_100km !== undefined
       ? `<p class="form-hint"><span>Haqiqiy sarf</span>: <span data-noloc>${fmtQty(fuel.liters_per_100km)} l/100 km</span>${fuel.tolerance_liters !== null && fuel.tolerance_liters !== undefined ? ` · <span>Ruxsat etilgan chetlanish</span>: <span data-noloc>${fmtQty(fuel.tolerance_liters)} l</span>` : ""}</p>`
       : ""}

@@ -25,6 +25,7 @@ from backend.app.db.session import SessionLocal
 from backend.app.models.attendance import Employee
 from backend.app.models.delivery import Logistics, LogisticsStatus
 from backend.app.models.transport import Transport, TransportCheckIn, TransportCheckInKind
+from backend.app.services import fuel_watch, smn
 from backend.app.models.user import User
 from backend.app.services import notifications
 
@@ -199,6 +200,11 @@ async def report_fuel_value(update: Update, context: ContextTypes.DEFAULT_TYPE) 
             odometer_photo_url=context.user_data["odometer_photo_url"],
             fuel_liters=value,
             fuel_photo_url=context.user_data["fuel_photo_url"],
+            # Datchik ko'rsatkichi aynan shu payt olinadi: keyinroq
+            # so'ralsa, mashina yo'lda yurib boshqa raqamni ko'rsatadi va
+            # taqqoslash ma'nosini yo'qotadi. Jonli ro'yxat keshlangan,
+            # ya'ni bu so'rov haydovchini kutdirmaydi.
+            sensor_fuel_liters=_sensor_fuel(transport),
         )
         db.add(checkin)
         db.commit()
@@ -214,6 +220,23 @@ async def report_fuel_value(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     context.user_data.clear()
     await update.message.reply_text("Rahmat! Hisobot qabul qilindi.", reply_markup=REPLY_KEYBOARD)
     return ConversationHandler.END
+
+
+def _sensor_fuel(transport: Transport):
+    """Monitoringdagi hozirgi bak ko'rsatkichi, bo'lmasa None.
+
+    Monitoring yiqilsa hisobot baribir saqlanishi kerak -- haydovchining
+    ishi tashqi tizimga bog'liq bo'lib qolmasin.
+    """
+    if not transport.smn_object_id:
+        return None
+    try:
+        result = smn.vehicle(transport.smn_object_id)
+        if not result.ok:
+            return None
+        return fuel_watch.plausible((result.data.get("fuel") or {}).get("tankLiters"))
+    except Exception:
+        return None
 
 
 async def report_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:

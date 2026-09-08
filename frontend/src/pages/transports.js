@@ -514,6 +514,29 @@ function bindTransportEventActions(events, rerender, editable) {
   }));
 }
 
+// Backenddagi SENSOR_TOLERANCE_LITERS bilan bir xil: bir xil farq bir
+// joyda qizil, boshqasida oq bo'lib turmasin.
+const CHECKIN_FUEL_TOLERANCE = 25;
+// Masofa uchun chegara -- logistics_fuel.GPS_TOLERANCE_KM bilan bir xil.
+const CHECKIN_DISTANCE_TOLERANCE = 15;
+
+// Har bir hisobotga «oldingi hisobotdan beri qancha yurilgan» qiymatini
+// qo'shadi. Ro'yxat yangidan eskiga qarab keladi, shuning uchun avval
+// vaqt bo'yicha tartiblab olamiz.
+function annotateCheckinDistances(items) {
+  const ordered = [...items].sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+  let previous = null;
+  for (const item of ordered) {
+    if (item.odometer_km == null) continue;
+    if (previous != null) {
+      const delta = Number(item.odometer_km) - Number(previous);
+      item.odometer_delta_km = delta >= 0 ? delta : null;
+    }
+    previous = item.odometer_km;
+  }
+  return items;
+}
+
 function transportCheckInRowHtml(checkin) {
   const kindLabel = optionLabel(transportCheckInKinds, checkin.kind);
   const kindTone = checkin.kind === "stopped" ? "warning" : checkin.kind === "resumed" ? "success" : "muted";
@@ -521,12 +544,38 @@ function transportCheckInRowHtml(checkin) {
     checkin.odometer_photo_url ? `<a href="${esc(checkin.odometer_photo_url)}" target="_blank" rel="noopener">Spidometr rasmi</a>` : "",
     checkin.fuel_photo_url ? `<a href="${esc(checkin.fuel_photo_url)}" target="_blank" rel="noopener">Yoqilg'i rasmi</a>` : "",
   ].filter(Boolean).join(", ") || dash;
+  // Datchik raqami haydovchi raqamining tagida turadi -- yonma-yon
+  // ko'ringanda «kim nima degan» savoli o'z-o'zidan javob topadi.
+  const fuelGap = checkin.fuel_liters != null && checkin.sensor_fuel_liters != null
+    ? Number(checkin.fuel_liters) - Number(checkin.sensor_fuel_liters)
+    : null;
+  const fuelCell = `${checkin.fuel_liters != null ? `${fmtQty(checkin.fuel_liters)} L` : dash}
+    ${checkin.sensor_fuel_liters != null
+      ? `<small class="${fuelGap != null && Math.abs(fuelGap) > CHECKIN_FUEL_TOLERANCE ? "text-danger" : "muted"}"><span>Datchik</span>: <span data-noloc>${fmtQty(checkin.sensor_fuel_liters)} L</span></small>`
+      : ""}`;
+  // Spidometrning o'zini monitoring bilan solishtirib bo'lmaydi: SMN
+  // umumiy probegni bermaydi. Solishtirsa bo'ladigani -- ikki hisobot
+  // orasidagi farq: haydovchi qancha yurganini aytadi, monitoring esa
+  // qancha yurilganini biladi.
+  const drivenGap = checkin.odometer_delta_km != null && checkin.sensor_distance_km != null
+    ? Number(checkin.odometer_delta_km) - Number(checkin.sensor_distance_km)
+    : null;
+  const drivenParts = [
+    checkin.odometer_delta_km != null
+      ? `<span>Yurilgan</span>: <span data-noloc>${fmtQty(checkin.odometer_delta_km)} km</span>` : "",
+    checkin.sensor_distance_km != null
+      ? `<span>Monitoringda</span>: <span data-noloc>${fmtQty(checkin.sensor_distance_km)} km</span>` : "",
+  ].filter(Boolean).join(" · ");
+  const odometerCell = `${checkin.odometer_km != null ? `${fmtQty(checkin.odometer_km)} km` : dash}
+    ${drivenParts
+      ? `<small class="${drivenGap != null && Math.abs(drivenGap) > CHECKIN_DISTANCE_TOLERANCE ? "text-danger" : "muted"}">${drivenParts}</small>`
+      : ""}`;
   return `<tr>
     <td>${fmtDate(checkin.created_at)}</td>
     <td>${statusChip({ label: kindLabel, tone: kindTone })}</td>
     <td>${fmt(checkin.employee?.full_name)}</td>
-    <td>${checkin.odometer_km != null ? `${fmtQty(checkin.odometer_km)} km` : dash}</td>
-    <td>${checkin.fuel_liters != null ? `${fmtQty(checkin.fuel_liters)} L` : dash}</td>
+    <td>${odometerCell}</td>
+    <td>${fuelCell}</td>
     <td>${photos}</td>
     <td>${fmt(checkin.note)}</td>
   </tr>`;
@@ -534,11 +583,14 @@ function transportCheckInRowHtml(checkin) {
 
 async function renderTransportFuelLog(id) {
   app.innerHTML = `<div class="page"><div class="empty">Yuklanmoqda...</div></div>`;
-  const [transport, events, summary, checkins] = await Promise.all([
+  const [transport, events, summary, checkins, live] = await Promise.all([
     api(`/api/transports/${id}`),
     api(`/api/transports/events?transport_id=${id}&page_size=200`),
     api(`/api/transports/events/summary?transport_id=${id}`),
     api(`/api/transports/${id}/checkins?page_size=50`),
+    // Monitoring yiqilsa ham sahifa ochilishi kerak: bu yordamchi ma'lumot,
+    // sahifaning maqsadi emas.
+    api(`/api/transports/${id}/live`).catch(() => null),
   ]);
   const editable = canEdit("yetkazib_berish");
   const headerActions = editable ? [{ label: "Hodisa qo'shish", modal: "add-event", primary: true }] : [];
@@ -556,6 +608,7 @@ async function renderTransportFuelLog(id) {
     })}
     ${transportEventSummaryCards(summary)}
     ${workflowWarningsPanel(summary.warnings || [])}
+    ${section("Jonli holat", liveVehicleBody(live))}
     ${section("Hodisalar jurnali", opsTableOrEmpty(
       events.items,
       ["Hodisa", "Sana", "Turi", "Sabab / joyi", "Miqdor", "Yo'qotish", "Reys", "Tekshiruv", "Zarar", "Holati", editable ? "Amallar" : ""],
@@ -563,7 +616,7 @@ async function renderTransportFuelLog(id) {
       "Hodisalar hali yozilmagan."
     ))}
     ${section("Haydovchi hisobotlari", opsTableOrEmpty(
-      checkins.items,
+      annotateCheckinDistances(checkins.items),
       ["Sana", "Turi", "Haydovchi", "Spidometr", "Yoqilg'i", "Fayllar", "Izoh"],
       transportCheckInRowHtml,
       "Haydovchidan hisobotlar hali yo'q."

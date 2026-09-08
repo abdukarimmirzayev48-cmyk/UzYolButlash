@@ -1,4 +1,4 @@
-from datetime import date, datetime
+from datetime import date, datetime, time
 from decimal import Decimal
 from pathlib import Path
 from shutil import copyfileobj
@@ -34,10 +34,12 @@ from backend.app.models.order import Order, OrderItem
 from backend.app.models.supplier import SupplierAddress, SupplierAddressType
 from backend.app.models.transport import Transport, TransportEvent, TransportEventCheckResult, TransportEventType
 from backend.app.services import delivery_stats
+from backend.app.services import fuel_watch
 from backend.app.services import delivery_method as delivery_method_service
 from backend.app.api.transports import live_payload as transport_live_payload
 from backend.app.services import point_distance
 from backend.app.services import smn
+from backend.app.services import track_distance
 from backend.app.services import trip_completion_check
 from backend.app.services.delivery_method import default_method_for
 from backend.app.services.auth import get_current_user, require_edit
@@ -407,6 +409,10 @@ def logistics_fuel_position(logistics: Logistics) -> logistics_fuel.FuelPosition
         planned_distance=logistics.planned_distance_km,
         norm_loaded=transport.fuel_norm_loaded if transport else None,
         norm_empty=transport.fuel_norm_empty if transport else None,
+        sensor_before=logistics.sensor_fuel_before_liters,
+        sensor_after=logistics.sensor_fuel_after_liters,
+        sensor_drop=logistics.sensor_fuel_drop_liters,
+        measured_distance=logistics.measured_distance_km,
     )
 
 
@@ -1135,6 +1141,10 @@ def complete_batch(batch_id: int, payload: DeliveryBatchCompletionConfirm, db: S
     # vaqti: sanalar allaqachon ma'lum va marshrut hali so'ralmagan.
     # Muvaffaqiyatsizlik yakunlashni to'smaydi, sababi izohga yoziladi.
     distance_problem = apply_measured_distance(db, logistics)
+    # Datchik ko'rsatkichi ham shu yerda olinadi: tekshiruvdan oldin, ya'ni
+    # «bak qoldig'i mos emas» ogohlantirishi yakunlash paytida ko'rinadi,
+    # keyin emas.
+    sensor_problem = apply_sensor_fuel(db, logistics)
     trip = trip_check_for(logistics)
     if trip.blocking:
         raise HTTPException(status_code=422, detail=trip.blocking[0])
@@ -1151,6 +1161,15 @@ def complete_batch(batch_id: int, payload: DeliveryBatchCompletionConfirm, db: S
         note_parts.append(f"Monitoring bo'yicha probeg: {logistics.measured_distance_km} km")
     elif distance_problem:
         note_parts.append(f"Probegni monitoringdan olib bo'lmadi: {distance_problem}")
+    if logistics.sensor_fuel_before_liters is not None or logistics.sensor_fuel_after_liters is not None:
+        note_parts.append(
+            f"Datchik bo'yicha bak: {fmt_liters(logistics.sensor_fuel_before_liters)}"
+            f" -> {fmt_liters(logistics.sensor_fuel_after_liters)} litr"
+        )
+    elif sensor_problem:
+        note_parts.append(f"Datchik ko'rsatkichini olib bo'lmadi: {sensor_problem}")
+    if logistics.sensor_fuel_drop_liters:
+        note_parts.append(f"Turgan joyda bak kamaygan: {logistics.sensor_fuel_drop_liters} litr")
     if payload.notes:
         note_parts.append(payload.notes)
         batch.notes = payload.notes
@@ -1468,7 +1487,13 @@ def apply_measured_distance(db: Session, logistics: Logistics) -> str | None:
     result = smn.track(transport.smn_object_id, window[0], window[1])
     if not result.ok:
         return result.error
-    distance = (result.data or {}).get("distanceKm")
+    # SMNning tayyor `distanceKm` raqami butun kunga tegishli. Mashina o'sha
+    # kuni yana boshqa reys qilgan bo'lsa, u raqam bu reysniki emas --
+    # shuning uchun jo'nash va qaytish vaqti ma'lum bo'lsa, nuqtalarni o'sha
+    # oynaga qisqartirib o'lchaymiz.
+    distance = track_distance.distance_for_window(
+        result.data, logistics.departed_at, logistics.returned_at
+    )
     if distance is None:
         return "Monitoringda bu kunlar uchun marshrut yo'q"
     logistics.measured_distance_km = Decimal(str(distance))
@@ -1481,6 +1506,52 @@ def apply_measured_distance(db: Session, logistics: Logistics) -> str | None:
     # raqam. Monitoring uni tekshiradi, o'rniga yozilmaydi.
     if logistics.distance_km is None:
         logistics.distance_km = Decimal(str(distance))
+    return None
+
+
+def fmt_liters(value) -> str:
+    return "?" if value is None else str(value)
+
+
+def trip_moments(logistics: Logistics) -> tuple[datetime, datetime] | None:
+    """Reysning aniq boshlanish va tugash payti.
+
+    Vaqt nuqtalari bo'lmasa haqiqiy sanalarning boshi va oxiri olinadi:
+    kunlik oyna aniq emas, lekin butunlay tekshirmaslikdan yaxshiroq.
+    """
+    start = logistics.departed_at
+    end = logistics.returned_at
+    if start is None and logistics.actual_pickup_date:
+        start = datetime.combine(logistics.actual_pickup_date, time.min)
+    if end is None and logistics.actual_delivery_date:
+        end = datetime.combine(logistics.actual_delivery_date, time.max)
+    if start is None or end is None or end < start:
+        return None
+    return start, end
+
+
+def apply_sensor_fuel(db: Session, logistics: Logistics) -> str | None:
+    """Reysning ikki uchidagi bak ko'rsatkichini monitoringdan oladi.
+
+    Haydovchi aytgan raqam o'z o'rnida qoladi -- bu tekshiruv, almashtirish
+    emas. Qo'shimcha ravishda reys ichida mashina turgan joyda bak keskin
+    kamaygan bo'lsa, o'sha miqdor yig'ib beriladi: sliv aynan shunday
+    ko'rinadi va uni haydovchining hisobotisiz ham ko'rish mumkin.
+    """
+    transport = db.get(Transport, logistics.transport_id) if logistics.transport_id else None
+    if not transport or not transport.smn_object_id:
+        return smn.MSG_NOT_LINKED
+    window = trip_moments(logistics)
+    if not window:
+        return "Reys sanalari kiritilmagan"
+    start, end = window
+    logistics.sensor_fuel_before_liters = fuel_watch.fuel_at(db, transport.id, start)
+    logistics.sensor_fuel_after_liters = fuel_watch.fuel_at(db, transport.id, end)
+    drops = fuel_watch.detect_drops(fuel_watch.samples_between(db, transport.id, start, end))
+    logistics.sensor_fuel_drop_liters = sum((d.liters for d in drops), Decimal("0")) if drops else None
+    if logistics.sensor_fuel_before_liters is None and logistics.sensor_fuel_after_liters is None:
+        # Namunalar reysdan keyin yig'ila boshlagan bo'lsa shunday bo'ladi.
+        return "Bu reys uchun datchik namunalari yo'q"
     return None
 
 

@@ -211,6 +211,15 @@ class Logistics(Base, TimestampMixin):
     fuel_added_liters: Mapped[Decimal | None] = mapped_column(Numeric(10, 2))
     fuel_after_liters: Mapped[Decimal | None] = mapped_column(Numeric(10, 2))
 
+    # Yuqoridagi uchtasini haydovchi aytadi. Quyidagilari -- monitoring
+    # datchigi reysning ikki uchida ko'rsatgan raqam va reys davomida
+    # mashina turgan joyda bakning keskin kamayishi. Ilgari haydovchi
+    # aytgan raqamni faqat yana o'sha haydovchi aytgan raqam bilan
+    # solishtirardik.
+    sensor_fuel_before_liters: Mapped[Decimal | None] = mapped_column(Numeric(10, 2))
+    sensor_fuel_after_liters: Mapped[Decimal | None] = mapped_column(Numeric(10, 2))
+    sensor_fuel_drop_liters: Mapped[Decimal | None] = mapped_column(Numeric(10, 2))
+
     # Masofa. Odometr ko'rsatkichi reysning ikki uchida olinadi; GPS masofasi
     # esa qo'lda kiritiladi -- trekerga ulanish yo'q, dispetcher uni
     # trekerning o'z panelidan ko'chirib yozadi. Ikkovining farqi o'zi

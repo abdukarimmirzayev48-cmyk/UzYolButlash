@@ -36,6 +36,12 @@ GPS_TOLERANCE_KM = Decimal("15")
 # Rejadan shuncha kilometr oshsa, ortiqcha yurish deb belgilanadi.
 OVERRUN_TOLERANCE_KM = Decimal("20")
 
+# Haydovchi aytgan bak qoldig'i datchikdan shuncha litrgacha farq qilishi
+# normal. Datchik o'zi ham aniq emas: bak qiya turganda, harorat
+# o'zgarganda ko'rsatkich tebranadi. Chegara past qo'yilsa har reys
+# «mos emas» bo'lib chiqadi va ogohlantirish qadrsizlanadi.
+SENSOR_TOLERANCE_LITERS = Decimal("25")
+
 MSG_OVER_NORM = "Yoqilg'i normadan ortiq sarflangan"
 MSG_SUSPECTED_SIPHONING = "Slivga shubha"
 MSG_NORM_MISSING = "Mashinaga yoqilg'i normasi kiritilmagan"
@@ -43,6 +49,8 @@ MSG_MILEAGE_SPLIT_MISSING = "Yuklangan va bo'sh masofa kiritilmagan"
 MSG_GPS_MISMATCH = "Odometr va GPS masofasi bir-biriga mos emas"
 MSG_ODOMETER_BACKWARDS = "Qaytish odometri chiqish odometridan kichik"
 MSG_OVERRUN = "Rejadagi masofadan ortiq yurilgan"
+MSG_SENSOR_MISMATCH = "Bak qoldig'i datchik ko'rsatkichiga mos emas"
+MSG_SENSOR_DROP = "Turgan joyda bak keskin kamaygan"
 
 
 @dataclass
@@ -65,7 +73,14 @@ class FuelPosition:
     gps_distance_km: Decimal | None = None
     gps_difference_km: Decimal | None = None
     planned_distance_km: Decimal | None = None
+    measured_distance_km: Decimal | None = None
     overrun_km: Decimal | None = None
+    # Monitoring datchigi
+    sensor_before_liters: Decimal | None = None
+    sensor_after_liters: Decimal | None = None
+    sensor_actual_liters: Decimal | None = None
+    sensor_difference_liters: Decimal | None = None
+    sensor_drop_liters: Decimal | None = None
     warnings: list[str] = field(default_factory=list)
 
 
@@ -88,6 +103,10 @@ def build_position(
     planned_distance,
     norm_loaded,
     norm_empty,
+    sensor_before=None,
+    sensor_after=None,
+    sensor_drop=None,
+    measured_distance=None,
 ) -> FuelPosition:
     position = FuelPosition()
     position.before_liters = _dec(fuel_before)
@@ -95,6 +114,7 @@ def build_position(
     position.after_liters = _dec(fuel_after)
     position.gps_distance_km = _dec(gps_distance)
     position.planned_distance_km = _dec(planned_distance)
+    position.measured_distance_km = _dec(measured_distance)
 
     # --- Masofa ---
     start = _dec(odometer_start)
@@ -128,6 +148,38 @@ def build_position(
         position.actual_liters = position.before_liters + added - position.after_liters
     else:
         position.actual_liters = _dec(recorded_consumption)
+
+    # --- Datchik bilan taqqoslash ---
+    # Bu yerda hech narsa hisobga almashtirilmaydi: datchik hujjat emas,
+    # u faqat haydovchi aytgan raqamga savol qo'yadi.
+    position.sensor_before_liters = _dec(sensor_before)
+    position.sensor_after_liters = _dec(sensor_after)
+    position.sensor_drop_liters = _dec(sensor_drop)
+    if position.sensor_before_liters is not None and position.sensor_after_liters is not None:
+        added = position.added_liters or Decimal("0")
+        position.sensor_actual_liters = (
+            position.sensor_before_liters + added - position.sensor_after_liters
+        )
+    mismatch = False
+    for reported, measured in (
+        (position.before_liters, position.sensor_before_liters),
+        (position.after_liters, position.sensor_after_liters),
+    ):
+        if reported is not None and measured is not None and abs(reported - measured) > SENSOR_TOLERANCE_LITERS:
+            mismatch = True
+    if mismatch:
+        position.warnings.append(MSG_SENSOR_MISMATCH)
+    if position.actual_liters is not None and position.sensor_actual_liters is not None:
+        position.sensor_difference_liters = (
+            position.actual_liters - position.sensor_actual_liters
+        ).quantize(Decimal("0.01"))
+    if position.sensor_drop_liters is not None and position.sensor_drop_liters > 0:
+        position.warnings.append(MSG_SENSOR_DROP)
+        # Norma hisobi «hammasi joyida» desa ham, turgan joyda yo'qolgan
+        # yoqilg'i shubhaning o'zi. Ikkovidan kattasi olinadi: bir hodisada
+        # ikki xil raqam turmasin.
+        if position.suspected_liters is None or position.sensor_drop_liters > position.suspected_liters:
+            position.suspected_liters = position.sensor_drop_liters
 
     if position.actual_liters is not None and position.distance_km:
         position.liters_per_100km = (
@@ -163,8 +215,12 @@ def build_position(
     position.tolerance_liters = (position.norm_liters * TOLERANCE_PERCENT / Decimal("100")).quantize(Decimal("0.01"))
     if position.difference_liters > 0:
         position.warnings.append(MSG_OVER_NORM)
-        excess = position.difference_liters - position.tolerance_liters
+        excess = (position.difference_liters - position.tolerance_liters).quantize(Decimal("0.01"))
         if excess > 0:
-            position.suspected_liters = excess.quantize(Decimal("0.01"))
+            # Datchik topgan yo'qotish yuqorida yozilgan bo'lishi mumkin --
+            # kattasi qoladi, aks holda normadan chiqqan kichik raqam
+            # datchik ko'rgan katta yo'qotishni yashirib qo'yardi.
+            if position.suspected_liters is None or excess > position.suspected_liters:
+                position.suspected_liters = excess
             position.warnings.append(MSG_SUSPECTED_SIPHONING)
     return position

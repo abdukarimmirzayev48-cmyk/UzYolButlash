@@ -427,6 +427,8 @@ class TransportCheckInRead(BaseModel):
     odometer_photo_url: str | None = None
     fuel_liters: Decimal | None = None
     fuel_photo_url: str | None = None
+    sensor_fuel_liters: Decimal | None = None
+    sensor_distance_km: Decimal | None = None
     note: str | None = None
     employee: TransportCheckInEmployeeSummary
     created_at: datetime

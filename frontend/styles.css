@@ -2939,6 +2939,20 @@ tr:last-child td {
   color: var(--muted);
 }
 
+/* Jadval katagida datchik raqami haydovchi raqamining tagida turadi.
+   Farq katta bo'lsa qizil -- ko'z birinchi shunga tushsin. */
+.text-danger {
+  color: var(--danger);
+}
+
+td > small.muted,
+td > small.text-danger {
+  display: block;
+  font-size: 11px;
+  line-height: 1.4;
+  margin-top: 2px;
+}
+
 .pill {
   display: inline-flex;
   align-items: center;
@@ -4385,6 +4399,16 @@ tr:last-child td {
   border-color: #d7f0e4;
 }
 
+.detail-tone-panel.danger {
+  background: #fef4f4;
+  border-color: #f6dcdc;
+}
+
+.detail-tone-panel.warning {
+  background: #fffaf0;
+  border-color: #f6e7c8;
+}
+
 .detail-tone-panel-header {
   display: flex;
   align-items: center;
@@ -4399,6 +4423,14 @@ tr:last-child td {
 
 .detail-tone-panel.success .detail-tone-panel-header {
   color: #176b45;
+}
+
+.detail-tone-panel.danger .detail-tone-panel-header {
+  color: var(--danger);
+}
+
+.detail-tone-panel.warning .detail-tone-panel-header {
+  color: #8a5a00;
 }
 
 .detail-mini-field {

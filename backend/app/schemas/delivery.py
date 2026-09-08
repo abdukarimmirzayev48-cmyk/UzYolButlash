@@ -173,6 +173,11 @@ class LogisticsFuelPosition(BaseModel):
     planned_distance_km: Decimal | None = None
     measured_distance_km: Decimal | None = None
     overrun_km: Decimal | None = None
+    sensor_before_liters: Decimal | None = None
+    sensor_after_liters: Decimal | None = None
+    sensor_actual_liters: Decimal | None = None
+    sensor_difference_liters: Decimal | None = None
+    sensor_drop_liters: Decimal | None = None
     warnings: list[str] = Field(default_factory=list)
 
 
