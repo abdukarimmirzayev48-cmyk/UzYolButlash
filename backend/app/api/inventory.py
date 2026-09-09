@@ -816,32 +816,85 @@ def reserve_stock_for_order(
 
 
 def link_stock_allocation_to_batch(db: Session, batch: DeliveryBatch) -> None:
-    # Ilgari bu yerda manba turi tekshirilardi. Endi shart kerak emas:
-    # zaxiradan ajratilmagan buyurtmada quyidagi qidiruv baribir hech
-    # narsa topmaydi.
-    existing = db.scalars(select(StockAllocation).where(StockAllocation.delivery_batch_id == batch.id)).first()
-    if existing:
-        return
+    """Partiyaga zaxira ajratmalarini bog'laydi.
+
+    Ilgari ikkita shart bor edi va ikkalasi ham amalda deyarli hech qachon
+    bajarilmasdi: partiyani to'liq qoplaydigan **bitta** ajratma izlanardi,
+    va partiyaga faqat bitta ajratma bog'lanardi. Buyurtma esa odatda bir
+    necha partiyaga bo'linadi, zaxira ham bir necha ticketdan yig'iladi --
+    natijada partiya ajratmasiz qolar va uning zaxira tannarxi foyda
+    hisobiga umuman tushmasdi.
+
+    Endi ajratmalar kerak bo'lganicha yig'iladi. Ajratma partiyadan katta
+    bo'lsa, u bo'linadi: kerakli qismi partiyaga bog'lanadi, qolgani
+    keyingi partiyaga ochiq qoladi.
+    """
     for item in batch.items:
-        allocation = db.scalars(
+        needed = qty(item.planned_quantity or Decimal("0"))
+        if needed <= 0:
+            continue
+        # Shu qatorga allaqachon bog'langani hisobga olinadi -- partiya
+        # qayta saqlansa ajratma ikki marta yozilmasin.
+        linked = db.scalars(
+            select(StockAllocation).where(
+                StockAllocation.delivery_batch_id == batch.id,
+                StockAllocation.order_item_id == item.order_item_id,
+            )
+        ).all()
+        needed = qty(needed - sum((qty(row.allocated_quantity) for row in linked), Decimal("0")))
+        if needed <= 0:
+            continue
+
+        free = db.scalars(
             select(StockAllocation)
             .where(
                 StockAllocation.order_id == batch.order_id,
                 StockAllocation.order_item_id == item.order_item_id,
                 StockAllocation.delivery_batch_id.is_(None),
                 StockAllocation.status == StockAllocationStatus.reserved,
-                StockAllocation.allocated_quantity >= item.planned_quantity,
             )
             .order_by(StockAllocation.created_at.asc())
-        ).first()
-        if allocation:
-            allocation.delivery_batch_id = batch.id
-            lot = allocation.stock_lot
-            if lot and lot.supplier:
-                batch.supplier_id = lot.supplier_id
-                batch.supplier_name = lot.supplier.name
-            if batch.logistics and lot and lot.stock_location:
-                batch.logistics.loading_address = lot.stock_location.address
+        ).all()
+
+        for allocation in free:
+            if needed <= 0:
+                break
+            available = qty(allocation.allocated_quantity)
+            if available <= needed:
+                allocation.delivery_batch_id = batch.id
+                needed = qty(needed - available)
+                used = allocation
+            else:
+                used = StockAllocation(
+                    stock_lot_id=allocation.stock_lot_id,
+                    order_id=allocation.order_id,
+                    order_item_id=allocation.order_item_id,
+                    delivery_batch_id=batch.id,
+                    allocated_quantity=needed,
+                    status=allocation.status,
+                )
+                db.add(used)
+                allocation.allocated_quantity = qty(available - needed)
+                needed = Decimal("0")
+            apply_lot_details_to_batch(db, batch, used)
+        db.flush()
+
+
+def apply_lot_details_to_batch(db: Session, batch: DeliveryBatch, allocation: StockAllocation) -> None:
+    """Ta'minotchi va yuklash manzili zaxira partiyasidan olinadi.
+
+    Faqat bo'sh bo'lsa yoziladi: bitta partiyaga bir necha ticketdan mol
+    yig'ilishi mumkin va oxirgi ajratma birinchisini bosib ketmasligi
+    kerak.
+    """
+    lot = allocation.stock_lot or db.get(StockLot, allocation.stock_lot_id)
+    if not lot:
+        return
+    if not batch.supplier_id and lot.supplier_id:
+        batch.supplier_id = lot.supplier_id
+        batch.supplier_name = lot.supplier.name if lot.supplier else batch.supplier_name
+    if batch.logistics and lot.stock_location and not (batch.logistics.loading_address or "").strip():
+        batch.logistics.loading_address = lot.stock_location.address
 
 
 def mark_stock_picked_up_for_batch(db: Session, batch: DeliveryBatch) -> None:

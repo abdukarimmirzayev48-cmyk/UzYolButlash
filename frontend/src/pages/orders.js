@@ -193,9 +193,8 @@ ${section("Manba va yetkazib berish", `
         ${section("Mavjud zaxiradan ajratish", `
           <div class="grid">
             <label>Zaxira partiyasi<select name="stock_lot_id"><option value="">Zaxira tanlang</option>${stockLots.items.map((lot) => `<option value="${lot.id}">${esc(lot.product_name)} · ${esc(lot.supplier_name || "")} · ${esc(lot.ticket_number || "")} · ${fmtQty(lot.quantity_available, lot.unit)} mavjud · ${fmtMoney(lot.unit_cost)}</option>`).join("")}</select></label>
-            ${textField("stock_allocated_quantity", "Ajratiladigan miqdor", "", "number")}
           </div>
-          <p class="helper-text">Mol har doim zaxiradan olinadi -- yangi xarid ochilmaydi. Zaxira yetarli bo'lmasa, avval birja ticketi ochiladi.</p>
+          <p class="helper-text">Zaxira tanlansa, buyurtma miqdori to'liq band qilinadi -- miqdorni alohida kiritish shart emas. Zaxira yetarli bo'lmasa, avval birja ticketi ochiladi.</p>
         `)}
         ${section("Ta'minotchi", `
           <input type="hidden" name="supplier_id" value="${esc(order?.supplier_id || "")}" />
@@ -269,7 +268,7 @@ async function bindOrderForm(order = null) {
     event.preventDefault();
     const payload = collectOrderPayload(form);
     const stockLotId = Number(field(form, "stock_lot_id"));
-    const allocatedQuantity = field(form, "stock_allocated_quantity");
+    const allocatedQuantity = payload.items.reduce((sum, row) => sum + numberValue(row.quantity), 0);
     if (!payload.contract_id || !payload.order_number || !payload.order_date) {
       showToast("Shartnoma, buyurtma raqami va buyurtma sanasi majburiy.", true);
       return;
@@ -278,8 +277,8 @@ async function bindOrderForm(order = null) {
       showToast("Shartnomadan kamida bitta mahsulot qo'shing.", true);
       return;
     }
-    if (stockLotId && (!allocatedQuantity || numberValue(allocatedQuantity) <= 0)) {
-      showToast("Ta'minotchi omboridagi zaxira uchun zaxira partiyasi va ajratiladigan miqdorni kiriting.", true);
+    if (stockLotId && allocatedQuantity <= 0) {
+      showToast("Buyurtma miqdorini kiriting -- zaxira shu miqdorga ajratiladi.", true);
       return;
     }
     const balanceMap = new Map(balances.map((balance) => [balance.contract_item_id, balance]));
@@ -307,7 +306,7 @@ async function bindOrderForm(order = null) {
             stock_lot_id: stockLotId,
             order_id: saved.id,
             order_item_id: firstItem?.id || null,
-            allocated_quantity: allocatedQuantity,
+            allocated_quantity: String(allocatedQuantity),
           }),
         });
       }
@@ -1016,9 +1015,10 @@ async function renderEditOrder(id) {
 }
 
 function orderHeader(order, related = {}) {
-  const isStockOrder = Boolean(related.allocations?.length);
+  // Mol har doim zaxiradan olinadi, ya'ni «ta'minotchi tayyormi» degan
+  // savolning javobi bitta: ajratma bormi.
   const hasStockAllocation = Boolean(related.allocations?.length);
-  const supplierReady = isStockOrder ? hasStockAllocation : (Boolean(order.supplier_name) || ["selected", "confirmed"].includes(order.supplier_status));
+  const supplierReady = hasStockAllocation;
   const nextAction = orderNextAction(order, related);
   const editable = canEdit("sotuv");
   const warnings = orderWarningMessages(order, related);
@@ -1038,7 +1038,7 @@ function orderHeader(order, related = {}) {
       fullEditPath: editable ? `/orders/${order.id}/edit` : "",
       actions: [
         editable ? { label: "Istisno status", modal: "order-status" } : null,
-        isStockOrder ? (canEdit("taminot") ? { label: "Zaxiradan ajratish", modal: "order-stock" } : null) : (editable ? { label: "Ta'minotchini tanlash", modal: "order-supplier-select" } : null),
+        canEdit("taminot") ? { label: "Zaxiradan ajratish", modal: "order-stock" } : null,
         canEdit("yetkazib_berish") ? { label: "Partiya yaratish", modal: "order-batch", primary: supplierReady } : null,
         canEdit("moliya") ? { label: "Hisob yaratish", modal: "order-invoice" } : null,
         editable ? { label: "Hujjat yuklash", modal: "order-document" } : null,
@@ -1223,7 +1223,6 @@ function orderFinanceStatusChip(finance = {}) {
 // left the yard uninvoiced are money at risk, and that outranks paperwork about
 // how those goods were bought.
 function orderNextAction(order = {}, related = {}) {
-  const isStockSource = Boolean(related.allocations?.length);
   const delivered = numberValue(order.summary?.delivered_quantity);
   const remaining = numberValue(order.summary?.remaining_quantity);
   const invoices = (related.invoices || []).filter((invoice) => invoice.status !== "cancelled");
@@ -1241,13 +1240,14 @@ function orderNextAction(order = {}, related = {}) {
   // for another batch after every tonne had already been planned.
   const unplanned = numberValue(order.summary?.unplanned_quantity);
   if (unplanned > 0) {
-    if (isStockSource) {
-      if (!related.allocations?.length) return { title: "Mavjud zaxiradan ajrating", hint: "Buyurtma zaxiradan bajariladi, lekin hali ajratma kiritilmagan.", button: "Zaxiradan ajratish", modal: "order-stock" };
-      return { title: "Qoldiq miqdor uchun partiya yarating", hint: "Buyurtma miqdorining bir qismi hali partiyaga biriktirilmagan.", button: "Partiya yaratish", modal: "order-batch" };
+    // Mol har doim zaxiradan olinadi, ya'ni zanjir bitta: avval ajratma,
+    // keyin partiya. Ilgari bu yerda «ta'minotchi taklifini qo'shing» degan
+    // ikkinchi yo'l ham bor edi -- u xaridlar bo'limiga olib borardi, u esa
+    // o'chirilgan.
+    if (!related.allocations?.length) {
+      return { title: "Mavjud zaxiradan ajrating", hint: "Mol zaxiradan olinadi, lekin hali ajratma kiritilmagan.", button: "Zaxiradan ajratish", modal: "order-stock" };
     }
-    if (!order.supplier_options?.length) return { title: "Ta'minotchi taklifini qo'shing", hint: "Xarid uchun kamida bitta ta'minotchi taklifi kerak.", button: "Taklif qo'shish", modal: "order-supplier-offer" };
-    if (!order.supplier_name) return { title: "Ta'minotchini tanlang", hint: "Takliflar kiritilgan, ta'minotchi hali tasdiqlanmagan.", button: "Ta'minotchini tanlash", modal: "order-supplier-select" };
-    return { title: "Qoldiq miqdor uchun partiya yarating", hint: "Ta'minotchi tasdiqlangan, qolgan miqdor uchun partiya kerak.", button: "Partiya yaratish", modal: "order-batch" };
+    return { title: "Qoldiq miqdor uchun partiya yarating", hint: "Buyurtma miqdorining bir qismi hali partiyaga biriktirilmagan.", button: "Partiya yaratish", modal: "order-batch" };
   }
 
   // Everything delivered.
@@ -1358,7 +1358,10 @@ function orderProductsTab(order) {
 
 function orderSupplierTab(order, related = {}) {
   const editable = canEdit("sotuv");
-  if (related.allocations?.length) {
+  // Zaxira bo'limi har doim ko'rinadi -- mol boshqa yo'l bilan kelmaydi.
+  // Ilgari u faqat ajratma bor bo'lsa chizilardi, ya'ni birinchi ajratmani
+  // shu sahifadan qilishning iloji yo'q edi.
+  {
     const allocations = related.allocations || [];
     const lotsById = new Map((related.stockLots || []).map((lot) => [lot.id, lot]));
     // Buyurtmaning mol tannarxi shu yerdan chiqadi: ticket puli butun
@@ -1372,10 +1375,15 @@ function orderSupplierTab(order, related = {}) {
         const lot = lotsById.get(allocation.stock_lot_id) || {};
         return `<tr><td>${fmt(lot.product_name)}</td><td>${fmt(lot.supplier_name)}</td><td>${fmt(lot.ticket_number)}</td><td>${fmt(lot.location_name)}</td><td>${fmtQty(allocation.allocated_quantity, lot.unit)}</td><td>${fmtMoney(lot.unit_cost)}</td><td>${fmtMoney(allocationCost(allocation))}</td><td>${fmt(optionLabel(stockAllocationStatuses, allocation.status))}</td></tr>`;
       }, "Bu buyurtma uchun zaxira ajratilmagan.")}
-      <p class="helper-text">Ta'minotchi omboridagi zaxira uchun ta'minotchi taklifi talab qilinmaydi. Tannarx foyda hisobiga shu yerdan tushadi.</p>
-    `);
+      <p class="helper-text">Ta'minotchi zaxira partiyasidan keladi, alohida tanlash talab qilinmaydi. Tannarx foyda hisobiga shu yerdan tushadi.</p>
+    `) + ((order.supplier_options || []).length ? orderSupplierOffersSection(order, editable) : "");
   }
-  return section("Xarid jarayoni", `
+}
+
+// Ta'minotchi takliflari xaridlar bo'limi bilan birga ma'nosini yo'qotdi,
+// lekin eski buyurtmalarda yozuvlar qolgan -- ular ko'rinmay ketmasin.
+function orderSupplierOffersSection(order, editable) {
+  return section("Ta'minotchi takliflari (arxiv)", `
     ${detailList([["Ta'minotchi holati", optionLabel(supplierStatuses, order.supplier_status)], ["Tanlangan ta'minotchi", order.supplier_name], ["Izoh", order.supplier_notes]])}
     ${editable ? `<div class="actions"><button class="btn primary" type="button" data-order-supplier-offer>Ta'minotchi taklifini qo'shish</button><button class="btn" type="button" data-order-supplier-select>Ta'minotchini tanlash</button></div>` : ""}
     ${tableOrEmpty(order.supplier_options, ["Ta'minotchi", "Birlik xarid narxi", "Mavjud miqdor", "Tayyor sana", "Yetkazib berish shartlari", "Izoh", "Tanlov", "Amallar"], (item) => `
@@ -1651,22 +1659,49 @@ function openOrderSupplierSelectModal(order) {
   });
 }
 
+// Miqdor bu yerda ham so'ralmaydi. Buyurtma miqdori mahsulot bosqichida
+// bir marta yozilgan; bu oynaning savoli faqat «qaysi ticketdan» degani.
+// Tanlangan partiyadan qoplanmagan miqdorcha olinadi -- partiya kichik
+// bo'lsa, qolgani uchun yana bittasi tanlanadi.
 async function openOrderStockAllocationModal(order) {
   const products = (order.items || []).map((item) => item.product_name);
   const query = new URLSearchParams({ available_only: "true", page_size: "100" });
   if (products.length === 1) query.set("product_name", products[0]);
-  const lots = (await api(`/api/stock-lots?${query.toString()}`)).items || [];
+  const [lotsPage, allocations] = await Promise.all([
+    api(`/api/stock-lots?${query.toString()}`),
+    api(`/api/stock-allocations?order_id=${order.id}`).catch(() => []),
+  ]);
+  const item = order.items?.[0];
+  const lots = (lotsPage.items || []).filter((lot) => sameProduct(lot.product_name, lot.unit, item?.product_name, item?.unit));
+  const total = numberValue(order.summary?.total_quantity);
+  const already = (allocations || []).reduce((sum, row) => sum + numberValue(row.allocated_quantity), 0);
+  const needed = Math.max(0, total - already);
+  const unit = item?.unit;
+
+  const head = needed > 0
+    ? `<p class="helper-text"><span>Qoplanmagan miqdor</span>: <b data-noloc>${fmtQty(needed, unit)}</b> · <span>Buyurtma miqdori</span>: <b data-noloc>${fmtQty(total, unit)}</b></p>`
+    : `<div class="empty compact">Buyurtma miqdori to'liq ajratilgan. Qo'shimcha ajratish talab qilinmaydi.</div>`;
+
   showOrderModal(`<div class="modal-backdrop" data-modal-close>
     <section class="modal-panel wide" role="dialog" aria-modal="true">
       <div class="modal-header"><h2>Zaxiradan ajratish</h2><button class="modal-close" type="button" data-modal-close aria-label="Yopish">×</button></div>
       <form id="order-stock-allocation-form">
         <div class="modal-body"><div class="modal-summary">${orderSummaryForModal(order)}</div>
-          ${tableOrEmpty(lots, ["Mahsulot", "Ta'minotchi", "Ticket", "Joylashuv", "Mavjud miqdor", "Birlik xarid narxi", "Ajratish"], (lot) => `
-            <tr><td>${fmt(lot.product_name)}</td><td>${fmt(lot.supplier_name)}</td><td>${fmt(lot.ticket_number)}</td><td>${fmt(lot.location_name)}</td><td>${fmtQty(lot.quantity_available, lot.unit)}</td><td>${fmtMoney(lot.unit_cost)}</td><td><label class="inline-check"><input type="radio" name="stock_lot" value="${lot.id}" data-available="${esc(lot.quantity_available)}" /> Tanlash</label></td></tr>
-          `, "Mavjud zaxira topilmadi.")}
-          <div class="grid">${textField("allocated_quantity", "Ajratiladigan miqdor", order.summary?.remaining_quantity || order.summary?.total_quantity || "", "number", { required: true })}</div>
+          ${head}
+          ${needed > 0 ? tableOrEmpty(lots, ["Tanlash", "Ticket", "Ta'minotchi", "Joylashuv", "Mavjud miqdor", "Birlik xarid narxi", "Ajratiladi"], (lot) => {
+            const amount = Math.min(needed, numberValue(lot.quantity_available));
+            return `<tr>
+              <td><label class="inline-check"><input type="radio" name="stock_lot" value="${lot.id}" data-amount="${esc(amount)}" /> <span>Tanlash</span></label></td>
+              <td data-noloc>${fmt(lot.ticket_number)}</td>
+              <td data-noloc>${fmt(lot.supplier_name)}</td>
+              <td data-noloc>${fmt(lot.location_name)}</td>
+              <td>${fmtQty(lot.quantity_available, lot.unit)}</td>
+              <td class="number-cell">${fmtMoney(lot.unit_cost)}</td>
+              <td><b data-noloc>${fmtQty(amount, unit)}</b></td>
+            </tr>`;
+          }, "Mavjud zaxira topilmadi.") : ""}
         </div>
-        <div class="modal-footer"><button class="btn" type="button" data-modal-close>Bekor qilish</button><button class="btn primary" type="submit">Ajratish</button></div>
+        <div class="modal-footer"><button class="btn" type="button" data-modal-close>Bekor qilish</button>${needed > 0 ? `<button class="btn primary" type="submit">Ajratish</button>` : ""}</div>
       </form>
     </section>
   </div>`, (close) => {
@@ -1674,17 +1709,15 @@ async function openOrderStockAllocationModal(order) {
     form?.addEventListener("submit", async (event) => {
       event.preventDefault();
       const lotInput = form.querySelector("[name='stock_lot']:checked");
-      const amount = numberValue(field(form, "allocated_quantity"));
       if (!lotInput) return showToast("Zaxira partiyasini tanlang.", true);
-      if (amount <= 0) return showToast("Ajratiladigan miqdor 0 dan katta bo'lishi kerak.", true);
-      if (amount > numberValue(lotInput.dataset.available)) return showToast("Ajratiladigan miqdor mavjud zaxiradan oshmasligi kerak.", true);
-      if (amount < numberValue(order.summary?.total_quantity)) showToast("Ajratilgan miqdor buyurtma miqdorini to'liq qoplamaydi.", true);
+      const amount = numberValue(lotInput.dataset.amount);
+      if (amount <= 0) return showToast("Bu partiyada ajratiladigan miqdor qolmagan.", true);
       try {
         await api("/api/stock-allocations", {
           method: "POST",
-          body: JSON.stringify({ stock_lot_id: Number(lotInput.value), order_id: order.id, order_item_id: order.items?.[0]?.id || null, allocated_quantity: String(amount) }),
+          body: JSON.stringify({ stock_lot_id: Number(lotInput.value), order_id: order.id, order_item_id: item?.id || null, allocated_quantity: String(amount) }),
         });
-        showToast("Zaxiradan ajratildi.");
+        showToast(amount < needed ? "Zaxiradan ajratildi. Qolgan miqdor uchun yana partiya tanlang." : "Zaxiradan ajratildi.");
         close();
         renderOrderDetail(order.id);
       } catch (error) {
