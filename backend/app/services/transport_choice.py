@@ -47,7 +47,12 @@ MSG_UNAVAILABLE = {
     TransportStatus.service: "Texnik xizmatda",
     TransportStatus.inactive: "Faol emas",
 }
-MSG_BUSY = "Boshqa reysda"
+MSG_BUSY = "Hozir boshqa reysda"
+# Sana bo'yicha bandlik: reys hali boshlanmagan bo'lsa ham, rejasi shu
+# partiya bilan ustma-ust tushsa, mashina ikki joyga yozib qo'yilgan
+# bo'ladi. Ilgari faqat «hozir yo'ldami» tekshirilardi, ya'ni ertangi
+# kunga bitta mashinani ikki partiyaga bemalol biriktirsa bo'lardi.
+MSG_BOOKED = "Shu kunlarga band"
 MSG_CAPACITY = "Sig'imi yetmaydi"
 MSG_CAPACITY_UNKNOWN = "Sisterna sig'imi kiritilmagan"
 MSG_DOCUMENTS = "Hujjat yoki TO muddati o'tgan"
@@ -81,6 +86,22 @@ def distance_to_point(vehicle: dict | None, point: DeliveryPoint | None) -> Deci
     return road_km(straight)
 
 
+def planned_window(batch: DeliveryBatch) -> tuple[date | None, date | None]:
+    """Partiya qaysi kunlarni egallaydi."""
+    logistics = batch.logistics
+    start = (logistics.planned_pickup_date if logistics else None) or batch.planned_loading_date
+    end = (logistics.planned_delivery_date if logistics else None) or batch.planned_delivery_date
+    return start or end, end or start
+
+
+def windows_overlap(a_start, a_end, b_start, b_end) -> bool:
+    """Ikki reja oynasi kesishadimi. Sanasi noma'lum bo'lsa -- kesishmaydi
+    deb hisoblanadi: taxmin qilib ogohlantirish chiqarish shovqin bo'lardi."""
+    if not a_start or not a_end or not b_start or not b_end:
+        return False
+    return a_start <= b_end and b_start <= a_end
+
+
 def build_candidates(db: Session, batch: DeliveryBatch, live: dict | None = None) -> list[dict]:
     """Parkdagi har bir mashina uchun qaror qilishga kerak bo'lgan hamma narsa."""
     transports = list(db.scalars(select(Transport).order_by(Transport.vehicle_number)))
@@ -88,16 +109,26 @@ def build_candidates(db: Session, batch: DeliveryBatch, live: dict | None = None
     loading_point = db.get(DeliveryPoint, batch.loading_point_id) if batch.loading_point_id else None
     vehicles = (live or {}).get("vehicles") or {}
 
+    window_start, window_end = planned_window(batch)
     busy_map: dict[int, list[Logistics]] = {}
+    booked_map: dict[int, list[Logistics]] = {}
     for row in db.scalars(
         select(Logistics).where(
             Logistics.transport_id.isnot(None),
-            Logistics.status.in_(BUSY_STATUSES),
+            Logistics.status.notin_((
+                LogisticsStatus.completed,
+                LogisticsStatus.cancelled,
+                LogisticsStatus.delivered,
+                LogisticsStatus.accepted,
+            )),
         )
     ):
         if batch.logistics and row.id == batch.logistics.id:
             continue
-        busy_map.setdefault(row.transport_id, []).append(row)
+        if row.status in BUSY_STATUSES:
+            busy_map.setdefault(row.transport_id, []).append(row)
+        if windows_overlap(window_start, window_end, row.planned_pickup_date, row.planned_delivery_date):
+            booked_map.setdefault(row.transport_id, []).append(row)
 
     today = date.today()
     result = []
@@ -111,6 +142,13 @@ def build_candidates(db: Session, batch: DeliveryBatch, live: dict | None = None
         busy = busy_map.get(transport.id) or []
         if busy:
             warnings.append(MSG_BUSY)
+        # Ikkala ogohlantirish mustaqil: mashina hozir yo'lda bo'lishi va
+        # ayni shu kunlarga band bo'lishi -- bu ikki xil ma'lumot, va
+        # dispetcherga ikkalasi ham kerak. Sanalarni izohda ko'rsatamiz,
+        # shunda qaysi reys band qilgani izlab yurilmaydi.
+        booked = booked_map.get(transport.id) or []
+        if booked:
+            warnings.append(MSG_BOOKED)
 
         readiness = transport_readiness.build_readiness(transport, today=today)
         if readiness.level == transport_readiness.LEVEL_EXPIRED:
@@ -135,6 +173,15 @@ def build_candidates(db: Session, batch: DeliveryBatch, live: dict | None = None
             "busy_trips": [
                 {"id": row.id, "number": row.logistics_number, "status": row.status.value}
                 for row in busy
+            ],
+            "booked_trips": [
+                {
+                    "id": row.id,
+                    "number": row.logistics_number,
+                    "from": row.planned_pickup_date,
+                    "to": row.planned_delivery_date,
+                }
+                for row in booked
             ],
             "live": vehicle,
             "distance_km": distance_to_point(vehicle, loading_point),

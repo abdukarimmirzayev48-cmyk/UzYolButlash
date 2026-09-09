@@ -1439,10 +1439,13 @@ function transportChoiceRow(row, selectedId, unit) {
     : live.online
       ? statusChip(live.moving ? { label: "Harakatda", tone: "success" } : { label: "To'xtagan", tone: "muted" })
       : statusChip({ label: "Aloqa yo'q", tone: "warning" });
+  const booked = (row.booked_trips || [])[0];
   const notes = [
     ...(row.blockers || []).map((text) => `<span class="text-danger">${esc(localizeText(text))}</span>`),
     ...(row.warnings || []).map((text) => `<span class="muted">${esc(localizeText(text))}</span>`),
-  ].join(" · ") || dash;
+    // Qaysi reys band qilganini aytmasak, dispetcher uni izlab yuradi.
+    booked ? `<span class="muted" data-noloc>${esc(booked.number || "")}${booked.from ? ` (${esc(booked.from)}${booked.to && booked.to !== booked.from ? ` – ${esc(booked.to)}` : ""})` : ""}</span>` : "",
+  ].filter(Boolean).join(" · ") || dash;
   return `<tr class="${blocked ? "row-muted" : ""}">
     <td><label class="inline-check"><input type="radio" name="transport_id" value="${row.id}"
       data-driver="${esc(row.driver_name || "")}" data-phone="${esc(row.driver_phone || "")}"

@@ -50,6 +50,9 @@ MSG_SERVICE_DUE = "Texnik xizmat muddati keldi"
 MSG_SERVICE_SOON = "Texnik xizmatga oz qoldi"
 MSG_SERVICE_UNKNOWN = "Texnik xizmat ma'lumoti kiritilmagan"
 MSG_NORM_MISSING = "Yoqilg'i normasi kiritilmagan"
+# Sig'imsiz «bu yuk shu mashinaga sig'adimi» degan savolga javob yo'q, ya'ni
+# partiya mashinaga sig'maydigan bo'lib rejalashtirilib ketaveradi.
+MSG_CAPACITY_MISSING = "Sisterna sig'imi kiritilmagan"
 MSG_ODOMETER_CONFLICT = "Odometr ko'rsatkichlari bir-biriga zid"
 
 DOCUMENTS = (
@@ -171,6 +174,8 @@ def build_readiness(
 
     if not transport.fuel_norm_loaded or not transport.fuel_norm_empty:
         result.warnings.append(MSG_NORM_MISSING)
+    if not transport.capacity_tons:
+        result.warnings.append(MSG_CAPACITY_MISSING)
     # Odometr orqaga yurmaydi. Ikkita manba zid bo'lsa, keyingi TO hisobiga
     # ishonib bo'lmaydi -- shuning uchun raqamni tuzatguncha aytib turiladi.
     if odometer_conflict:
