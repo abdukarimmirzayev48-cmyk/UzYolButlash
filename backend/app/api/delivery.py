@@ -271,19 +271,10 @@ MSG_TRANSPORT_UNAVAILABLE = "Mashina hozir yo'lga chiqa olmaydi"
 # mashina biriktirilmaydi. O'zimiz tashiydigan bo'lsak, avval model
 # to'g'rilanadi -- shunda hujjat ham, hisob ham haqiqatga mos keladi.
 MSG_DIRECT_NO_TRANSPORT = (
-    "Bu partiyani ta'minotchi yetkazadi, shuning uchun unga transport "
-    "biriktirilmaydi. O'zimiz tashiydigan bo'lsak, partiyada yetkazib "
-    "berish modelini «Biz tashiymiz» qilib o'zgartiring."
+    "Bu import buyurtmasi: mol ta'minotchidan mijozga to'g'ridan-to'g'ri "
+    "boradi va unga transport biriktirilmaydi. O'zimiz tashiydigan "
+    "bo'lsak, buyurtmada manbani «Mahalliy ta'minotchidan» qiling."
 )
-MSG_MODEL_HAS_TRANSPORT = (
-    "Partiyaga transport biriktirilgan. Modelni «Ta'minotchi yetkazadi» "
-    "ga o'zgartirishdan oldin transportni olib tashlang."
-)
-
-
-def enum_str(value) -> str:
-    """Enum ham, satr ham kelishi mumkin -- bazaga satr yoziladi."""
-    return value.value if hasattr(value, "value") else str(value)
 
 
 def guard_transport_model(batch: DeliveryBatch | None, transport_id) -> None:
@@ -851,7 +842,7 @@ def list_batches(
     return Page(items=[serialize_batch(batch) for batch in batches], total=total, page=page, page_size=page_size)
 
 
-def ensure_order_has_source(order, payload) -> None:
+def ensure_order_has_source(db: Session, order, payload) -> None:
     """Refuse to ship goods nobody has recorded buying.
 
     The order flow has supplier_search -> supplier_selected ->
@@ -863,8 +854,11 @@ def ensure_order_has_source(order, payload) -> None:
     Stock-sourced orders are exempt: there the supplier is on the stock lot, not
     on the order. A supplier named on the batch itself also satisfies this --
     that is a record, just entered later.
+
+    Zaxira endi belgi emas, fakt: ajratma bor ekan, mol qayerdan kelgani
+    ticketda yozilgan.
     """
-    if order.from_stock:
+    if db.scalar(select(func.count()).select_from(StockAllocation).where(StockAllocation.order_id == order.id)):
         return
     if payload.supplier_id or (payload.supplier_name or "").strip():
         return
@@ -893,14 +887,14 @@ def category_of_order_item(order_item):
 @router.post("", response_model=DeliveryBatchDetail, status_code=201, dependencies=[Depends(require_edit("yetkazib_berish"))])
 def create_batch(payload: DeliveryBatchCreate, db: Session = Depends(get_db)):
     order = get_order_or_400(db, payload.order_id)
-    ensure_order_has_source(order, payload)
+    ensure_order_has_source(db, order, payload)
     order_items = validate_items(db, order, payload.items)
     data = payload.model_dump(exclude={"items", "logistics", "documents", "initial_note"})
     data["client_id"] = order.client_id
     data["contract_id"] = order.contract_id
-    # Model partiyaga bog'lanadi: buyurtmadan meros bo'ladi, lekin operator
-    # aynan shu partiya uchun boshqacha qilib qo'yishi mumkin.
-    data["fulfillment_type"] = enum_str(data.get("fulfillment_type") or order.fulfillment_type)
+    # Model so'ralmaydi -- u buyurtmaning manbasidan kelib chiqadi va shu
+    # yerda ko'chiriladi.
+    data["fulfillment_type"] = order.fulfillment_type.value
     data["source_type"] = order.source_type.value
     # Yetkazish usuli ko'rsatilmagan bo'lsa, mahsulot turkumlaridan
     # chiqariladi -- operator uni partiya oynasida almashtira oladi.
@@ -1246,20 +1240,10 @@ def update_batch(batch_id: int, payload: DeliveryBatchUpdate, db: Session = Depe
             raise HTTPException(status_code=422, detail="Partiyada kamida bitta mahsulot bo'lishi kerak.")
         validate_items(db, order, payload.items, batch.id)
     data = payload.model_dump(exclude_unset=True, exclude={"items", "logistics"})
-    if data.get("fulfillment_type") is not None:
-        data["fulfillment_type"] = enum_str(data["fulfillment_type"])
-        # «Ta'minotchi yetkazadi» ga o'tishda mashina qolib ketmasin: aks
-        # holda yozuv «biz tashimaymiz» deb turadi, ostida esa bizning
-        # mashinamiz, odometri va yoqilg'i hisobi bilan.
-        if data["fulfillment_type"] != FulfillmentType.company_managed_delivery.value \
-                and batch.logistics and batch.logistics.transport_id:
-            raise HTTPException(status_code=422, detail=MSG_MODEL_HAS_TRANSPORT)
     if "order_id" in data:
         data["client_id"] = order.client_id
         data["contract_id"] = order.contract_id
-        # Buyurtma almashtirilsa model ham yangi buyurtmadan olinadi --
-        # foydalanuvchi aynan shu so'rovda boshqacha aytmagan bo'lsa.
-        data.setdefault("fulfillment_type", order.fulfillment_type.value)
+        data["fulfillment_type"] = order.fulfillment_type.value
         data["source_type"] = order.source_type.value
         # Yetkazish nuqtasi buyurtmadan meros bo'ladi: u shartnomadan
         # buyurtmaga, buyurtmadan partiyaga tushadi va yo'lda yo'qolmaydi.

@@ -641,9 +641,9 @@ function batchWizardStepper(step) {
 function wizardNeedsSupplier(state) {
   const order = state.order;
   if (!order) return false;
-  // Zaxiradan olinsa ta'minotchi partiyaning emas, zaxira partiyasining
-  // ustida turadi.
-  if (order.from_stock) return false;
+  // Zaxiradan ajratilganda ta'minotchi zaxira partiyasidan buyurtmaga
+  // yoziladi, ya'ni alohida istisno kerak emas -- savol bitta: buyurtmada
+  // ta'minotchi bormi.
   return !(state.supplierId || (state.supplierName || "").trim()
     || order.supplier_id || (order.supplier_name || "").trim());
 }
@@ -688,15 +688,13 @@ function batchWizardSourcePanel(state) {
   const companyManaged = state.fulfillmentType === "company_managed_delivery";
   return `${wizardSupplierWarning(state)}${summaryCards([
     ["Manba", fmt(optionLabel(sourceTypes, state.order.source_type))],
-    ["Buyurtmadagi model", fmt(optionLabel(fulfillmentTypes, state.order.fulfillment_type))],
+    ["Yetkazib berish modeli", fmt(optionLabel(fulfillmentTypes, state.fulfillmentType))],
     ["Ta'minotchi", fmt(state.supplierName)],
     ["Ta'minotchi holati", fmt(optionLabel(supplierStatuses, state.order.supplier_status))],
   ])}
   <div class="grid">
-    ${selectField("fulfillment_type", "Yetkazib berish modeli", fulfillmentTypes, state.fulfillmentType, { required: true })}
     ${selectField("delivery_method", "Yetkazish usuli", deliveryMethods, state.deliveryMethod || "auto", { required: true })}
   </div>
-  <p class="form-hint">Model buyurtmadan olinadi. Aynan shu partiyani boshqa tomon tashiydigan bo'lsa, shu yerda o'zgartiring.</p>
   <div class="empty compact">${companyManaged ? "Bu partiyani o'zimiz tashiymiz: transport biriktiriladi, reys vaqti, yoqilg'i va masofa nazorat qilinadi." : "Bu partiyani ta'minotchi mijozga o'zi yetkazadi: transport biriktirilmaydi, yoqilg'i va reys hisobi yuritilmaydi. Sana, manzil, hujjat va qabul miqdori qoladi."}</div>`;
 }
 
@@ -831,7 +829,6 @@ function collectBatchWizardPayload(state) {
   const today = todayIso();
   return {
     order_id: state.order.id,
-    fulfillment_type: state.fulfillmentType,
     batch_number: generatedBatchNumber(state.order.order_number),
     batch_date: today,
     planned_loading_date: state.plannedLoadingDate,
@@ -879,7 +876,6 @@ function syncBatchWizardInputs(state) {
   }
   if (form.elements.notes) state.notes = form.elements.notes.value.trim();
   if (form.elements.delivery_method) state.deliveryMethod = form.elements.delivery_method.value;
-  if (form.elements.fulfillment_type) state.fulfillmentType = form.elements.fulfillment_type.value;
 }
 
 function renderBatchWizard(state) {
@@ -991,7 +987,6 @@ function collectBatchItems(form) {
 function collectBatchPayload(form) {
   return {
     order_id: Number(field(form, "order_id")),
-    fulfillment_type: field(form, "fulfillment_type") || undefined,
     batch_number: field(form, "batch_number"),
     batch_date: field(form, "batch_date"),
     planned_loading_date: field(form, "planned_loading_date"),
@@ -1148,7 +1143,7 @@ async function batchForm(batch = null) {
         </div>` })}
         ${detailCard({ icon: "box", title: "Mahsulotlar", body: `<div id="batch-items">${order ? rows.map((item, index) => batchItemRow(order.items, item, index, balances)).join("") : `<div class="empty">Avval buyurtmani tanlang.</div>`}</div><button type="button" class="btn" id="add-batch-item" ${order ? "" : "disabled"}>Mahsulot qo'shish</button><div class="totals-bar"><div class="total-box"><span>Reja</span><strong data-batch-planned>${dash}</strong></div><div class="total-box"><span>Yuklangan</span><strong data-batch-loaded>${dash}</strong></div><div class="total-box"><span>Qabul qilingan</span><strong data-batch-accepted>${dash}</strong></div><div class="total-box"><span>Farq</span><strong data-batch-diff>${dash}</strong></div></div>` })}
         ${detailCard({ icon: "truck", title: "Manba va yetkazib berish modeli", body: `<div class="grid">
-          ${selectField("fulfillment_type", "Yetkazib berish modeli", fulfillmentTypes, batch?.fulfillment_type || order?.fulfillment_type || "direct_supplier_to_customer")}
+          ${readonlyField("fulfillment_type_display", "Yetkazib berish modeli", localizeText(optionLabel(fulfillmentTypes, batch?.fulfillment_type || order?.fulfillment_type || "direct_supplier_to_customer")))}
           <label>Manba<input value="${esc(optionLabel(sourceTypes, batch?.source_type || order?.source_type))}" disabled /></label>
           <label>Yetkazish usuli<input value="auto" disabled /></label>
           <input type="hidden" name="supplier_id" value="${esc(batch?.supplier_id || order?.supplier_id || "")}" />

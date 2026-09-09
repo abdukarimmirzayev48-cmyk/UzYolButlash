@@ -783,9 +783,6 @@ def reserve_stock_for_order(
     lot.quantity_available = qty(lot.quantity_available - amount)
     lot.quantity_reserved = qty(lot.quantity_reserved + amount)
     update_stock_status(lot)
-    # Zaxira manba emas -- alohida belgi. Manba turiga tegilmaydi: mol
-    # import qilingan bo'lsa ham zaxiraga tushishi mumkin.
-    order.from_stock = True
     order.supplier_id = lot.supplier_id
     order.supplier_name = lot.supplier.name if lot.supplier else order.supplier_name
     order.supplier_status = SupplierStatus.confirmed

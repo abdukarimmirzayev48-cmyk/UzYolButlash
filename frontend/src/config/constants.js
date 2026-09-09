@@ -65,9 +65,9 @@ const fulfillmentTypes = [
 // Manba oltita edi va ular ishlamasdi: «Jarqo'rg'on» deb belgilangan
 // buyurtmalar Buxoro va Farg'onadan yuklanardi, «Sherobod» birorta
 // buyurtmada ishlatilmagan. Qaysi bazadan yuklanganini endi yuklash
-// nuqtasi aniq aytadi. Zaxira ham manba emas -- u alohida belgi
-// (`from_stock`), chunki mol mahalliy ta'minotchidan olinib zaxiraga
-// qo'yiladi va manba baribir mahalliy bo'lib qoladi.
+// nuqtasi aniq aytadi. Zaxira ham manba emas: u moddiy narsa emas, birja
+// ticketi bilan ishlaydi -- mol qayerdan kelsa ham ticket orqali
+// zaxiraga tushadi.
 const sourceTypes = [
   ["russia_direct", "Import (Rossiyadan)"],
   ["uzbekistan_local", "Mahalliy ta'minotchidan"],

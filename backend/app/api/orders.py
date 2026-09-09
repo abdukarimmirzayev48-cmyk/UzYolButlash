@@ -168,9 +168,11 @@ MAX_MARKUP_PERCENT = Decimal("999.99")
 def default_fulfillment_for(source_type: SourceType) -> FulfillmentType:
     """Manbadan kelib chiqadigan yetkazib berish modeli.
 
-    Import bo'lsa mol ta'minotchidan mijozga to'g'ridan-to'g'ri boradi va
-    biz faqat holatni kuzatamiz. Mahalliy mol esa o'z mashinamizda
-    tashiladi -- reys, yoqilg'i va probeg nazorati bilan.
+    Model endi so'ralmaydi -- u manbadan kelib chiqadi va shu yerda
+    hisoblanadi. Ilgari u alohida maydon edi va manbaga zid qilib
+    qo'yilishi mumkin edi; amalda esa qoida oddiy: import bo'lsa mol
+    ta'minotchidan mijozga to'g'ridan-to'g'ri boradi va biz faqat holatni
+    kuzatamiz, mahalliy mol esa o'z mashinamizda tashiladi.
     """
     if source_type == SourceType.russia_direct:
         return FulfillmentType.direct_supplier_to_customer
@@ -178,6 +180,9 @@ def default_fulfillment_for(source_type: SourceType) -> FulfillmentType:
 
 
 def apply_defaults(order: Order) -> None:
+    # Model manbadan kelib chiqadi va har qayta hisoblashda tiklanadi:
+    # foydalanuvchi uni tanlamaydi, ya'ni u manbaga zid bo'lib qololmaydi.
+    order.fulfillment_type = default_fulfillment_for(order.source_type)
     if order.fulfillment_type == FulfillmentType.direct_supplier_to_customer:
         order.logistics_price = Decimal("0")
     if order.markup_percent is None:
@@ -485,7 +490,6 @@ def serialize_list_item(order: Order) -> OrderListItem:
         status=order.status,
         fulfillment_type=order.fulfillment_type,
         source_type=order.source_type,
-        from_stock=order.from_stock,
         supplier_id=order.supplier_id,
         supplier_name=order.supplier_name,
         supplier_status=order.supplier_status,
@@ -628,12 +632,6 @@ def create_order(payload: OrderCreate, db: Session = Depends(get_db)):
     if not data.get("delivery_point_id"):
         data["delivery_point_id"] = contract.delivery_point_id
     order = Order(**data)
-    # Manba yetkazib berish modelini belgilaydi: importda logistikaga
-    # aralashmaymiz, faqat holatni kuzatamiz; mahalliy molni o'zimiz
-    # tashiymiz. Chaqiruvchi modelni ataylab aytgan bo'lsa, tegilmaydi --
-    # istisnolar bo'ladi va ular partiya darajasida ham o'zgartiriladi.
-    if "fulfillment_type" not in payload.model_fields_set:
-        order.fulfillment_type = default_fulfillment_for(order.source_type)
     # Default markup for Russian direct supply, applied only when the caller
     # expressed no preference at all -- otherwise an explicit "no markup"
     # would be overwritten on every save.

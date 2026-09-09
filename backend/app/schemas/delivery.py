@@ -12,7 +12,6 @@ from backend.app.models.delivery import (
     PaidBy,
     TripCheckResult,
 )
-from backend.app.models.order import FulfillmentType
 from backend.app.schemas.delivery_point import DeliveryPointSummary
 from backend.app.schemas.client import ClientRead
 from backend.app.schemas.contract import ContractRead
@@ -333,10 +332,6 @@ class DeliveryBatchBase(BaseModel):
 class DeliveryBatchCreate(DeliveryBatchBase):
     # Berilmasa, mahsulot turkumlarining sukut usulidan chiqariladi.
     delivery_method: DeliveryMethod | None = None
-    # Model buyurtmadan meros bo'ladi, lekin partiyaga bog'lanadi: bitta
-    # buyurtmaning bir partiyasini o'zimiz tashishimiz, ikkinchisini esa
-    # ta'minotchi yetkazishi mumkin.
-    fulfillment_type: FulfillmentType | None = None
     items: list[DeliveryBatchItemCreate] = Field(min_length=1)
     logistics: LogisticsCreate | None = None
     documents: list[DeliveryBatchDocumentCreate] = Field(default_factory=list)
@@ -345,7 +340,6 @@ class DeliveryBatchCreate(DeliveryBatchBase):
 
 class DeliveryBatchUpdate(BaseModel):
     delivery_method: DeliveryMethod | None = None
-    fulfillment_type: FulfillmentType | None = None
     delivery_point_id: int | None = None
     loading_point_id: int | None = None
     order_id: int | None = None

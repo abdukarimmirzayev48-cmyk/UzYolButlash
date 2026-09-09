@@ -107,15 +107,13 @@ function collectOrderPayload(form) {
     order_date: field(form, "order_date"),
     required_date: field(form, "required_date"),
     delivery_point_id: field(form, "delivery_point_id") ? Number(field(form, "delivery_point_id")) : null,
-    fulfillment_type: field(form, "fulfillment_type") || "direct_supplier_to_customer",
     source_type: field(form, "source_type") || "uzbekistan_local",
-    from_stock: Boolean(form.elements.from_stock?.checked),
     supplier_id: field(form, "supplier_id") ? Number(field(form, "supplier_id")) : null,
     supplier_name: field(form, "supplier_name"),
     supplier_status: field(form, "supplier_status") || "not_selected",
     supplier_notes: field(form, "supplier_notes"),
     markup_amount: field(form, "markup_amount") || 0,
-    logistics_price: field(form, "fulfillment_type") === "direct_supplier_to_customer" ? 0 : (field(form, "logistics_price") || 0),
+    logistics_price: field(form, "logistics_price") || 0,
     notes: field(form, "notes"),
     created_by: field(form, "created_by"),
     items: collectOrderItems(form),
@@ -151,7 +149,6 @@ async function orderForm(order = null) {
   const supplierDisplay = order?.supplier_name || (order?.supplier_id ? `ID ${order.supplier_id}` : "Xarid jarayonida avtomatik tanlanadi");
   const params = new URLSearchParams(location.search);
   const sourceDefault = order?.source_type || params.get("source_type") || "uzbekistan_local";
-  const fromStockDefault = order ? Boolean(order.from_stock) : params.get("from_stock") === "1";
   return `
     <div class="page">
       <div class="page-header">
@@ -188,7 +185,7 @@ async function orderForm(order = null) {
 ${section("Manba va yetkazib berish", `
           <div class="grid">
             ${selectField("source_type", "Manba", sourceTypes, sourceDefault)}
-            ${selectField("fulfillment_type", "Yetkazib berish modeli", fulfillmentTypes, order?.fulfillment_type || defaultFulfillmentFor(sourceDefault))}
+            ${readonlyField("fulfillment_type_display", "Yetkazib berish modeli", localizeText(optionLabel(fulfillmentTypes, order?.fulfillment_type || defaultFulfillmentFor(sourceDefault))))}
             ${moneyInputField("markup_amount", "Ustama summasi", order?.markup_amount ?? "")}
             <div class="total-box"><span>Ustama summasi</span><strong data-order-markup>${dash}</strong></div>
           </div>
@@ -198,8 +195,7 @@ ${section("Manba va yetkazib berish", `
             <label>Zaxira partiyasi<select name="stock_lot_id"><option value="">Zaxira tanlang</option>${stockLots.items.map((lot) => `<option value="${lot.id}">${esc(lot.product_name)} · ${esc(lot.supplier_name || "")} · ${esc(lot.ticket_number || "")} · ${fmtQty(lot.quantity_available, lot.unit)} mavjud · ${fmtMoney(lot.unit_cost)}</option>`).join("")}</select></label>
             ${textField("stock_allocated_quantity", "Ajratiladigan miqdor", "", "number")}
           </div>
-          <label class="inline-check"><input type="checkbox" name="from_stock" ${fromStockDefault ? "checked" : ""} /> <span>Mol zaxiradan olinadi</span></label>
-          <p class="helper-text">Belgilansa, yangi xarid ochilmaydi -- mol yuqoridagi zaxira partiyasidan ajratiladi.</p>
+          <p class="helper-text">Mol har doim zaxiradan olinadi -- yangi xarid ochilmaydi. Zaxira yetarli bo'lmasa, avval birja ticketi ochiladi.</p>
         `)}
         ${section("Ta'minotchi", `
           <input type="hidden" name="supplier_id" value="${esc(order?.supplier_id || "")}" />
@@ -282,7 +278,7 @@ async function bindOrderForm(order = null) {
       showToast("Shartnomadan kamida bitta mahsulot qo'shing.", true);
       return;
     }
-    if (payload.from_stock && (!stockLotId || !allocatedQuantity || numberValue(allocatedQuantity) <= 0)) {
+    if (stockLotId && (!allocatedQuantity || numberValue(allocatedQuantity) <= 0)) {
       showToast("Ta'minotchi omboridagi zaxira uchun zaxira partiyasi va ajratiladigan miqdorni kiriting.", true);
       return;
     }
@@ -303,7 +299,7 @@ async function bindOrderForm(order = null) {
         method: order ? "PATCH" : "POST",
         body: JSON.stringify(payload),
       });
-      if (!order && payload.from_stock && stockLotId && allocatedQuantity) {
+      if (!order && stockLotId && allocatedQuantity) {
         const firstItem = saved.items?.[0];
         await api("/api/stock-allocations", {
           method: "POST",
@@ -315,7 +311,7 @@ async function bindOrderForm(order = null) {
           }),
         });
       }
-      showToast(payload.from_stock ? "Buyurtma saqlandi va zaxira ajratildi." : "Buyurtma saqlandi.");
+      showToast(stockLotId ? "Buyurtma saqlandi va zaxira ajratildi." : "Buyurtma saqlandi.");
       navigate(`/orders/${saved.id}`);
     } catch (error) {
       showToast(error.message, true);
@@ -525,7 +521,6 @@ function applyStockSuggestion(state) {
   if (!lot) return;
   const needed = numberValue(orderWizardTotals(state).quantity);
   if (numberValue(lot.quantity_available) < needed) return;
-  state.fromStock = true;
   state.stockLotId = String(lot.id);
   state.stockAllocatedQuantity = String(needed);
 }
@@ -538,7 +533,7 @@ function stockSuggestionPanel(state) {
   const needed = numberValue(orderWizardTotals(state).quantity);
   const enough = total >= needed;
   const best = bestStockLotFor(state);
-  const chosen = Boolean(state.fromStock);
+  const chosen = Boolean(state.stockLotId);
   // Har bir jumla bitta matn tugunida turadi, raqamlar esa alohida: aralash
   // qilib yozilgan qator lug'atga tushmaydi va yarim tarjima bo'lib qoladi.
   const head = chosen ? "Buyurtma zaxiradan olinadi" : enough ? "Bu mahsulot zaxirada bor" : "Zaxira yetarli emas";
@@ -576,33 +571,27 @@ function orderWizardSourcePanel(state) {
     : state.sourceType === "uzbekistan_local"
       ? "Mahalliy mol: butun logistika jarayonini o'zimiz boshqaramiz -- transport, reys vaqti, yoqilg'i va probeg nazorati."
       : "Manba yetkazib berish modelini ham belgilaydi, shuning uchun uni birinchi bo'lib tanlang.";
-  const stockHelp = state.fromStock
-    ? "Mol yangi xarid qilinmaydi -- keyingi bosqichda mavjud zaxiradan ajratiladi."
-    : "Belgilansa, keyingi bosqichda zaxira partiyasi tanlanadi va yangi xarid ochilmaydi.";
   // Ustama bu yerdan olib tashlandi: xuddi shu maydon Narx bosqichida ham
   // so'ralardi va qaysi biri asosiy ekani tushunarsiz edi. Manba turi esa
   // bo'sh boshlanadi -- standart qiymat qo'yilsa, ko'p buyurtma o'sha
   // javobsiz holatda qolib ketardi.
   const sourceOptions = [["", "Manba turini tanlang"], ...sourceTypes];
-  return `${stockSuggestionPanel(state)}<div class="grid">${selectField("source_type", "Manba turi", sourceOptions, state.sourceType, { required: true })}${selectField("fulfillment_type", "Yetkazib berish modeli", fulfillmentTypes, state.fulfillmentType, { required: true })}</div>
-  <p class="form-hint">Model manbadan avtomatik qo'yiladi. Bu buyurtma istisno bo'lsa, o'zgartiring.</p>
+  // Model tanlanmaydi -- u manbadan kelib chiqadi va serverda hisoblanadi.
+  // Alohida maydon bo'lganda uni manbaga zid qilib qo'yish mumkin edi, va
+  // aynan shunday bo'lardi ham.
+  return `${stockSuggestionPanel(state)}<div class="grid">${selectField("source_type", "Manba turi", sourceOptions, state.sourceType, { required: true })}${readonlyField("fulfillment_type_display", "Yetkazib berish modeli", state.sourceType ? localizeText(optionLabel(fulfillmentTypes, defaultFulfillmentFor(state.sourceType))) : "")}</div>
+  <p class="form-hint">Model manbadan kelib chiqadi va alohida tanlanmaydi.</p>
   <div class="empty compact">${sourceHelp}</div>
-  <label class="inline-check"><input type="checkbox" name="from_stock" ${state.fromStock ? "checked" : ""} /> <span>Mol zaxiradan olinadi</span></label>
-  <p class="form-hint">${stockHelp}</p>
   ${orderSourceHintPanel(state)}`;
 }
 
 function orderWizardStockPanel(state) {
-  if (!state.fromStock) {
-    const available = matchingStockLots(state).reduce((sum, lot) => sum + numberValue(lot.quantity_available), 0);
-    const note = available > 0
-      ? `<p><span>Diqqat: bu mahsulot zaxirada turibdi.</span> <b data-noloc>${fmtQty(available, orderWizardTotals(state).selected[0]?.unit)}</b></p><p>Manba turini «Ta'minotchi omboridagi zaxira» qilsangiz, yangi xarid o'rniga o'sha zaxiradan olinadi.</p>`
-      : "";
-    return `<div class="empty compact"><strong>Xarid jarayoni avtomatik ochiladi.</strong><p>Buyurtma saqlangandan keyin xarid jarayoni avtomatik ochiladi. Ta'minotchi Xaridlar bo'limida tanlanadi.</p>${note}</div>`;
-  }
   const lots = state.stockLots || [];
   const totals = orderWizardTotals(state);
-  return `${state.stockLotWarning ? workflowWarningsPanel([state.stockLotWarning]) : ""}${tableOrEmpty(lots, ["Mahsulot", "Ta'minotchi", "Joylashuv", "Ticket", "Mavjud miqdor", "Band qilingan", "Birlik xarid narxi", "Ajratiladigan miqdor"], (lot) => `<tr><td>${fmt(lot.product_name)}</td><td>${fmt(lot.supplier_name)}</td><td>${fmt(lot.location_name)}</td><td>${fmt(lot.ticket_number)}</td><td>${fmtQty(lot.quantity_available, lot.unit)}</td><td>${fmtQty(lot.quantity_reserved, lot.unit)}</td><td>${fmtMoney(lot.unit_cost)}</td><td><label class="inline-check"><input type="radio" name="stock_lot_id" value="${lot.id}" ${Number(state.stockLotId) === lot.id ? "checked" : ""} /> Tanlash</label></td></tr>`, "Mavjud zaxira topilmadi.")}<div class="grid">${textField("stock_allocated_quantity", "Ajratiladigan miqdor", state.stockAllocatedQuantity || totals.quantity || "", "number", { required: true })}</div><p class="helper-text">Ajratilgan miqdor buyurtma miqdoriga teng bo'lishi kerak. Mavjud zaxira yetarli bo'lmasa, qo'shimcha xarid talab qilinadi.</p>`;
+  return `${state.stockLotWarning ? workflowWarningsPanel([state.stockLotWarning]) : ""}${tableOrEmpty(lots, ["Mahsulot", "Ta'minotchi", "Joylashuv", "Ticket", "Mavjud miqdor", "Band qilingan", "Birlik xarid narxi", "Ajratiladigan miqdor"], (lot) => `<tr><td>${fmt(lot.product_name)}</td><td>${fmt(lot.supplier_name)}</td><td>${fmt(lot.location_name)}</td><td>${fmt(lot.ticket_number)}</td><td>${fmtQty(lot.quantity_available, lot.unit)}</td><td>${fmtQty(lot.quantity_reserved, lot.unit)}</td><td>${fmtMoney(lot.unit_cost)}</td><td><label class="inline-check"><input type="radio" name="stock_lot_id" value="${lot.id}" ${Number(state.stockLotId) === lot.id ? "checked" : ""} /> Tanlash</label></td></tr>`, "Mavjud zaxira topilmadi.")}<div class="grid">${textField("stock_allocated_quantity", "Ajratiladigan miqdor", state.stockAllocatedQuantity || totals.quantity || "", "number", { required: Boolean(state.stockLotId) })}</div>
+  ${lots.length
+    ? `<p class="helper-text">Ajratilgan miqdor buyurtma miqdoriga teng bo'lishi kerak.</p>`
+    : `<p class="helper-text">Bu mahsulot bo'yicha zaxira yo'q. Buyurtmani hozir ham yaratsa bo'ladi, lekin mol kelishi uchun avval birja ticketi ochilishi kerak -- zaxira paydo bo'lgach, buyurtmaga shu yerdan ajratiladi.</p>`}`;
 }
 
 // The cards live in their own container so a keystroke in the markup or
@@ -645,7 +634,7 @@ function orderWizardConfirmPanel(state) {
     ${section("Shartnoma", detailList([["Shartnoma raqami", state.contract?.contract_number], ["Mijoz", state.contract?.client?.name], ["Amal qilish muddati", state.contract?.valid_until]]))}
     ${section("Mahsulot", detailList([["Mahsulot", productText], ["Miqdor", fmtQty(totals.quantity, totals.selected?.[0]?.unit)], ["Mahsulot summasi (QQS bilan)", fmtMoney(totals.subtotal + totals.vat)], ["Saqlangandan keyingi qoldiq", remainingText]]))}
     ${section("Manba va model", detailList([["Manba", optionLabel(sourceTypes, state.sourceType)], ["Yetkazib berish modeli", optionLabel(fulfillmentTypes, state.fulfillmentType)], ["Ustama summasi", fmtMoney(totals.markupAmount)]]))}
-    ${section("Zaxira / Xarid", state.fromStock ? detailList([["Zaxira partiyasi", lot?.ticket_number], ["Ta'minotchi", lot?.supplier_name], ["Ticket", lot?.ticket_number], ["Ajratilgan miqdor", fmtQty(state.stockAllocatedQuantity, lot?.unit)], ["Birlik xarid narxi", fmtMoney(lot?.unit_cost)]]) : `<div class="empty">Xarid jarayoni avtomatik ochiladi. Ta'minotchi holati: Tanlanmagan.</div>`)}
+    ${section("Zaxira / Xarid", state.stockLotId ? detailList([["Zaxira partiyasi", lot?.ticket_number], ["Ta'minotchi", lot?.supplier_name], ["Ticket", lot?.ticket_number], ["Ajratilgan miqdor", fmtQty(state.stockAllocatedQuantity, lot?.unit)], ["Birlik xarid narxi", fmtMoney(lot?.unit_cost)]]) : `<div class="empty">Xarid jarayoni avtomatik ochiladi. Ta'minotchi holati: Tanlanmagan.</div>`)}
     ${section("Narx", detailList([["Mahsulot summasi (QQSsiz)", fmtMoney(totals.subtotal)], ["QQS", fmtMoney(totals.vat)], ["Ustama summasi", fmtMoney(totals.markupAmount)], ["Logistika narxi", state.fulfillmentType === "direct_supplier_to_customer" ? dash : fmtMoney(totals.logistics)], ["Mijozdan undiriladigan jami", fmtMoney(totals.total)]]))}
   </div>`;
 }
@@ -758,7 +747,7 @@ function validateOrderWizardStep(state, targetStep = state.step) {
   // real orders do get agreed outside those bounds.
   if (targetStep >= 2 && !state.requiredDate) return "Mahsulot qachon kerakligini belgilang.";
   if (targetStep >= 3 && (!state.sourceType || !state.fulfillmentType)) return "Manba va yetkazib berish modelini tanlang.";
-  if (targetStep >= 4 && state.fromStock) {
+  if (targetStep >= 4 && state.stockLotId) {
     const lot = (state.stockLots || []).find((item) => Number(item.id) === Number(state.stockLotId));
     if (totals.selected.length !== 1) return "Ta'minotchi omboridagi zaxira uchun bitta mahsulot tanlang.";
     if (!lot) return "Zaxira partiyasini tanlang.";
@@ -780,7 +769,6 @@ function collectOrderWizardPayload(state) {
     delivery_point_id: state.deliveryPointId ? Number(state.deliveryPointId) : null,
     fulfillment_type: state.fulfillmentType,
     source_type: state.sourceType,
-    from_stock: Boolean(state.fromStock),
     markup_amount: normalizeNumberInputValue(state.markupAmount || "0"),
     logistics_price: state.fulfillmentType === "direct_supplier_to_customer" ? 0 : normalizeNumberInputValue(state.logisticsPrice || 0),
     notes: state.notes || null,
@@ -801,13 +789,12 @@ async function renderOrderWizard() {
     orderDate: todayIso(),
     sourceType: params.get("source_type") || "",
     fulfillmentType: "direct_supplier_to_customer",
-    fromStock: params.get("from_stock") === "1",
     markupAmount: "",
     logisticsPrice: "0",
     stockLots: [],
     // Foydalanuvchi manbaga qo'l urgach taklif o'zgartirmaydi -- aks holda
     // har chizishda tanlovi qaytadan bosib ketilardi.
-    stockChoiceTouched: params.get("from_stock") === "1",
+    stockChoiceTouched: Boolean(params.get("stock_lot_id")),
     preselectedStockLotId: params.get("stock_lot_id") || "",
     stockLotWarning: "",
     deliveryPointId: "",
@@ -876,13 +863,6 @@ async function renderOrderWizard() {
       await loadStockLots();
       await draw();
     });
-    form.elements.from_stock?.addEventListener("change", async () => {
-      state.fromStock = form.elements.from_stock.checked;
-      state.stockChoiceTouched = true;
-      if (!state.fromStock) { state.stockLotId = ""; state.stockAllocatedQuantity = ""; }
-      await loadStockLots();
-      await draw();
-    });
     form.elements.fulfillment_type?.addEventListener("change", async () => {
       state.fulfillmentType = form.elements.fulfillment_type.value;
       if (state.fulfillmentType === "direct_supplier_to_customer") state.logisticsPrice = "0";
@@ -925,7 +905,7 @@ async function renderOrderWizard() {
         await loadStockLots();
         applyStockSuggestion(state);
       }
-      if (state.step === 3 && state.fromStock) await loadStockLots();
+      if (state.step === 3) await loadStockLots();
       state.step += 1;
       await draw();
     });
@@ -938,7 +918,7 @@ async function renderOrderWizard() {
       }
       try {
         const saved = await api("/api/orders", { method: "POST", body: JSON.stringify(collectOrderWizardPayload(state)) });
-        if (state.fromStock) {
+        if (state.stockLotId) {
           const firstItem = saved.items?.[0];
           await api("/api/stock-allocations", {
             method: "POST",
@@ -950,7 +930,7 @@ async function renderOrderWizard() {
             }),
           });
         }
-        showToast(state.fromStock ? "Buyurtma yaratildi va zaxira ajratildi." : "Buyurtma yaratildi. Xarid jarayoni avtomatik ochildi.");
+        showToast(state.stockLotId ? "Buyurtma yaratildi va zaxira ajratildi." : "Buyurtma yaratildi.");
         navigate(`/orders/${saved.id}`);
       } catch (error) {
         showToast(error.message, true);
@@ -968,7 +948,7 @@ async function renderEditOrder(id) {
 }
 
 function orderHeader(order, related = {}) {
-  const isStockOrder = Boolean(order.from_stock);
+  const isStockOrder = Boolean(related.allocations?.length);
   const hasStockAllocation = Boolean(related.allocations?.length);
   const supplierReady = isStockOrder ? hasStockAllocation : (Boolean(order.supplier_name) || ["selected", "confirmed"].includes(order.supplier_status));
   const nextAction = orderNextAction(order, related);
@@ -1107,11 +1087,11 @@ function orderWarningMessages(order = {}, related = {}) {
   // Manba turi bilan ta'minotchi hududi qarama-qarshi bo'lsa. Server hisoblaydi,
   // chunki ta'minotchi manzillari buyurtma yozuvida yo'q.
   (order.source_warnings || []).forEach((message) => warnings.push(message));
-  if (order.from_stock) {
-    if (!related.allocations?.length) warnings.push("Mavjud zaxiradan ajratma hali kiritilmagan.");
-  } else {
+  // Mol har doim zaxiradan olinadi va ta'minotchi zaxira partiyasidan
+  // keladi. Ajratma yo'q ekan, buyurtma ortida hech narsa turmaydi.
+  if (!related.allocations?.length) {
+    warnings.push("Mavjud zaxiradan ajratma hali kiritilmagan.");
     if (!order.supplier_name) warnings.push("Ta'minotchi hali tanlanmagan.");
-    if (!order.supplier_options?.length) warnings.push("Ta'minotchi takliflari hali kiritilmagan.");
   }
   // The invoice due date was watched from the start; the delivery date was not,
   // so an order 135 days past its requested date said only "not fully
@@ -1175,7 +1155,7 @@ function orderFinanceStatusChip(finance = {}) {
 // left the yard uninvoiced are money at risk, and that outranks paperwork about
 // how those goods were bought.
 function orderNextAction(order = {}, related = {}) {
-  const isStockSource = Boolean(order.from_stock);
+  const isStockSource = Boolean(related.allocations?.length);
   const delivered = numberValue(order.summary?.delivered_quantity);
   const remaining = numberValue(order.summary?.remaining_quantity);
   const invoices = (related.invoices || []).filter((invoice) => invoice.status !== "cancelled");
@@ -1231,7 +1211,7 @@ function orderTabs(active, order = {}, related = {}) {
   const items = [
     ["general", "Umumiy"],
     ["products", "Mahsulotlar", order.items?.length ?? 0],
-    ["supplier", "Zaxira / Xarid", order.from_stock ? (related.allocations?.length ?? 0) : (order.supplier_options?.length ?? 0)],
+    ["supplier", "Zaxira / Xarid", related.allocations?.length || (order.supplier_options?.length ?? 0)],
     ["batches", "Partiyalar", order.summary?.delivery_batches_count ?? 0],
     ["price", "Moliya", related.invoices?.length ?? 0],
     ["documents", "Hujjatlar", order.documents?.length ?? 0],
@@ -1310,7 +1290,7 @@ function orderProductsTab(order) {
 
 function orderSupplierTab(order, related = {}) {
   const editable = canEdit("sotuv");
-  if (order.from_stock) {
+  if (related.allocations?.length) {
     const allocations = related.allocations || [];
     const lotsById = new Map((related.stockLots || []).map((lot) => [lot.id, lot]));
     // Buyurtmaning mol tannarxi shu yerdan chiqadi: ticket puli butun

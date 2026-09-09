@@ -41,9 +41,9 @@ class SourceType(str, Enum):
     esa birorta buyurtmada ishlatilmagan. Qaysi bazadan yuklanganini endi
     yuklash nuqtasi aniq aytadi, ya'ni uni manba takrorlashi shart emas.
 
-    Zaxira ham alohida manba emas: molni mahalliy ta'minotchidan olib
-    zaxiraga qo'yamiz, ya'ni manba baribir mahalliy. Buning uchun
-    `Order.from_stock` belgisi bor.
+    Zaxira umuman manba emas: u moddiy narsa emas, birja ticketi bilan
+    ishlaydi -- mol qayerdan kelsa ham ticket orqali zaxiraga tushadi.
+    Buyurtma zaxiradan olinganini ajratmasining o'zi aytadi.
 
     Ikki tur ikki xil ishni anglatadi: importda logistikaga aralashmaymiz,
     faqat holatni kuzatamiz; mahalliyda butun jarayonni o'zimiz boshqaramiz.
@@ -83,12 +83,6 @@ class Order(Base, TimestampMixin):
         SAEnum(FulfillmentType), default=FulfillmentType.direct_supplier_to_customer, nullable=False, index=True
     )
     source_type: Mapped[SourceType] = mapped_column(SAEnum(SourceType), default=SourceType.uzbekistan_local, nullable=False, index=True)
-    # Mol zaxiradan olinadimi. Ilgari bu manba turi edi («Ta'minotchi
-    # omboridagi zaxira»), lekin zaxira manba emas: molni mahalliy
-    # ta'minotchidan olib zaxiraga qo'yamiz, ya'ni manba baribir mahalliy.
-    # Alohida belgi bo'lgani uchun endi import qilingan mol ham zaxiraga
-    # tushishi mumkin.
-    from_stock: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, index=True)
     # Bitum qayerga yetkaziladi. Nuqta ma'lumotnomasidan tanlanadi va
     # manzil bu yerda qayta yozilmaydi.
     delivery_point_id: Mapped[int | None] = mapped_column(ForeignKey("delivery_points.id", ondelete="SET NULL"), index=True)
