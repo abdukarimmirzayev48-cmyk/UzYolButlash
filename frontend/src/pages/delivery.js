@@ -1679,8 +1679,14 @@ async function openTransportAssignmentModal(batch, tripId = null) {
 
 function loadingConfirmationModal(batch, tripId = null) {
   const logistics = tripOf(batch, tripId);
-  const quantity = batch.summary?.total_planned_quantity || batch.items?.[0]?.planned_quantity;
   const unit = batch.items?.[0]?.unit || "";
+  // Yuklanadigan miqdor -- shu reysning rejasi, butun partiyaniki emas.
+  // Oyna partiya miqdorini ko'rsatib, reys rejasi bilan tekshirardi:
+  // 66 tonnalik partiyada 24 tonnalik reysga 66 yozilar va «rejadan
+  // oshgan» degan ogohlantirish chiqardi.
+  const batchQuantity = batch.summary?.total_planned_quantity || batch.items?.[0]?.planned_quantity;
+  const quantity = logistics.planned_quantity ?? batchQuantity;
+  const manyTrips = (batch.trips || []).length > 1;
   const today = todayIso();
   const weHaul = isCompanyManaged(batch);
   // Transport talabi faqat o'zimiz tashiydigan partiyaga tegishli.
@@ -1699,9 +1705,11 @@ function loadingConfirmationModal(batch, tripId = null) {
             ["Buyurtma", batch.order?.order_number],
             ["Mijoz", batch.client?.name],
             ["Mahsulot", batchPrimaryProduct(batch)],
-            ["Reja miqdor", fmtQty(quantity, unit)],
+            ["Reys", logistics.logistics_number],
+            ["Shu reys rejasi", fmtQty(quantity, unit)],
+            ...(manyTrips || numberValue(batchQuantity) !== numberValue(quantity)
+              ? [["Partiya miqdori (jami)", fmtQty(batchQuantity, unit)]] : []),
             ...(weHaul ? [
-              ["Tashuvchi", carrierDisplay(logistics)],
               ["Haydovchi", logistics.driver_name],
               ["Transport raqami", logistics.vehicle_number],
             ] : []),
@@ -1955,13 +1963,16 @@ function openLoadingConfirmationModal(batch, tripId = null) {
   });
   form?.addEventListener("submit", async (event) => {
     event.preventDefault();
-    const planned = numberValue(batch.summary?.total_planned_quantity || batch.items?.[0]?.planned_quantity);
+    // Solishtirish shu reysning rejasi bilan: partiya bir nechta reysga
+    // bo'lingan bo'lsa, butun partiya miqdori bilan solishtirish noto'g'ri
+    // ogohlantirish beradi.
+    const planned = numberValue(logistics.planned_quantity ?? batch.summary?.total_planned_quantity ?? batch.items?.[0]?.planned_quantity);
     const loaded = numberValue(field(form, "loaded_quantity"));
     if (!field(form, "actual_loading_date")) return modalFormError(form, "Haqiqiy yuklash sanasi majburiy.", "actual_loading_date");
     if (!field(form, "loaded_quantity") || loaded <= 0) return modalFormError(form, "Yuklangan miqdor 0 dan katta bo'lishi kerak.", "loaded_quantity");
     let allowOverPlanned = false;
     if (planned && loaded > planned) {
-      allowOverPlanned = confirmMsg("Yuklangan miqdor reja miqdoridan oshgan. Davom etasizmi?");
+      allowOverPlanned = confirmMsg("Yuklangan miqdor shu reys rejasidan oshgan. Davom etasizmi?");
       if (!allowOverPlanned) return;
     }
     try {

@@ -1327,7 +1327,12 @@ def confirm_batch_loading(batch_id: int, payload: DeliveryBatchLoadingConfirm, d
     # bo'lingan bo'lsa, butun partiya miqdori bilan solishtirish ma'nosiz.
     trip_planned = qty(logistics.planned_quantity or planned_total)
     if loaded_total > trip_planned and not payload.allow_over_planned:
-        raise HTTPException(status_code=409, detail="Yuklangan miqdor reja miqdoridan oshgan. Davom etishni tasdiqlang.")
+        # Xabar qaysi rejaga solishtirilganini aytadi: partiya 66 tonna
+        # bo'lib, reys 24 tonnaga rejalashtirilgan bo'lishi mumkin.
+        raise HTTPException(
+            status_code=409,
+            detail=f"Yuklangan miqdor reys rejasidan oshgan ({trip_planned}). Davom etishni tasdiqlang.",
+        )
 
     # Yuklangan miqdor reysning o'zida saqlanadi, partiya bandlari esa
     # barcha reyslarning yig'indisidan hisoblanadi -- aks holda ikkinchi
