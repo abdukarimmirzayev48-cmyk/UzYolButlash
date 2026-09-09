@@ -629,11 +629,34 @@ function batchWizardStepper(step) {
   }).join("")}</div>`;
 }
 
+// Backenddagi `ensure_order_has_source` bilan bir xil qoida. Ilgari bu
+// yerda boshqacha shart turardi (faqat «kompaniya boshqaradigan» model
+// tekshirilardi), shuning uchun to'g'ridan-to'g'ri yetkaziladigan
+// buyurtmada sehrgar beshala qadamdan o'tkazib yuborar, xato esa faqat
+// saqlashda -- eng oxirida chiqardi.
+function wizardNeedsSupplier(state) {
+  const order = state.order;
+  if (!order) return false;
+  // Zaxiradan olinsa ta'minotchi partiyaning emas, zaxira partiyasining
+  // ustida turadi.
+  if (order.source_type === "supplier_held_stock") return false;
+  return !(state.supplierId || (state.supplierName || "").trim()
+    || order.supplier_id || (order.supplier_name || "").trim());
+}
+
+function wizardSupplierWarning(state) {
+  if (!wizardNeedsSupplier(state)) return "";
+  return `<div class="workflow-warning"><strong>Ta'minotchi tanlanmagan</strong>
+    <ul><li>Bu buyurtmada ta'minotchi ko'rsatilmagan, shuning uchun partiya yaratib bo'lmaydi.</li>
+    <li>Buyurtma kartochkasida ta'minotchini tanlang va shundan keyin partiyani yarating.</li></ul>
+    <div class="actions"><button type="button" class="btn" data-nav="/orders/${state.order.id}">Buyurtmani ochish</button></div></div>`;
+}
+
 function batchWizardOrderSummary(state) {
   if (!state.order) return `<div class="empty">Avval buyurtmani tanlang.</div>`;
   const totals = wizardOrderTotals(state);
   const noRemaining = totals.remaining <= 0;
-  return `${noRemaining ? `<div class="workflow-warning"><strong>Qoldiq yo'q</strong><ul><li>Ushbu buyurtma bo'yicha qoldiq miqdor mavjud emas.</li></ul></div>` : ""}${summaryCards([
+  return `${noRemaining ? `<div class="workflow-warning"><strong>Qoldiq yo'q</strong><ul><li>Ushbu buyurtma bo'yicha qoldiq miqdor mavjud emas.</li></ul></div>` : ""}${wizardSupplierWarning(state)}${summaryCards([
     ["Buyurtma raqami", fmt(state.order.order_number)],
     ["Mijoz", fmt(state.order.client?.name)],
     ["Shartnoma", fmt(state.order.contract?.contract_number)],
@@ -659,8 +682,7 @@ function batchWizardQuantityTable(state) {
 function batchWizardSourcePanel(state) {
   if (!state.order) return `<div class="empty">Avval buyurtmani tanlang.</div>`;
   const companyManaged = state.order.fulfillment_type === "company_managed_delivery";
-  const missingSupplier = companyManaged && !state.supplierName;
-  return `${missingSupplier ? `<div class="workflow-warning"><strong>Ta'minotchi kerak</strong><ul><li>Partiya yaratish uchun avval ta'minotchini tanlang.</li></ul></div>` : ""}${summaryCards([
+  return `${wizardSupplierWarning(state)}${summaryCards([
     ["Manba", fmt(optionLabel(sourceTypes, state.order.source_type))],
     ["Yetkazib berish modeli", fmt(optionLabel(fulfillmentTypes, state.order.fulfillment_type))],
     ["Ta'minotchi", fmt(state.supplierName)],
@@ -784,7 +806,10 @@ function validateBatchWizardStep(state, targetStep = state.step) {
   const items = selectedWizardItems(state);
   if (targetStep >= 2 && !items.length) return "Kamida bitta mahsulot uchun partiya miqdorini kiriting.";
   if (targetStep >= 2 && items.some((item) => numberValue(item.planned_quantity) > numberValue(item.remaining))) return "Partiya miqdori buyurtma qoldig'idan oshmasligi kerak.";
-  if (targetStep >= 3 && state.order?.fulfillment_type === "company_managed_delivery" && !state.supplierName) return "Partiya yaratish uchun avval ta'minotchini tanlang.";
+  // Ta'minotchi buyurtmaning xossasi, ya'ni u haqidagi xabar buyurtma
+  // tanlangan zahoti ma'lum. Uni oxirgi qadamga qoldirish operatorni
+  // butun sehrgarni bekorga to'ldirishga majbur qilardi.
+  if (targetStep >= 1 && wizardNeedsSupplier(state)) return "Bu buyurtmada ta'minotchi tanlanmagan. Buyurtma kartochkasida ta'minotchini tanlang.";
   if (targetStep >= 4 && (!state.plannedLoadingDate || !state.plannedDeliveryDate)) return "Reja yuklash va yetkazish sanalari majburiy.";
   if (targetStep >= 4 && state.plannedDeliveryDate < state.plannedLoadingDate) return "Reja yetkazish sanasi reja yuklash sanasidan oldin bo'lishi mumkin emas.";
   // Manzil endi qo'lda yozilmaydi -- u nuqta kartochkasidan keladi, shuning
@@ -864,7 +889,19 @@ function renderBatchWizard(state) {
 
 function bindBatchWizard(state) {
   const form = document.querySelector("#batch-wizard-form");
+  // Variantlar ro'yxati bir marta HTML matni sifatida olinadi, ya'ni
+  // ichidagi `selected` birinchi chizishdayoq qotib qoladi. Sehrgar qayta
+  // chizilganda ro'yxat «Buyurtmani tanlang» ga qaytib, pastda esa
+  // tanlangan buyurtmaning xulosasi turardi -- ikkovi bir-biriga zid.
+  if (form?.elements.wizard_order_id) {
+    form.elements.wizard_order_id.value = state.order ? String(state.order.id) : "";
+  }
   document.querySelector("[data-wizard-cancel]")?.addEventListener("click", () => navigate("/delivery-batches"));
+  // Sehrgar har qadamda o'zini qayta chizadi, ya'ni routerning data-nav
+  // bog'lashi bu tugmalarga yetib bormaydi.
+  app.querySelectorAll("[data-nav]").forEach((element) => {
+    element.addEventListener("click", () => navigate(element.dataset.nav));
+  });
   form?.elements.wizard_order_id?.addEventListener("change", async (event) => {
     const orderId = Number(event.target.value);
     state.order = null;

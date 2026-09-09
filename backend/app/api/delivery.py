@@ -827,11 +827,15 @@ def ensure_order_has_source(order, payload) -> None:
         return
     if order.supplier_id or (order.supplier_name or "").strip():
         return
+    # Xabar ilgari «yoki partiyada uni ko'rsating» derdi, lekin partiya
+    # oynasida ta'minotchi maydoni faqat o'qish uchun -- ya'ni maslahat
+    # bajarib bo'lmaydigan edi. API darajasida partiyada ko'rsatish hamon
+    # mumkin, foydalanuvchiga esa haqiqiy yo'l aytiladi.
     raise HTTPException(
         status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
         detail=(
-            "Bu buyurtmada ta'minotchi tanlanmagan. Partiya yaratishdan oldin ta'minotchini "
-            "tanlang yoki partiyada uni ko'rsating."
+            "Bu buyurtmada ta'minotchi tanlanmagan. Buyurtma kartochkasida "
+            "ta'minotchini tanlang."
         ),
     )
 
