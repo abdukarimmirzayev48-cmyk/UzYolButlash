@@ -461,11 +461,30 @@ class DeliveryBatchTransportCheck(BaseModel):
     warnings: list[str] = Field(default_factory=list)
 
 
+class DeliveryBatchTripCompletion(BaseModel):
+    """Bitta reysning qaytishdagi raqamlari.
+
+    Partiyada bir nechta mashina bo'lsa, odometr ham, bak qoldig'i ham har
+    birida o'ziniki. Yagona to'plam yuborilganda ular birinchi reysga
+    yozilar, qolganlari esa bo'sh qolar va aynan shu bo'shliq partiyani
+    yopishga qo'ymasdi.
+    """
+
+    logistics_id: int
+    odometer_end_km: Decimal | None = Field(default=None, ge=0)
+    fuel_after_liters: Decimal | None = Field(default=None, ge=0)
+    fuel_added_liters: Decimal | None = Field(default=None, ge=0)
+    returned_at: datetime | None = None
+
+
 class DeliveryBatchCompletionConfirm(BaseModel):
     """Bazaga qaytgach yopiladigan raqamlar."""
 
     completed_date: date
     notes: str | None = None
+    # Reys bo'yicha o'lchovlar. Quyidagi yakka maydonlar birinchi reysga
+    # tegishli -- eski chaqiruvlar uchun saqlanib qolgan.
+    trips: list[DeliveryBatchTripCompletion] = Field(default_factory=list)
     odometer_end_km: Decimal | None = Field(default=None, ge=0)
     fuel_after_liters: Decimal | None = Field(default=None, ge=0)
     fuel_added_liters: Decimal | None = Field(default=None, ge=0)

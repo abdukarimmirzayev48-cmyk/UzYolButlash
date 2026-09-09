@@ -2219,7 +2219,41 @@ function tripDataGaps(logistics = {}) {
   return { blocking, soft };
 }
 
-function completionValidation(batch, finance = {}) {
+// Bazaga qaytgach o'lchanadigan raqamlar -- yakunlash oynasi shularni
+// so'raydi. Har bir reysda o'ziniki, shuning uchun maydon nomiga reys
+// raqami qo'shiladi.
+const COMPLETION_TRIP_FIELDS = ["returned_at", "odometer_end_km", "fuel_after_liters", "fuel_added_liters"];
+
+function completionTrips(batch) {
+  const trips = (batch.trips || []).filter((trip) => trip && trip.id);
+  if (trips.length) return trips;
+  return batch.logistics?.id ? [batch.logistics] : [];
+}
+
+// Formadagi hozirgi qiymatlarni reys bo'yicha yig'adi. Tekshiruv aynan
+// shular bilan yuritiladi: odometr oynaning o'zida kiritiladi, ya'ni
+// bazadagi bo'sh qiymatga qarab hukm qilinsa, oyna o'zi so'ragan raqam
+// sababli «Yakunlash» tugmasini abadiy qulflab qo'yardi.
+function completionEntered(form, batch) {
+  const entered = {};
+  if (!form) return entered;
+  completionTrips(batch).forEach((trip) => {
+    const values = {};
+    COMPLETION_TRIP_FIELDS.forEach((name) => {
+      const input = form.elements[`trip_${trip.id}_${name}`];
+      if (!input) return;
+      const raw = String(input.value ?? "").trim();
+      if (raw === "") return;
+      // Raqam maydonlariga «1 240» ko'rinishida ham yozib ketiladi --
+      // bo'shliq bilan backend Decimal'ni o'qiy olmaydi.
+      values[name] = name === "returned_at" ? raw : normalizeNumberInputValue(raw);
+    });
+    entered[trip.id] = values;
+  });
+  return entered;
+}
+
+function completionValidation(batch, finance = {}, entered = {}) {
   const logistics = batch.logistics || {};
   const docStatus = batchDocumentStatus(batch);
   const blockers = [];
@@ -2230,10 +2264,59 @@ function completionValidation(batch, finance = {}) {
   if ((batch.items || []).some((item) => item.difference_quantity !== null && numberValue(item.difference_quantity) !== 0)) warnings.push("Yuklangan va qabul qilingan miqdor farq qiladi.");
   if (finance.checked && !(finance.customerInvoices || []).length) warnings.push("Mijoz hisob-fakturasi hali yaratilmagan.");
   if (finance.checked && !(finance.supplierInvoices || []).length) warnings.push("Ta'minotchi hisobi hali yaratilmagan.");
-  const trip = tripDataGaps(logistics);
+  // Backend partiyadagi barcha reysni tekshiradi. Oyna faqat birinchisiga
+  // qarasa, tugma ochiq turar va so'rov 422 bilan qaytardi -- sabab esa
+  // ekranda ko'rinmasdi. Reys raqami xabardan keyin qo'yiladi: lug'at ikki
+  // nuqtagacha bo'lgan qismni izlaydi.
+  const trips = completionTrips(batch);
+  const trip = { blocking: [], soft: [] };
+  trips.forEach((row) => {
+    const gaps = tripDataGaps({ ...row, ...(entered[row.id] || {}) });
+    const mark = trips.length > 1 ? `: ${row.logistics_number || row.id}` : "";
+    gaps.blocking.forEach((message) => trip.blocking.push(`${message}${mark}`));
+    gaps.soft.forEach((message) => trip.soft.push(`${message}${mark}`));
+  });
   trip.blocking.forEach((message) => blockers.push(message));
   trip.soft.forEach((message) => warnings.push(message));
   return { blockers, warnings, docStatus, trip };
+}
+
+// Qaytishdagi o'lchovlar har bir mashinada alohida. Bitta reysli
+// partiyada sarlavha ham bitta bo'ladi -- ortiqcha raqam ko'rsatilmaydi.
+function completionMeasurementFields(batch) {
+  const trips = completionTrips(batch).filter((trip) => trip.transport_id);
+  const many = trips.length > 1;
+  return trips.map((trip) => {
+    const plate = trip.vehicle_number ? ` · ${esc(trip.vehicle_number)}` : "";
+    const title = many
+      ? `<span>Qaytishdagi o'lchovlar</span><span data-noloc> — ${esc(trip.logistics_number || trip.id)}${plate}</span>`
+      : "<span>Qaytishdagi o'lchovlar</span>";
+    return `<h3 class="modal-subtitle">${title}</h3>
+      <div class="grid">
+        ${textField(`trip_${trip.id}_returned_at`, "Bazaga qaytdi", isoToLocalInput(trip.returned_at), "datetime-local")}
+        ${textField(`trip_${trip.id}_odometer_end_km`, "Odometr: qaytishda", trip.odometer_end_km || "", "number")}
+        ${textField(`trip_${trip.id}_fuel_after_liters`, "Bakdagi yoqilg'i: qaytishda", trip.fuel_after_liters || "", "number")}
+        ${textField(`trip_${trip.id}_fuel_added_liters`, "Yo'lda quyildi", trip.fuel_added_liters || "", "number")}
+      </div>`;
+  }).join("");
+}
+
+// Oyna ochilgandan keyin ham tekshiruv qayta yuritiladi: odometr shu
+// yerda kiritiladi, ya'ni to'siq yozilishi bilan yo'qolishi kerak.
+function refreshCompletionValidation(form, batch, finance) {
+  const validation = completionValidation(batch, finance, completionEntered(form, batch));
+  const boxes = [
+    [form.querySelector("[data-completion-blockers]"), validation.blockers, "Yakunlab bo'lmaydi"],
+    [form.querySelector("[data-completion-warnings]"), validation.warnings, "Tasdiqlashdan oldin tekshiring"],
+  ];
+  boxes.forEach(([box, messages, title]) => {
+    if (!box) return;
+    box.innerHTML = workflowWarningsPanel(messages, title);
+    localizeDom(box);
+  });
+  const submit = form.querySelector("button[type=submit]");
+  if (submit) submit.disabled = validation.blockers.length > 0;
+  return validation;
 }
 
 function completionConfirmationModal(batch, finance = {}) {
@@ -2250,8 +2333,8 @@ function completionConfirmationModal(batch, finance = {}) {
       </div>
       <form id="completion-confirmation-form">
         <div class="modal-body">
-          ${validation.blockers.length ? workflowWarningsPanel(validation.blockers, "Yakunlab bo'lmaydi") : ""}
-          ${validation.warnings.length ? workflowWarningsPanel(validation.warnings, "Tasdiqlashdan oldin tekshiring") : ""}
+          <div data-completion-blockers>${workflowWarningsPanel(validation.blockers, "Yakunlab bo'lmaydi")}</div>
+          <div data-completion-warnings>${workflowWarningsPanel(validation.warnings, "Tasdiqlashdan oldin tekshiring")}</div>
           <div class="modal-summary">${detailList([
             ["Partiya raqami", batch.batch_number],
             ["Buyurtma", batch.order?.order_number],
@@ -2267,15 +2350,9 @@ function completionConfirmationModal(batch, finance = {}) {
           ])}</div>
           <div class="grid">
             ${textField("completed_date", "Yakunlash sanasi", today, "date", { required: true })}
-            ${weHaul ? textField("returned_at", "Bazaga qaytdi", isoToLocalInput(logistics.returned_at), "datetime-local") : ""}
           </div>
-          ${weHaul ? `<h3 class="modal-subtitle">Qaytishdagi o'lchovlar</h3>
-          <p class="helper-text">Yoqilg'i hisobi shu raqamlar bilan yopiladi: normadan chetlanish shundan hisoblanadi.</p>
-          <div class="grid">
-            ${textField("odometer_end_km", "Odometr: qaytishda", logistics.odometer_end_km || "", "number")}
-            ${textField("fuel_after_liters", "Bakdagi yoqilg'i: qaytishda", logistics.fuel_after_liters || "", "number")}
-            ${textField("fuel_added_liters", "Yo'lda quyildi", logistics.fuel_added_liters || "", "number")}
-          </div>` : ""}
+          ${weHaul ? `<p class="helper-text">Yoqilg'i hisobi shu raqamlar bilan yopiladi: normadan chetlanish shundan hisoblanadi. Odometrsiz partiya yopilmaydi.</p>
+          ${completionMeasurementFields(batch)}` : ""}
           <div class="grid">
             ${textArea("notes", "Yakunlash izohi", "")}
           </div>
@@ -2294,14 +2371,18 @@ async function openCompletionConfirmationModal(batch) {
   document.querySelector(".modal-backdrop")?.remove();
   document.body.insertAdjacentHTML("beforeend", completionConfirmationModal(batch, finance));
   const backdrop = document.querySelector(".modal-backdrop");
+  localizeDom(backdrop);
   const form = document.querySelector("#completion-confirmation-form");
   const close = () => backdrop?.remove();
   backdrop?.addEventListener("click", (event) => {
     if (event.target.matches("[data-modal-close]")) close();
   });
+  form?.addEventListener("input", () => refreshCompletionValidation(form, batch, finance));
+  if (form) refreshCompletionValidation(form, batch, finance);
   form?.addEventListener("submit", async (event) => {
     event.preventDefault();
-    const validation = completionValidation(batch, finance);
+    const entered = completionEntered(form, batch);
+    const validation = refreshCompletionValidation(form, batch, finance);
     const missingDocs = validation.warnings.some((warning) => warning.includes("hujjat"));
     const quantityDiff = validation.warnings.some((warning) => warning.includes("farq"));
     const tripGaps = (validation.trip?.soft || []).length > 0;
@@ -2319,7 +2400,9 @@ async function openCompletionConfirmationModal(batch) {
           allow_missing_documents: missingDocs,
           allow_quantity_difference: quantityDiff,
           allow_missing_trip_data: tripGaps,
-          ...measurements(form, ["odometer_end_km", "fuel_after_liters", "fuel_added_liters", "returned_at"]),
+          trips: completionTrips(batch)
+            .map((trip) => ({ logistics_id: trip.id, ...(entered[trip.id] || {}) }))
+            .filter((row) => Object.keys(row).length > 1),
         }),
       });
       showToast("Partiya yakunlandi.");

@@ -2708,7 +2708,7 @@ const uzCyrillic = {
   "Yopishdan oldin natija yozilishi kerak.": "Ёпишдан олдин натижа ёзилиши керак.",
   "Yoqilg'i": "Ёқилғи",
   "Yoqilg'i hisobi": "Ёқилғи ҳисоби",
-  "Yoqilg'i hisobi shu raqamlar bilan yopiladi: normadan chetlanish shundan hisoblanadi.": "Ёқилғи ҳисоби шу рақамлар билан ёпилади: нормадан четланиш шундан ҳисобланади.",
+  "Yoqilg'i hisobi shu raqamlar bilan yopiladi: normadan chetlanish shundan hisoblanadi. Odometrsiz partiya yopilmaydi.": "Ёқилғи ҳисоби шу рақамлар билан ёпилади: нормадан четланиш шундан ҳисобланади. Одометрсиз партия ёпилмайди.",
   "Yoqilg'i ma'lumotlari kiritilmagan.": "Ёқилғи маълумотлари киритилмаган.",
   "Yoqilg'i nazorati": "Ёқилғи назорати",
   "Yoqilg'i normadan ortiq sarflangan": "Ёқилғи нормадан ортиқ сарфланган",

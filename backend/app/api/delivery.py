@@ -1092,6 +1092,11 @@ MSG_INVOICED_REVERT = "Bu partiya bo'yicha mijozga hisob-faktura qo'yilgan. Bosq
 MSG_TRIP_QUANTITY = "Reys miqdori 0 dan katta bo'lishi kerak."
 MSG_TRIP_OVER = "Reyslar miqdori partiya miqdoridan oshib ketadi"
 MSG_TRIP_STARTED = "Boshlangan reysni o'chirib bo'lmaydi"
+MSG_TRIP_NOT_FOUND = "Reys topilmadi."
+
+# Bazaga qaytgach o'lchanadigan raqamlar -- yakunlash oynasi shularni
+# so'raydi va har bir reysga alohida yozadi.
+TRIP_RETURN_FIELDS = ("odometer_end_km", "fuel_after_liters", "fuel_added_liters", "returned_at")
 
 
 def trips_planned_total(batch: DeliveryBatch) -> Decimal:
@@ -1466,35 +1471,58 @@ def complete_batch(batch_id: int, payload: DeliveryBatchCompletionConfirm, db: S
     # Bazaga qaytgach olinadigan raqamlar shu oynada kiritiladi, shuning uchun
     # tekshiruvdan oldin yoziladi -- aks holda hozirgina kiritilgani hisobga
     # olinmay, oyna bekorga ogohlantirardi.
-    apply_measurements(logistics, payload, ("odometer_end_km", "fuel_after_liters", "fuel_added_liters", "returned_at"))
-    sync_fuel_and_distance(logistics)
+    apply_measurements(logistics, payload, TRIP_RETURN_FIELDS)
+    # Har bir mashinaning o'z odometri va o'z bak qoldig'i bor. Yakka
+    # to'plam faqat birinchi reysga yozilardi, qolganlari bo'sh qolar va
+    # o'sha bo'shliq partiyani yopishga qo'ymasdi.
+    for entry in payload.trips:
+        other = trip_of(batch, entry.logistics_id)
+        if not other:
+            raise HTTPException(status_code=422, detail=MSG_TRIP_NOT_FOUND)
+        apply_measurements(other, entry, TRIP_RETURN_FIELDS)
     # Reys yopilayotgan payt -- masofani monitoringdan olishning eng to'g'ri
     # vaqti: sanalar allaqachon ma'lum va marshrut hali so'ralmagan.
     # Muvaffaqiyatsizlik yakunlashni to'smaydi, sababi izohga yoziladi.
-    distance_problem = apply_measured_distance(db, logistics)
     # Datchik ko'rsatkichi ham shu yerda olinadi: tekshiruvdan oldin, ya'ni
     # «bak qoldig'i mos emas» ogohlantirishi yakunlash paytida ko'rinadi,
     # keyin emas.
-    sensor_problem = apply_sensor_fuel(db, logistics)
+    distance_problem = None
+    sensor_problem = None
+    for other in batch.trips:
+        sync_fuel_and_distance(other)
+        other_distance_problem = apply_measured_distance(db, other)
+        other_sensor_problem = apply_sensor_fuel(db, other)
+        if other.id == logistics.id:
+            distance_problem = other_distance_problem
+            sensor_problem = other_sensor_problem
     trip = trip_check_for(logistics)
     # Partiyada bir nechta reys bo'lishi mumkin. Faqat birinchisini
     # tekshirish -- qolganlari yarim yo'lda turganda ham partiyani yopib
     # yuborish demak, ya'ni ularning odometri va bak qoldig'i abadiy
     # bo'sh qolardi.
+    #
+    # Reys raqami xabardan keyin qo'yiladi: tarjima lug'ati ikki nuqtagacha
+    # bo'lgan qismni izlaydi, ya'ni oldiga qo'yilsa xabar lotin bo'yicha
+    # qolib ketardi.
     for other in batch.trips:
         if other.id == logistics.id:
             continue
         extra = trip_check_for(other)
-        trip.blocking.extend(f"{other.logistics_number or other.id}: {message}" for message in extra.blocking)
-        trip.soft.extend(f"{other.logistics_number or other.id}: {message}" for message in extra.soft)
+        mark = other.logistics_number or other.id
+        trip.blocking.extend(f"{message}: {mark}" for message in extra.blocking)
+        trip.soft.extend(f"{message}: {mark}" for message in extra.soft)
     if trip.blocking:
         raise HTTPException(status_code=422, detail=trip.blocking[0])
     if trip.soft and not payload.allow_missing_trip_data:
         raise HTTPException(status_code=409, detail=f"{trip_completion_check.MSG_TRIP_DATA_MISSING}: {', '.join(trip.soft)}")
 
     batch.status = BatchStatus.completed
-    if logistics.status in {LogisticsStatus.delivered, LogisticsStatus.accepted, LogisticsStatus.completed}:
-        logistics.status = LogisticsStatus.completed
+    # Partiya yopilsa, barcha reysi ham yopiladi. Faqat birinchisi
+    # belgilanardi: qolganlari «qabul qilindi» bo'lib qolar va reyslar
+    # ro'yxatida yakunlangan partiya hali ochiqdek ko'rinardi.
+    for other in batch.trips:
+        if other.status in {LogisticsStatus.delivered, LogisticsStatus.accepted, LogisticsStatus.completed}:
+            other.status = LogisticsStatus.completed
     note_parts = [f"Yakunlash sanasi: {payload.completed_date.isoformat()}"]
     if trip.soft:
         note_parts.append(f"{trip_completion_check.MSG_TRIP_DATA_SKIPPED}: {', '.join(trip.soft)}")
