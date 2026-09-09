@@ -636,19 +636,21 @@ function orderWizardStockPanel(state) {
     : "";
 
   return `${state.stockLotWarning ? workflowWarningsPanel([state.stockLotWarning]) : ""}${intro}${warning}
-  ${tableOrEmpty(lots, ["Tanlash", "Ticket", "Ta'minotchi", "Joylashuv", "Mavjud miqdor", "Birlik xarid narxi", "To'lov muddati"], (lot) => `<tr>
+  ${tableOrEmpty(lots, ["Tanlash", "Ticket", "Ta'minotchi", "Joylashuv", "Mavjud miqdor", "Birlik xarid narxi", "To'lov muddati"], (lot) => {
+    const covers = numberValue(lot.quantity_available) >= needed;
+    return `<tr>
     <td><label class="inline-check"><input type="radio" name="stock_lot_id" value="${lot.id}" ${Number(state.stockLotId) === lot.id ? "checked" : ""} /> <span>Tanlash</span></label></td>
     <td data-noloc>${fmt(lot.ticket_number)}</td>
     <td data-noloc>${fmt(lot.supplier_name)}</td>
     <td data-noloc>${fmt(lot.location_name)}</td>
-    <td>${fmtQty(lot.quantity_available, lot.unit)}</td>
+    <td>${fmtQty(lot.quantity_available, lot.unit)}${covers ? "" : ` <small class="text-danger">Buyurtmani qoplamaydi</small>`}</td>
     <td class="number-cell">${fmtMoney(lot.unit_cost)}</td>
     <td data-noloc>${fmt(lot.due_date)}</td>
-  </tr>`, "Mavjud zaxira topilmadi.")}
-  <div class="grid">${textField("stock_allocated_quantity", "Ajratiladigan miqdor", state.stockAllocatedQuantity || totals.quantity || "", "number", { required: Boolean(state.stockLotId) })}</div>
+  </tr>`;
+  }, "Mavjud zaxira topilmadi.")}
   ${chosen
-    ? `<p class="form-hint"><span>Ta'minotchi</span>: <b data-noloc>${fmt(chosen.supplier_name)}</b> · <span>Tannarx</span>: <b data-noloc>${fmtMoney(chosen.unit_cost)}</b> · <span>Buyurtma miqdori</span>: <b data-noloc>${fmtQty(needed, item?.unit)}</b></p>`
-    : `<p class="form-hint">Yuqoridagi jadvaldan zaxira partiyasini tanlang.</p>`}`;
+    ? `<p class="form-hint"><span>Band qilinadi</span>: <b data-noloc>${fmtQty(needed, item?.unit)}</b> · <span>Ta'minotchi</span>: <b data-noloc>${fmt(chosen.supplier_name)}</b> · <span>Tannarx</span>: <b data-noloc>${fmtMoney(chosen.unit_cost)}</b></p>`
+    : `<p class="form-hint">Yuqoridagi jadvaldan zaxira partiyasini tanlang. Buyurtma miqdori to'liq band qilinadi -- miqdorni alohida kiritish shart emas.</p>`}`;
 }
 
 // The cards live in their own container so a keystroke in the markup or
@@ -808,9 +810,13 @@ function validateOrderWizardStep(state, targetStep = state.step) {
     const lot = (state.stockLots || []).find((item) => Number(item.id) === Number(state.stockLotId));
     if (totals.selected.length !== 1) return "Ta'minotchi omboridagi zaxira uchun bitta mahsulot tanlang.";
     if (!lot) return "Zaxira partiyasini tanlang.";
-    if (numberValue(state.stockAllocatedQuantity) <= 0) return "Ajratiladigan miqdorni kiriting.";
-    if (numberValue(state.stockAllocatedQuantity) > numberValue(lot.quantity_available)) return "Mavjud zaxira yetarli emas. Qo'shimcha xarid talab qilinadi.";
-    if (numberValue(state.stockAllocatedQuantity) !== numberValue(totals.quantity)) return "Ajratilgan miqdor buyurtma miqdoriga teng bo'lishi kerak.";
+    // Miqdor endi so'ralmaydi: u har doim buyurtma miqdoriga teng.
+    // Ilgari maydon bor edi, lekin faqat bitta qiymat qabul qilinardi --
+    // boshqasini yozsangiz «buyurtma miqdoriga teng bo'lishi kerak» deb
+    // qaytarardi. Ya'ni javobi bitta bo'lgan savol edi.
+    if (numberValue(totals.quantity) > numberValue(lot.quantity_available)) {
+      return "Tanlangan zaxira buyurtma miqdorini qoplamaydi. Boshqa partiyani tanlang yoki zaxirani keyinroq buyurtma kartochkasidan ajrating.";
+    }
   }
   if (targetStep >= 5 && numberValue(state.logisticsPrice) < 0) return "Logistika narxi manfiy bo'lishi mumkin emas.";
   return null;
@@ -879,7 +885,10 @@ async function renderOrderWizard() {
     }
     if (!state.stockLots.some((lot) => Number(lot.id) === Number(selectedLot.id))) state.stockLots.unshift(selectedLot);
     state.stockLotId = String(selectedLot.id);
-    if (!numberValue(state.stockAllocatedQuantity)) state.stockAllocatedQuantity = String(Math.min(numberValue(selectedItem.quantity), numberValue(selectedLot.quantity_available)));
+    // Band qilinadigan miqdor har doim buyurtma miqdori: qisman ajratish
+    // partiya bilan bog'lanmay qoladi (link_stock_allocation_to_batch
+    // partiyani to'liq qoplaydigan bitta ajratmani izlaydi).
+    state.stockAllocatedQuantity = String(numberValue(selectedItem.quantity));
   }
 
   async function draw() {
@@ -934,8 +943,12 @@ async function renderOrderWizard() {
       state.stockChoiceTouched = true;
       await draw();
     });
-    form.querySelectorAll("[name='stock_lot_id']").forEach((input) => input.addEventListener("change", () => { state.stockLotId = input.value; }));
-    form.elements.stock_allocated_quantity?.addEventListener("input", () => { state.stockAllocatedQuantity = form.elements.stock_allocated_quantity.value; });
+    form.querySelectorAll("[name='stock_lot_id']").forEach((input) => input.addEventListener("change", async () => {
+      state.stockLotId = input.value;
+      // Band qilinadigan miqdor har doim buyurtma miqdori.
+      state.stockAllocatedQuantity = String(orderWizardTotals(state).quantity);
+      await draw();
+    }));
     form.elements.logistics_price?.addEventListener("input", () => {
       state.logisticsPrice = form.elements.logistics_price.value;
       refreshOrderWizardPriceCards(state);
@@ -981,7 +994,7 @@ async function renderOrderWizard() {
               stock_lot_id: Number(state.stockLotId),
               order_id: saved.id,
               order_item_id: firstItem?.id || null,
-              allocated_quantity: normalizeNumberInputValue(state.stockAllocatedQuantity),
+              allocated_quantity: normalizeNumberInputValue(String(orderWizardTotals(state).quantity)),
             }),
           });
         }
