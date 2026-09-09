@@ -129,7 +129,32 @@ class DeliveryBatch(Base, TimestampMixin):
     contract: Mapped["Contract"] = relationship(back_populates="delivery_batches")
     order: Mapped["Order"] = relationship(back_populates="delivery_batches")
     items: Mapped[list["DeliveryBatchItem"]] = relationship(back_populates="batch", cascade="all, delete-orphan", order_by="DeliveryBatchItem.id")
-    logistics: Mapped["Logistics | None"] = relationship(back_populates="batch", cascade="all, delete-orphan", uselist=False)
+    # Bitta partiyada bir nechta reys bo'lishi mumkin: 100 tonna bitta
+    # sisternaga sig'maydi. Reys -- mashinaning bitta yurishi, va reys
+    # nazorati (probeg, bak, tarozi) aynan bitta yurish uchun ma'noga ega.
+    trips: Mapped[list["Logistics"]] = relationship(
+        back_populates="batch", cascade="all, delete-orphan", order_by="Logistics.id"
+    )
+
+    @property
+    def logistics(self):
+        """Birinchi reys.
+
+        Partiya bitta reysli bo'lgan davrdan qolgan nom. Kartochka,
+        moliya va hisobotlar shu nom orqali ishlaydi -- ular bitta reysga
+        emas, butun partiyaga qarashi kerak bo'lgan joyda alohida
+        to'g'rilanadi. Yangi kod `trips` bilan ishlaydi.
+        """
+        return self.trips[0] if self.trips else None
+
+    @logistics.setter
+    def logistics(self, value):
+        if value is None:
+            self.trips = []
+        elif not self.trips:
+            self.trips = [value]
+        else:
+            self.trips[0] = value
     documents: Mapped[list["DeliveryBatchDocument"]] = relationship(back_populates="batch", cascade="all, delete-orphan", order_by="DeliveryBatchDocument.uploaded_at.desc()")
     notes_history: Mapped[list["DeliveryBatchNote"]] = relationship(back_populates="batch", cascade="all, delete-orphan", order_by="DeliveryBatchNote.created_at.desc()")
     customer_invoices: Mapped[list["CustomerInvoice"]] = relationship(back_populates="delivery_batch")
@@ -158,8 +183,12 @@ class Logistics(Base, TimestampMixin):
     __tablename__ = "logistics"
 
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
-    delivery_batch_id: Mapped[int] = mapped_column(ForeignKey("delivery_batches.id", ondelete="CASCADE"), unique=True, index=True)
+    delivery_batch_id: Mapped[int] = mapped_column(ForeignKey("delivery_batches.id", ondelete="CASCADE"), index=True)
     logistics_number: Mapped[str | None] = mapped_column(String(128), unique=True, index=True)
+    # Shu reysda tashiladigan miqdor. Partiya bitta reysga teng bo'lgan
+    # davrda kerak emas edi -- endi reyslar yig'indisi partiya miqdorini
+    # berishi kerak.
+    planned_quantity: Mapped[Decimal | None] = mapped_column(Numeric(18, 3))
     delivery_method: Mapped[DeliveryMethod] = mapped_column(SAEnum(DeliveryMethod, length=16), default=DeliveryMethod.auto, nullable=False)
     status: Mapped[LogisticsStatus] = mapped_column(SAEnum(LogisticsStatus), default=LogisticsStatus.not_assigned, nullable=False, index=True)
     carrier_id: Mapped[int | None] = mapped_column(index=True)
@@ -258,7 +287,7 @@ class Logistics(Base, TimestampMixin):
     notes: Mapped[str | None] = mapped_column(Text)
     created_by: Mapped[str | None] = mapped_column(String(255))
 
-    batch: Mapped[DeliveryBatch] = relationship(back_populates="logistics")
+    batch: Mapped[DeliveryBatch] = relationship(back_populates="trips")
     transport: Mapped["Transport | None"] = relationship()
     documents: Mapped[list["LogisticsDocument"]] = relationship(back_populates="logistics", cascade="all, delete-orphan", order_by="LogisticsDocument.uploaded_at.desc()")
     notes_history: Mapped[list["LogisticsNote"]] = relationship(back_populates="logistics", cascade="all, delete-orphan", order_by="LogisticsNote.created_at.desc()")

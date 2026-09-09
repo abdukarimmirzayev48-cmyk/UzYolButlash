@@ -109,7 +109,7 @@ def delivery_overview(
         db.scalars(
             select(DeliveryBatch).options(
                 selectinload(DeliveryBatch.items),
-                selectinload(DeliveryBatch.logistics),
+                selectinload(DeliveryBatch.trips),
                 selectinload(DeliveryBatch.client),
                 selectinload(DeliveryBatch.order),
             )
@@ -642,7 +642,7 @@ def load_batch_detail(db: Session, batch_id: int) -> DeliveryBatch:
             selectinload(DeliveryBatch.contract),
             selectinload(DeliveryBatch.order).selectinload(Order.items),
             selectinload(DeliveryBatch.items),
-            selectinload(DeliveryBatch.logistics),
+            selectinload(DeliveryBatch.trips),
             selectinload(DeliveryBatch.documents),
             selectinload(DeliveryBatch.notes_history),
         )
@@ -820,7 +820,7 @@ def list_batches(
         .join(Contract, DeliveryBatch.contract_id == Contract.id)
         .join(Order, DeliveryBatch.order_id == Order.id)
         .outerjoin(DeliveryBatchItem)
-        .options(selectinload(DeliveryBatch.client), selectinload(DeliveryBatch.contract), selectinload(DeliveryBatch.order), selectinload(DeliveryBatch.items), selectinload(DeliveryBatch.logistics), selectinload(DeliveryBatch.documents))
+        .options(selectinload(DeliveryBatch.client), selectinload(DeliveryBatch.contract), selectinload(DeliveryBatch.order), selectinload(DeliveryBatch.items), selectinload(DeliveryBatch.trips), selectinload(DeliveryBatch.documents))
         .distinct()
     )
     filters = []
@@ -942,6 +942,58 @@ def create_batch(payload: DeliveryBatchCreate, db: Session = Depends(get_db)):
     if logistics.vehicle_number:
         notify_driver_of_trip(db, logistics)
     return get_batch_detail(batch.id, db)
+
+
+MSG_TRIP_QUANTITY = "Reys miqdori 0 dan katta bo'lishi kerak."
+MSG_TRIP_OVER = "Reyslar miqdori partiya miqdoridan oshib ketadi"
+MSG_TRIP_STARTED = "Boshlangan reysni o'chirib bo'lmaydi"
+
+
+def trips_planned_total(batch: DeliveryBatch) -> Decimal:
+    return sum((Decimal(trip.planned_quantity or 0) for trip in batch.trips), Decimal("0"))
+
+
+def remaining_for_trip(batch: DeliveryBatch) -> Decimal:
+    """Partiyaning qaysi qismi hali reysga biriktirilmagan."""
+    return qty(transport_choice.planned_quantity(batch) - trips_planned_total(batch))
+
+
+@router.post("/{batch_id}/trips", response_model=LogisticsRead, status_code=201, dependencies=[Depends(require_edit("yetkazib_berish"))])
+def add_batch_trip(batch_id: int, payload: LogisticsCreate | None = None, db: Session = Depends(get_db)):
+    """Partiyaga yana bitta reys qo'shadi.
+
+    100 tonna bitta sisternaga sig'maydi. Har bir reys -- mashinaning
+    bitta yurishi: o'z miqdori, o'z probegi va o'z yoqilg'i hisobi bilan.
+    """
+    batch = load_batch_detail(db, batch_id)
+    if not is_company_managed(batch):
+        raise HTTPException(status_code=422, detail=MSG_DIRECT_NO_TRANSPORT)
+    data = payload.model_dump(exclude_unset=True) if payload else {}
+    guard_transport_model(batch, data.get("transport_id"))
+    guard_transport_available(db, data.get("transport_id"))
+
+    if data.get("planned_quantity") is not None and Decimal(str(data["planned_quantity"])) <= 0:
+        raise HTTPException(status_code=422, detail=MSG_TRIP_QUANTITY)
+
+    defaults = logistics_defaults(db, batch)
+    defaults.update({key: value for key, value in data.items() if value is not None})
+    if not defaults.get("planned_quantity"):
+        # Qolgan miqdor -- eng ehtimolli javob, operator uni o'zgartira oladi.
+        remaining = remaining_for_trip(batch)
+        if remaining <= 0:
+            # Miqdorsiz reys ochish -- bo'sh yozuv yaratish demak. Butun
+            # miqdor allaqachon biriktirilgan bo'lsa, avval mavjud reys
+            # miqdorini kamaytirish kerak.
+            raise HTTPException(status_code=422, detail=MSG_TRIP_OVER)
+        defaults["planned_quantity"] = remaining
+    trip = Logistics(**defaults)
+    db.add(trip)
+    db.flush()
+    db.refresh(batch)
+    apply_delivery_point_address(db, batch, trip)
+    db.commit()
+    db.refresh(trip)
+    return logistics_read(trip)
 
 
 @router.get("/{batch_id}/transport-choices")
@@ -1224,6 +1276,16 @@ def complete_batch(batch_id: int, payload: DeliveryBatchCompletionConfirm, db: S
     # keyin emas.
     sensor_problem = apply_sensor_fuel(db, logistics)
     trip = trip_check_for(logistics)
+    # Partiyada bir nechta reys bo'lishi mumkin. Faqat birinchisini
+    # tekshirish -- qolganlari yarim yo'lda turganda ham partiyani yopib
+    # yuborish demak, ya'ni ularning odometri va bak qoldig'i abadiy
+    # bo'sh qolardi.
+    for other in batch.trips:
+        if other.id == logistics.id:
+            continue
+        extra = trip_check_for(other)
+        trip.blocking.extend(f"{other.logistics_number or other.id}: {message}" for message in extra.blocking)
+        trip.soft.extend(f"{other.logistics_number or other.id}: {message}" for message in extra.soft)
     if trip.blocking:
         raise HTTPException(status_code=422, detail=trip.blocking[0])
     if trip.soft and not payload.allow_missing_trip_data:
@@ -1661,6 +1723,30 @@ def update_logistics(logistics_id: int, payload: LogisticsUpdate, db: Session = 
     if logistics.vehicle_number and logistics.vehicle_number != old_vehicle_number:
         notify_driver_of_trip(db, logistics)
     return logistics_read(logistics)
+
+
+@logistics_router.delete("/{logistics_id}", status_code=204, dependencies=[Depends(require_edit("yetkazib_berish"))])
+def delete_trip(logistics_id: int, db: Session = Depends(get_db)):
+    """Ortiqcha reysni o'chiradi.
+
+    Boshlangan reysga tegilmaydi: uning odometri, bak qoldig'i va
+    hujjatlari bor, ular partiya hisobining bir qismi. Partiyaning oxirgi
+    reysi ham o'chirilmaydi -- reyssiz partiya yetkazib bo'lmaydigan
+    yozuvga aylanadi.
+    """
+    logistics = db.get(Logistics, logistics_id)
+    if not logistics:
+        raise HTTPException(status_code=404, detail="Logistika topilmadi.")
+    if logistics.status not in (LogisticsStatus.not_assigned, LogisticsStatus.carrier_assigned, LogisticsStatus.vehicle_assigned):
+        raise HTTPException(status_code=422, detail=MSG_TRIP_STARTED)
+    if logistics.actual_pickup_date or logistics.odometer_start_km is not None:
+        raise HTTPException(status_code=422, detail=MSG_TRIP_STARTED)
+    batch = logistics.batch
+    if batch and len(batch.trips) <= 1:
+        raise HTTPException(status_code=422, detail="Partiyaning yagona reysini o'chirib bo'lmaydi.")
+    db.delete(logistics)
+    db.commit()
+    return None
 
 
 @logistics_router.post("/{logistics_id}/documents", response_model=LogisticsDocumentRead, status_code=201, dependencies=[Depends(require_edit("yetkazib_berish"))])

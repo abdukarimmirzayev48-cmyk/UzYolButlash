@@ -1384,6 +1384,44 @@ function supplierDeliveryNote(batch) {
   return `<p class="helper-text"><span>Bu partiyani ta'minotchi mijozga o'zi yetkazadi: transport biriktirilmaydi, reys va yoqilg'i hisobi yuritilmaydi.</span> <span>O'zimiz tashiydigan bo'lsak, partiyani tahrirlashda modelni o'zgartiring.</span></p>`;
 }
 
+// Reyslar jadvali. Partiya 100 tonna bo'lsa, u bitta sisternaga
+// sig'maydi -- shuning uchun partiyada bir nechta reys bo'ladi va har
+// birining o'z mashinasi, miqdori, probegi va yoqilg'i hisobi bor.
+const MSG_TRIPS_OVER = "Reyslar miqdori partiya miqdoridan oshgan";
+
+function batchTripsSection(batch, editable) {
+  const trips = batch.trips || [];
+  const unit = batch.items?.[0]?.unit;
+  const planned = numberValue(batch.summary?.total_planned_quantity);
+  const assigned = trips.reduce((sum, row) => sum + numberValue(row.planned_quantity), 0);
+  const left = planned - assigned;
+  const weHaul = isCompanyManaged(batch);
+  const note = !weHaul
+    ? ""
+    : left > 0
+      ? `<p class="helper-text"><span>Reysga biriktirilmagan miqdor</span>: <b data-noloc>${fmtQty(left, unit)}</b></p>`
+      : left < 0
+        // Yorliq alohida satr bo'lishi kerak: warningParts uni lug'atdan
+      // qidiradi, qiymat esa tegilmay qoladi. Shablon ichida yozilsa,
+      // butun jumla «{n}» naqshiga aylanib, tarjimasiz qolardi.
+      ? workflowWarningsPanel([`${MSG_TRIPS_OVER}: ${fmtQty(-left, unit)}`])
+        : `<p class="helper-text">Butun miqdor reyslarga biriktirilgan.</p>`;
+  return section("Reyslar", `${editable && weHaul ? `<div class="actions"><button class="btn" type="button" data-add-trip>Reys qo'shish</button></div>` : ""}${note}${tableOrEmpty(
+    trips,
+    ["Reys", "Miqdor", "Transport", "Haydovchi", "Holati", "Reja sanalar", editable ? "Amallar" : ""],
+    (trip) => `<tr>
+      <td><button class="ops-primary-link" data-nav="/logistics/${trip.id}" data-noloc>${esc(trip.logistics_number || trip.id)}</button></td>
+      <td>${trip.planned_quantity != null ? fmtQty(trip.planned_quantity, unit) : dash}</td>
+      <td data-noloc>${trip.transport_id ? esc(trip.vehicle_number || "") : ""}${trip.transport_id ? "" : statusChip({ label: "Biriktirilmagan", tone: "warning" })}</td>
+      <td data-noloc>${fmt(trip.driver_name)}</td>
+      <td>${statusBadge(trip.status)}</td>
+      <td data-noloc>${fmt(trip.planned_pickup_date)} — ${fmt(trip.planned_delivery_date)}</td>
+      ${editable ? `<td><div class="ops-row-actions">${weHaul ? `<button class="link-btn" type="button" data-transport-assignment="${trip.id}">Transport</button>` : ""}<button class="link-btn" data-nav="/logistics/${trip.id}">Ochish</button>${trips.length > 1 ? `<button class="link-btn" type="button" data-delete-trip="${trip.id}">O'chirish</button>` : ""}</div></td>` : ""}
+    </tr>`,
+    "Reyslar hali ochilmagan."
+  )}`);
+}
+
 function batchActiveTab(batch, active) {
   const editable = canEdit("yetkazib_berish");
   if (active === "quantity") return section("Miqdor", `${editable ? `<div class="actions"><button class="btn primary" data-focus-acceptance>Qabul miqdorini kiritish</button></div>` : ""}<p class="helper-text">Farq faqat qabul miqdori kiritilgandan keyin hisoblanadi.</p><form id="batch-quantity-form">${tableOrEmpty(batch.items, ["Mahsulot", "Birlik", "Reja", "Yuklangan", "Qabul qilingan", "Farq", "Miqdor holati", "Izoh"], (item) => {
@@ -1397,7 +1435,7 @@ function batchActiveTab(batch, active) {
     // reys vaqti, yoqilg'i va probeg ham yo'q. Ilgari bu bo'limlar
     // baribir chizilardi va bo'sh turardi -- odam esa ularni to'ldirishi
     // kerakmi yoki yo'qmi, bilmasdi.
-    return `${section("Logistika xulosasi", `<div class="actions">${editable && weHaul ? `<button class="btn primary" type="button" data-transport-assignment>Transportni biriktirish</button>` : ""}${logistics.id ? `<button class="btn" data-nav="/logistics/${logistics.id}">Logistika sahifasi</button>` : ""}</div>${summaryCards([["Logistika raqami", fmt(logisticsNumber(logistics, batch))], ["Partiya", fmt(batch.batch_number)], ["Buyurtma", fmt(batch.order?.order_number)], ["Mijoz", fmt(batch.client?.name)], ["Mahsulot", fmt(batchPrimaryProduct(batch))], ["Miqdor", fmtQty(batch.summary?.total_planned_quantity, batch.items?.[0]?.unit)], ["Manba", fmt(optionLabel(sourceTypes, batch.source_type))], ["Model", fmt(optionLabel(fulfillmentTypes, batch.fulfillment_type))], ["Logistika holati", statusBadge(logistics.status || "not_assigned")]])}${supplierDeliveryNote(batch)}${logisticsWarnings(logistics, batch)}`)}${section("Shartnoma transport shartlari", detailList([
+    return `${batchTripsSection(batch, editable)}${section("Logistika xulosasi", `<div class="actions">${editable && weHaul ? `<button class="btn primary" type="button" data-transport-assignment>Transportni biriktirish</button>` : ""}${logistics.id ? `<button class="btn" data-nav="/logistics/${logistics.id}">Logistika sahifasi</button>` : ""}</div>${summaryCards([["Logistika raqami", fmt(logisticsNumber(logistics, batch))], ["Partiya", fmt(batch.batch_number)], ["Buyurtma", fmt(batch.order?.order_number)], ["Mijoz", fmt(batch.client?.name)], ["Mahsulot", fmt(batchPrimaryProduct(batch))], ["Miqdor", fmtQty(batch.summary?.total_planned_quantity, batch.items?.[0]?.unit)], ["Manba", fmt(optionLabel(sourceTypes, batch.source_type))], ["Model", fmt(optionLabel(fulfillmentTypes, batch.fulfillment_type))], ["Logistika holati", statusBadge(logistics.status || "not_assigned")]])}${supplierDeliveryNote(batch)}${logisticsWarnings(logistics, batch)}`)}${section("Shartnoma transport shartlari", detailList([
       ["Yetkazib berish usuli", optionLabel(deliveryMethods, batch.transport_check?.delivery_method)],
       ["Transport to'lovi turi", optionLabel(transportPaymentTypes, batch.transport_check?.transport_payment_type)],
       ["Mijozga transport narxi", fmtMoney(batch.transport_check?.customer_price)],
@@ -1461,8 +1499,8 @@ function transportChoiceRow(row, selectedId, unit) {
   </tr>`;
 }
 
-async function transportAssignmentModal(batch) {
-  const logistics = batch.logistics || {};
+async function transportAssignmentModal(batch, tripId = null) {
+  const logistics = (batch.trips || []).find((row) => Number(row.id) === Number(tripId)) || batch.logistics || {};
   const [choices, drivers] = await Promise.all([
     api(`/api/delivery-batches/${batch.id}/transport-choices`).catch(() => null),
     fetchFleetDrivers(),
@@ -1529,11 +1567,11 @@ async function fetchFleetDrivers() {
   return [...new Set(data.items.map((item) => item.driver_name).filter(Boolean))].sort();
 }
 
-async function openTransportAssignmentModal(batch) {
-  const logistics = batch.logistics || {};
+async function openTransportAssignmentModal(batch, tripId = null) {
+  const logistics = (batch.trips || []).find((row) => Number(row.id) === Number(tripId)) || batch.logistics || {};
   if (!logistics.id) return showToast("Logistika yozuvi topilmadi.", true);
   document.querySelector(".modal-backdrop")?.remove();
-  document.body.insertAdjacentHTML("beforeend", await transportAssignmentModal(batch));
+  document.body.insertAdjacentHTML("beforeend", await transportAssignmentModal(batch, logistics.id));
   const backdrop = document.querySelector(".modal-backdrop");
   const form = document.querySelector("#transport-assignment-form");
   const close = () => backdrop?.remove();
@@ -2115,7 +2153,30 @@ function bindBatchDetailActions(batch) {
   }
 
   document.querySelectorAll("[data-transport-assignment]").forEach((button) => {
-    button.addEventListener("click", () => openTransportAssignmentModal(batch).catch((error) => showToast(error.message, true)));
+    button.addEventListener("click", () =>
+      openTransportAssignmentModal(batch, button.dataset.transportAssignment || null)
+        .catch((error) => showToast(error.message, true)));
+  });
+  document.querySelector("[data-add-trip]")?.addEventListener("click", async () => {
+    try {
+      await api(`/api/delivery-batches/${batch.id}/trips`, { method: "POST", body: JSON.stringify({}) });
+      showToast("Reys qo'shildi.");
+      renderBatchDetail(batch.id);
+    } catch (error) {
+      showToast(error.message, true);
+    }
+  });
+  document.querySelectorAll("[data-delete-trip]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      if (!confirmMsg("Reys o'chirilsinmi?")) return;
+      try {
+        await api(`/api/logistics/${button.dataset.deleteTrip}`, { method: "DELETE" });
+        showToast("Reys o'chirildi.");
+        renderBatchDetail(batch.id);
+      } catch (error) {
+        showToast(error.message, true);
+      }
+    });
   });
 
   document.querySelectorAll("[data-loading-confirmation]").forEach((button) => {

@@ -73,6 +73,11 @@ class DeliveryBatchItemRead(BaseModel):
 
 
 class LogisticsBase(BaseModel):
+    # Shu reysda tashiladigan miqdor. Reyslar yig'indisi partiya
+    # miqdorini berishi kerak. Cheklov bu yerda emas: `LogisticsBase` ni
+    # `LogisticsRead` ham meros oladi va eski yozuvni o'qib bo'lmay
+    # qolardi -- tekshiruv endpointda turadi.
+    planned_quantity: Decimal | None = None
     status: LogisticsStatus = LogisticsStatus.not_assigned
     carrier_id: int | None = None
     carrier_name: str | None = None
@@ -497,7 +502,10 @@ class DeliveryBatchDetail(DeliveryBatchRead):
     contract: ContractRead
     order: OrderRead
     items: list[DeliveryBatchItemRead] = Field(default_factory=list)
+    # `logistics` -- birinchi reys, eski nom. Partiyada bir nechta reys
+    # bo'lishi mumkin va ular `trips` da turadi.
     logistics: LogisticsRead | None = None
+    trips: list[LogisticsRead] = Field(default_factory=list)
     documents: list[DeliveryBatchDocumentRead] = Field(default_factory=list)
     notes_history: list[DeliveryBatchNoteRead] = Field(default_factory=list)
     summary: DeliveryBatchSummary | None = None

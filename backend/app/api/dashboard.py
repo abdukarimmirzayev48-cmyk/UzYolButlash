@@ -86,7 +86,7 @@ def load_context(db: Session) -> dict[str, Any]:
         "clients": db.scalars(select(Client).options(selectinload(Client.contracts), selectinload(Client.orders))).all(),
         "contracts": db.scalars(select(Contract).options(selectinload(Contract.client), selectinload(Contract.orders))).all(),
         "orders": db.scalars(select(Order).options(selectinload(Order.client), selectinload(Order.contract), selectinload(Order.delivery_batches))).all(),
-        "batches": db.scalars(select(DeliveryBatch).options(selectinload(DeliveryBatch.client), selectinload(DeliveryBatch.order), selectinload(DeliveryBatch.items), selectinload(DeliveryBatch.logistics))).all(),
+        "batches": db.scalars(select(DeliveryBatch).options(selectinload(DeliveryBatch.client), selectinload(DeliveryBatch.order), selectinload(DeliveryBatch.items), selectinload(DeliveryBatch.trips))).all(),
         "stock_allocations": db.scalars(
             select(StockAllocation).options(
                 selectinload(StockAllocation.stock_lot).selectinload(StockLot.ticket)
