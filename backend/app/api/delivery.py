@@ -676,6 +676,13 @@ def ensure_logistics(db: Session, batch: DeliveryBatch, payload: LogisticsCreate
         logistics = Logistics(**defaults)
         batch.logistics = logistics
         db.add(logistics)
+    if logistics.planned_quantity is None:
+        # Birinchi reysning miqdori ham qo'yilishi kerak, aks holda
+        # kartochka «butun miqdor reysga biriktirilmagan» deb turadi va
+        # «Reys qo'shish» takroriy reys ochib yuboradi. Sig'imdan katta
+        # bo'lsa, u sig'im bilan cheklanadi -- qolganiga yangi reys.
+        suggested = suggested_trip_quantity(db, batch)
+        logistics.planned_quantity = suggested if suggested > 0 else None
     if not logistics.planned_pickup_date:
         logistics.planned_pickup_date = batch.planned_loading_date
     if not logistics.planned_delivery_date:
