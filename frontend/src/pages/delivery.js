@@ -692,7 +692,7 @@ function batchWizardTripSplitNote(state) {
   const unit = state.order?.items?.[0]?.unit;
   if (!capacity || !quantity || quantity <= capacity) return "";
   const trips = Math.ceil(quantity / capacity);
-  return `<p class="helper-text"><span>Bu miqdor bitta sisternaga sig'maydi.</span> <span>Eng katta sig'im</span>: <b data-noloc>${fmtQty(capacity, unit)}</b> · <span>kerak bo'ladigan reys</span>: <b data-noloc>${trips}</b>. <span>Partiya yaratilgach, kartochkada shuncha reys ochiladi.</span></p>`;
+  return `<p class="helper-text"><span>Bu miqdor bitta sisternaga sig'maydi.</span> <span>Eng katta sig'im</span>: <b data-noloc>${fmtQty(capacity, unit)}</b> · <span>kerak bo'ladigan reys</span>: <b data-noloc>${trips}</b>. <span>Partiya yaratilganda shuncha reys avtomatik ochiladi -- har biriga o'z mashinasi biriktiriladi.</span></p>`;
 }
 
 // Miqdor har bosishda o'zgaradi, izoh esa panel qayta chizilmagani

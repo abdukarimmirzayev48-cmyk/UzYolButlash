@@ -1547,7 +1547,7 @@ const uzCyrillic = {
   "Partiya yakunlandi.": "Партия якунланди.",
   "Partiya yaratildi": "Партия яратилди",
   "Partiya yaratildi.": "Партия яратилди.",
-  "Partiya yaratilgach, kartochkada shuncha reys ochiladi.": "Партия яратилгач, карточкада шунча рейс очилади.",
+  "Partiya yaratilganda shuncha reys avtomatik ochiladi -- har biriga o'z mashinasi biriktiriladi.": "Партия яратилганда шунча рейс автоматик очилади -- ҳар бирига ўз машинаси бириктирилади.",
   "Partiya yaratish": "Партия яратиш",
   "Partiya yo'lga chiqdi deb belgilandi.": "Партия йўлга чиқди деб белгиланди.",
   "Partiya yo'q": "Партия йўқ",

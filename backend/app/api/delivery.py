@@ -1039,12 +1039,50 @@ def create_batch(payload: DeliveryBatchCreate, db: Session = Depends(get_db)):
     db.refresh(batch)
     update_batch_status_from_items(batch)
     logistics = ensure_logistics(db, batch, payload.logistics)
+    open_trips_to_cover(db, batch)
     link_stock_allocation_to_batch(db, batch)
     sync_order_status(order, db=db)
     db.commit()
     if logistics.vehicle_number:
         notify_driver_of_trip(db, logistics)
     return get_batch_detail(batch.id, db)
+
+
+# Bitta partiyaga ochiladigan reyslarning cheki. 461 tonna 24 tonnalik
+# sisternalarga 20 ta reysga bo'linadi -- bu haqiqat. Lekin miqdor
+# xato kiritilgan bo'lsa (masalan nol ortiqcha), yuzlab bo'sh yozuv
+# ochilib ketmasligi kerak.
+MAX_AUTO_TRIPS = 50
+
+
+def open_trips_to_cover(db: Session, batch: DeliveryBatch) -> int:
+    """Partiya miqdorini qoplaguncha reys ochadi.
+
+    Partiya yaratilganda bitta reys ochilardi, sehrgar esa «shuncha reys
+    ochiladi» deb va'da qilardi. Natijada 461 tonnalik partiyada 24
+    tonnalik bitta reys turar va qolgan 437 tonna uchun foydalanuvchi
+    tugmani 19 marta bosishi kerak edi.
+
+    Faqat o'zimiz tashiydigan partiyada ishlaydi: ta'minotchi
+    yetkazadigan partiyada reys mashinamizga bog'lanmaydi.
+    """
+    if not is_company_managed(batch):
+        return 0
+    # Birinchi reys hali yozilmagan bo'lishi mumkin: raqam takrorlanmasligi
+    # uchun avval yozib olamiz (`autoflush` o'chirilgan).
+    db.flush()
+    opened = 0
+    while opened < MAX_AUTO_TRIPS:
+        remaining = suggested_trip_quantity(db, batch)
+        if remaining <= 0:
+            break
+        trip = Logistics(**{**logistics_defaults(db, batch), "planned_quantity": remaining})
+        db.add(trip)
+        db.flush()
+        db.refresh(batch)
+        apply_delivery_point_address(db, batch, trip)
+        opened += 1
+    return opened
 
 
 MSG_TRIP_QUANTITY = "Reys miqdori 0 dan katta bo'lishi kerak."
