@@ -350,7 +350,7 @@ async function renderNewOrder() {
 }
 
 function orderWizardStepper(step) {
-  const steps = ["Shartnoma", "Mahsulot", "Manba", "Zaxira / Xarid", "Narx", "Tasdiqlash"];
+  const steps = ["Shartnoma", "Mahsulot", "Manba", "Zaxiradan ajratish", "Narx", "Tasdiqlash"];
   if (window.BitumFrontend?.components?.stepper) return window.BitumFrontend.components.stepper(steps, step);
   return `<div class="batch-wizard-stepper">${steps.map((label, index) => {
     const key = index + 1;
@@ -492,13 +492,24 @@ function matchingStockLots(state) {
   const totals = orderWizardTotals(state);
   if (totals.selected.length !== 1) return [];
   const item = totals.selected[0];
-  const name = (item.product_name || "").trim().toLowerCase();
-  const unit = (item.unit || "").trim().toLowerCase();
+  // Birlik uch xil yozilgan («t», «tn», «tonna»), shuning uchun
+  // solishtirishdan oldin bir ko'rinishga keltiriladi.
   return (state.stockLots || [])
-    .filter((lot) => (lot.product_name || "").trim().toLowerCase() === name
-      && (lot.unit || "").trim().toLowerCase() === unit
+    .filter((lot) => sameProduct(lot.product_name, lot.unit, item.product_name, item.unit)
       && numberValue(lot.quantity_available) > 0)
     .sort((a, b) => String(a.due_date || "9999").localeCompare(String(b.due_date || "9999")));
+}
+
+// Nom mos keladi, lekin miqdori tugagan yoki bloklangan partiyalar. Ular
+// «zaxira yo'q» degan xabarni aniqroq qiladi: mahsulot bor, ammo olib
+// bo'lmaydi -- bu butunlay boshqa holat.
+function unavailableStockLots(state) {
+  const totals = orderWizardTotals(state);
+  if (totals.selected.length !== 1) return [];
+  const item = totals.selected[0];
+  return (state.stockLots || []).filter((lot) =>
+    sameProduct(lot.product_name, lot.unit, item.product_name, item.unit)
+    && numberValue(lot.quantity_available) <= 0);
 }
 
 // Buyurtma miqdorini to'liq qoplaydigan birinchi partiya; qoplaydigani
@@ -585,13 +596,59 @@ function orderWizardSourcePanel(state) {
   ${orderSourceHintPanel(state)}`;
 }
 
+// Bu qadam nima qiladi: buyurtmaga zaxiradan mol biriktiradi. Uch narsa
+// bir vaqtda hal bo'ladi va uchalasi ham keyin o'zgartirilmaydi:
+//
+//   1. Miqdor band qilinadi -- o'sha tonna boshqa buyurtmaga ketmaydi.
+//   2. Ta'minotchi belgilanadi -- u ticketdan keladi, qo'lda tanlanmaydi.
+//   3. Tannarx qotadi -- foyda aynan shu partiyaning birlik narxidan
+//      hisoblanadi.
+//
+// Ilgari bu yerda faqat jadval turardi va nimaga ta'sir qilishi hech
+// qayerda yozilmagan edi.
 function orderWizardStockPanel(state) {
-  const lots = state.stockLots || [];
+  const lots = matchingStockLots(state);
   const totals = orderWizardTotals(state);
-  return `${state.stockLotWarning ? workflowWarningsPanel([state.stockLotWarning]) : ""}${tableOrEmpty(lots, ["Mahsulot", "Ta'minotchi", "Joylashuv", "Ticket", "Mavjud miqdor", "Band qilingan", "Birlik xarid narxi", "Ajratiladigan miqdor"], (lot) => `<tr><td>${fmt(lot.product_name)}</td><td>${fmt(lot.supplier_name)}</td><td>${fmt(lot.location_name)}</td><td>${fmt(lot.ticket_number)}</td><td>${fmtQty(lot.quantity_available, lot.unit)}</td><td>${fmtQty(lot.quantity_reserved, lot.unit)}</td><td>${fmtMoney(lot.unit_cost)}</td><td><label class="inline-check"><input type="radio" name="stock_lot_id" value="${lot.id}" ${Number(state.stockLotId) === lot.id ? "checked" : ""} /> Tanlash</label></td></tr>`, "Mavjud zaxira topilmadi.")}<div class="grid">${textField("stock_allocated_quantity", "Ajratiladigan miqdor", state.stockAllocatedQuantity || totals.quantity || "", "number", { required: Boolean(state.stockLotId) })}</div>
-  ${lots.length
-    ? `<p class="helper-text">Ajratilgan miqdor buyurtma miqdoriga teng bo'lishi kerak.</p>`
-    : `<p class="helper-text">Bu mahsulot bo'yicha zaxira yo'q. Buyurtmani hozir ham yaratsa bo'ladi, lekin mol kelishi uchun avval birja ticketi ochilishi kerak -- zaxira paydo bo'lgach, buyurtmaga shu yerdan ajratiladi.</p>`}`;
+  const item = totals.selected[0];
+  const chosen = lots.find((lot) => Number(lot.id) === Number(state.stockLotId));
+  const needed = numberValue(totals.quantity);
+  const available = lots.reduce((sum, lot) => sum + numberValue(lot.quantity_available), 0);
+
+  const intro = `<p class="helper-text"><span>Bu yerda tanlangan zaxira partiyasi buyurtmaning ta'minotchisini va tannarxini belgilaydi, miqdor esa band qilinadi.</span></p>`;
+
+  if (totals.selected.length !== 1) {
+    return `${intro}<div class="empty compact">Zaxiradan ajratish bitta mahsulotli buyurtma uchun ishlaydi. Bir nechta mahsulot tanlangan bo'lsa, ularni alohida buyurtmalarga bo'ling.</div>`;
+  }
+  if (!lots.length) {
+    // Nomi mos, lekin miqdori tugagan partiyalar bo'lsa, «zaxira yo'q»
+    // degan xabar chalg'itadi: mahsulot bor, faqat olib bo'lmaydi.
+    const spent = unavailableStockLots(state);
+    const reason = spent.length
+      ? `<p><span>Bu mahsulotning partiyalari bor, lekin ularda mavjud miqdor qolmagan.</span></p>`
+      : `<p><span>Bu mahsulot bo'yicha ochilgan zaxira partiyasi yo'q.</span></p>`;
+    return `${intro}<div class="empty compact"><strong>Ajratish uchun zaxira yo'q</strong>${reason}
+      <p><span>Buyurtmani hozir ham yaratsa bo'ladi. Mol kelishi uchun birja ticketi ochiladi, ticket qabul qilingach zaxira paydo bo'ladi va buyurtmaga o'shanda ajratiladi.</span></p></div>`;
+  }
+
+  const shortfall = needed - available;
+  const warning = shortfall > 0
+    ? workflowWarningsPanel([`Zaxira buyurtma miqdoridan kam: ${fmtQty(shortfall, item?.unit)} yetmaydi`])
+    : "";
+
+  return `${state.stockLotWarning ? workflowWarningsPanel([state.stockLotWarning]) : ""}${intro}${warning}
+  ${tableOrEmpty(lots, ["Tanlash", "Ticket", "Ta'minotchi", "Joylashuv", "Mavjud miqdor", "Birlik xarid narxi", "To'lov muddati"], (lot) => `<tr>
+    <td><label class="inline-check"><input type="radio" name="stock_lot_id" value="${lot.id}" ${Number(state.stockLotId) === lot.id ? "checked" : ""} /> <span>Tanlash</span></label></td>
+    <td data-noloc>${fmt(lot.ticket_number)}</td>
+    <td data-noloc>${fmt(lot.supplier_name)}</td>
+    <td data-noloc>${fmt(lot.location_name)}</td>
+    <td>${fmtQty(lot.quantity_available, lot.unit)}</td>
+    <td class="number-cell">${fmtMoney(lot.unit_cost)}</td>
+    <td data-noloc>${fmt(lot.due_date)}</td>
+  </tr>`, "Mavjud zaxira topilmadi.")}
+  <div class="grid">${textField("stock_allocated_quantity", "Ajratiladigan miqdor", state.stockAllocatedQuantity || totals.quantity || "", "number", { required: Boolean(state.stockLotId) })}</div>
+  ${chosen
+    ? `<p class="form-hint"><span>Ta'minotchi</span>: <b data-noloc>${fmt(chosen.supplier_name)}</b> · <span>Tannarx</span>: <b data-noloc>${fmtMoney(chosen.unit_cost)}</b> · <span>Buyurtma miqdori</span>: <b data-noloc>${fmtQty(needed, item?.unit)}</b></p>`
+    : `<p class="form-hint">Yuqoridagi jadvaldan zaxira partiyasini tanlang.</p>`}`;
 }
 
 // The cards live in their own container so a keystroke in the markup or
@@ -634,7 +691,7 @@ function orderWizardConfirmPanel(state) {
     ${section("Shartnoma", detailList([["Shartnoma raqami", state.contract?.contract_number], ["Mijoz", state.contract?.client?.name], ["Amal qilish muddati", state.contract?.valid_until]]))}
     ${section("Mahsulot", detailList([["Mahsulot", productText], ["Miqdor", fmtQty(totals.quantity, totals.selected?.[0]?.unit)], ["Mahsulot summasi (QQS bilan)", fmtMoney(totals.subtotal + totals.vat)], ["Saqlangandan keyingi qoldiq", remainingText]]))}
     ${section("Manba va model", detailList([["Manba", optionLabel(sourceTypes, state.sourceType)], ["Yetkazib berish modeli", optionLabel(fulfillmentTypes, state.fulfillmentType)], ["Ustama summasi", fmtMoney(totals.markupAmount)]]))}
-    ${section("Zaxira / Xarid", state.stockLotId ? detailList([["Zaxira partiyasi", lot?.ticket_number], ["Ta'minotchi", lot?.supplier_name], ["Ticket", lot?.ticket_number], ["Ajratilgan miqdor", fmtQty(state.stockAllocatedQuantity, lot?.unit)], ["Birlik xarid narxi", fmtMoney(lot?.unit_cost)]]) : `<div class="empty">Xarid jarayoni avtomatik ochiladi. Ta'minotchi holati: Tanlanmagan.</div>`)}
+    ${section("Zaxiradan ajratish", state.stockLotId ? detailList([["Ticket", lot?.ticket_number], ["Ta'minotchi", lot?.supplier_name], ["Ajratilgan miqdor", fmtQty(state.stockAllocatedQuantity, lot?.unit)], ["Birlik xarid narxi", fmtMoney(lot?.unit_cost)]]) : `<div class="empty">Zaxira ajratilmadi. Mol kelishi uchun birja ticketi ochilishi kerak.</div>`)}
     ${section("Narx", detailList([["Mahsulot summasi (QQSsiz)", fmtMoney(totals.subtotal)], ["QQS", fmtMoney(totals.vat)], ["Ustama summasi", fmtMoney(totals.markupAmount)], ["Logistika narxi", state.fulfillmentType === "direct_supplier_to_customer" ? dash : fmtMoney(totals.logistics)], ["Mijozdan undiriladigan jami", fmtMoney(totals.total)]]))}
   </div>`;
 }
@@ -722,7 +779,7 @@ function orderWizardBody(state) {
   // mumkinligini belgilaydi -- tuzga stansiya, bitumga ABZ.
   if (state.step === 2) return section("Mahsulot va miqdor", `${orderRequiredDateField(state)}${orderWizardProductsTable(state)}<div class="grid">${deliveryPointPicker("Yetkazish nuqtasi", state.deliveryPointId, state.deliveryPointOptions || [])}</div><p class="form-hint">Shartnomadagi nuqta oldindan qo'yiladi; boshqa joyga jo'natilsa shu yerda o'zgartiriladi. Bu manzil yetkazish partiyasi va haydovchi yo'l varaqasiga o'tadi.</p>`);
   if (state.step === 3) return section("Manba va yetkazib berish modeli", orderWizardSourcePanel(state));
-  if (state.step === 4) return section("Zaxira / Xarid", orderWizardStockPanel(state));
+  if (state.step === 4) return section("Zaxiradan ajratish", orderWizardStockPanel(state));
   if (state.step === 5) return section("Narx va logistika", orderWizardPricePanel(state));
   return section("Tekshirish va yaratish", orderWizardConfirmPanel(state));
 }
@@ -816,9 +873,7 @@ async function renderOrderWizard() {
     if (!state.preselectedStockLotId) return;
     const selectedLot = await api(`/api/stock-lots/${state.preselectedStockLotId}`).catch(() => null);
     if (!selectedLot || products.length !== 1) return;
-    const sameProduct = selectedLot.product_name?.trim().toLowerCase() === selectedItem?.product_name?.trim().toLowerCase();
-    const sameUnit = selectedLot.unit?.trim().toLowerCase() === selectedItem?.unit?.trim().toLowerCase();
-    if (!sameProduct || !sameUnit) {
+    if (!sameProduct(selectedLot.product_name, selectedLot.unit, selectedItem?.product_name, selectedItem?.unit)) {
       state.stockLotWarning = `Tanlangan zaxira (${selectedLot.product_name}, ${selectedLot.unit}) buyurtma mahsulotiga mos emas (${selectedItem?.product_name}, ${selectedItem?.unit}).`;
       return;
     }
@@ -1211,7 +1266,7 @@ function orderTabs(active, order = {}, related = {}) {
   const items = [
     ["general", "Umumiy"],
     ["products", "Mahsulotlar", order.items?.length ?? 0],
-    ["supplier", "Zaxira / Xarid", related.allocations?.length || (order.supplier_options?.length ?? 0)],
+    ["supplier", "Zaxiradan ajratish", related.allocations?.length || (order.supplier_options?.length ?? 0)],
     ["batches", "Partiyalar", order.summary?.delivery_batches_count ?? 0],
     ["price", "Moliya", related.invoices?.length ?? 0],
     ["documents", "Hujjatlar", order.documents?.length ?? 0],
@@ -1297,7 +1352,7 @@ function orderSupplierTab(order, related = {}) {
     // partiyaga to'lanadi, buyurtmaga esa olingan ulushi tegishli.
     const allocationCost = (allocation) => numberValue(allocation.allocated_quantity) * numberValue((lotsById.get(allocation.stock_lot_id) || {}).unit_cost);
     const stockCost = allocations.reduce((sum, allocation) => sum + allocationCost(allocation), 0);
-    return section("Zaxira / Xarid", `
+    return section("Zaxiradan ajratish", `
       ${detailList([["Manba", optionLabel(sourceTypes, order.source_type)], ["Zaxira holati", allocations.length ? "Zaxiradan ajratilgan" : "Zaxira ajratilmagan"], ["Ta'minotchi", order.supplier_name], ["Zaxira tannarxi (QQSsiz)", fmtMoney(stockCost)]])}
       ${canEdit("taminot") ? `<div class="actions"><button class="btn primary" type="button" data-order-stock>Zaxiradan ajratish</button></div>` : ""}
       ${tableOrEmpty(allocations, ["Mahsulot", "Ta'minotchi", "Ticket", "Joylashuv", "Ajratilgan miqdor", "Birlik xarid narxi", "Tannarx", "Status"], (allocation) => {

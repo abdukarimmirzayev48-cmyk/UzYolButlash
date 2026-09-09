@@ -29,6 +29,7 @@ from backend.app.models.inventory import (
     StockStatus,
 )
 from backend.app.models.order import Order, OrderItem, SupplierStatus
+from backend.app.services.units import same_product
 from backend.app.models.supplier import Supplier, SupplierAddress, SupplierAddressType
 from backend.app.schemas.client import Page
 from backend.app.schemas.inventory import (
@@ -772,9 +773,12 @@ def reserve_stock_for_order(
     order_item = db.get(OrderItem, order_item_id) if order_item_id else None
     if order_item_id and (not order_item or order_item.order_id != order_id):
         raise HTTPException(status_code=422, detail="Buyurtma mahsuloti ushbu buyurtmaga tegishli emas.")
-    if order_item and (
-        lot.product_name.strip().lower() != order_item.product_name.strip().lower()
-        or lot.unit.strip().lower() != order_item.unit.strip().lower()
+    # Birlik bir xil narsani anglatsa ham uch xil yozilgan («t», «tn»,
+    # «tonna»), shuning uchun solishtirishdan oldin bir ko'rinishga
+    # keltiriladi -- aks holda omborda turgan mol buyurtmaga «mos emas»
+    # bo'lib chiqadi.
+    if order_item and not same_product(
+        lot.product_name, lot.unit, order_item.product_name, order_item.unit
     ):
         raise HTTPException(
             status_code=422,

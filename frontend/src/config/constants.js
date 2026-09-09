@@ -767,3 +767,30 @@ Object.assign(uzTranslations, {
   "documents_pending": "Hujjatlar kutilmoqda",
 });
 
+// Bitta tonna bazada uch xil yozilgan: «t», «tn», «tonna». Zaxira
+// buyurtmaga nom va birlikning aynan mos tushishi bo'yicha izlanadi,
+// shuning uchun solishtirishdan oldin bir ko'rinishga keltiriladi.
+// Backenddagi services/units.py bilan bir xil ro'yxat.
+const UNIT_ALIASES = {
+  t: "t", tn: "t", ton: "t", tonn: "t", tonna: "t",
+  "т": "t", "тн": "t", "тонна": "t",
+  kg: "kg", kilogramm: "kg", "кг": "kg", "килограмм": "kg",
+  l: "l", litr: "l", "л": "l", "литр": "l",
+  dona: "dona", sht: "dona", dn: "dona", "шт": "dona", "дона": "dona",
+  m3: "m3", "м3": "m3",
+};
+
+function normalizeUnit(value) {
+  const text = String(value ?? "").trim().toLowerCase().replace(/[\s.]+/g, "");
+  if (!text) return "";
+  return UNIT_ALIASES[text] || text;
+}
+
+function normalizeProductName(value) {
+  return String(value ?? "").trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+function sameProduct(nameA, unitA, nameB, unitB) {
+  return normalizeProductName(nameA) === normalizeProductName(nameB)
+    && normalizeUnit(unitA) === normalizeUnit(unitB);
+}

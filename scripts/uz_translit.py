@@ -92,7 +92,8 @@ _PAIRS = [
     ("yo", "ё"), ("Yo", "Ё"), ("YO", "Ё"),
     ("yu", "ю"), ("Yu", "Ю"), ("YU", "Ю"),
     ("ye", "е"), ("Ye", "Е"), ("YE", "Е"),
-    ("ts", "ц"), ("Ts", "Ц"),
+    # «ts» ni bu yerdan olib tashladik -- u so'z ichida ikki xil o'qiladi
+    # va uni _mark_tse() alohida hal qiladi.
     ("a", "а"), ("b", "б"), ("d", "д"), ("e", "е"), ("f", "ф"), ("g", "г"),
     ("h", "ҳ"), ("i", "и"), ("j", "ж"), ("k", "к"), ("l", "л"), ("m", "м"),
     ("n", "н"), ("o", "о"), ("p", "п"), ("q", "қ"), ("r", "р"), ("s", "с"),
@@ -124,6 +125,27 @@ _KEEP_RE = re.compile(
 )
 
 
+# «ts» ikki xil o'qiladi va buni bitta qoida bilan hal qilib bo'lmaydi.
+#
+# Ruscha o'zlashmalarda u «ц»: operatsiya -> операция, tsement -> цемент,
+# protsent -> процент. O'zbekcha fe'llarda esa «т» va «с» ikki alohida
+# harf: yaratsa -> яратса, ketsin -> кетсин. Ilgari hamma joyda «ц»
+# qo'yilardi va «яраца», «кецин» kabi so'zlar chiqardi.
+#
+# Farq davomida. O'zlashmada «ts» dan keyin «a» dan boshqa unli keladi:
+# operatsiya, spetsifikatsiya, koeffitsient, tsement, protsent. Fe'l
+# qo'shimchalarida esa «a» yoki «in» keladi: yaratsa, ketsin, aytsinlar.
+# So'z oxiridagi «ts» ham «тс» bo'lib qoladi (scripts -> скриптс).
+#
+# ALL-CAPS qisqartma («TS») bu qoidaga tushmaydi: u so'z emas, belgi.
+_TSE_RE = re.compile(r"\bts|\bTs|ts(?!in)(?=[eiouy])|Ts(?!in)(?=[eiouy])")
+
+
+def _mark_tse(word: str) -> str:
+    """O'zlashma «ts» ni belgilab qo'yamiz; qolgani «тс» bo'lib qoladi."""
+    return _TSE_RE.sub(lambda m: "\x03" if m.group(0)[0] == "t" else "\x04", word)
+
+
 def _translit_word(word: str) -> str:
     # Word-initial "e" is "э" (eslatma -> эслатма). Done up front on the Latin
     # text so the "e" inside a ye/yo digraph is never caught: in "Yetkazib" the
@@ -134,9 +156,11 @@ def _translit_word(word: str) -> str:
     # hech qachon so'z boshi emas.
     out = re.sub(r"(?<!['’])\be", "\x01", word)
     out = re.sub(r"(?<!['’])\bE", "\x02", out)
+    out = _mark_tse(out)
     for latin, cyr in _PAIRS:
         out = out.replace(latin, cyr)
     out = out.replace("\x01", "э").replace("\x02", "Э")
+    out = out.replace("\x03", "ц").replace("\x04", "Ц")
     # Tutuq belgisi: a leftover apostrophe becomes ъ (o'/g' already consumed).
     out = out.replace("'", "ъ").replace("’", "ъ")
     return out

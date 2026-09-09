@@ -57,6 +57,7 @@ const uzCyrillic = {
   "Ajratilgan miqdor buyurtma miqdoriga teng bo'lishi kerak.": "Ажратилган миқдор буюртма миқдорига тенг бўлиши керак.",
   "Ajratilgan miqdor buyurtma miqdorini to'liq qoplamaydi.": "Ажратилган миқдор буюртма миқдорини тўлиқ қопламайди.",
   "Ajratish": "Ажратиш",
+  "Ajratish uchun zaxira yo'q": "Ажратиш учун захира йўқ",
   "Akt / zakaz-naryad": "Акт / заказ-наряд",
   "Aktiv": "Актив",
   "Aktiv buyurtmalar": "Актив буюртмалар",
@@ -121,7 +122,7 @@ const uzCyrillic = {
   "Avgust": "Август",
   "Avto": "Авто",
   "Avtomatik": "Автоматик",
-  "Avtomatik sinxronlash agenti hali ishlamagan. Qarang: scripts/HIKVISION_AGENT_SETUP.md": "Автоматик синхронлаш агенти ҳали ишламаган. Қаранг: скрипц/HIKVISION_AGENT_SETUP.мд",
+  "Avtomatik sinxronlash agenti hali ishlamagan. Qarang: scripts/HIKVISION_AGENT_SETUP.md": "Автоматик синхронлаш агенти ҳали ишламаган. Қаранг: скриптс/HIKVISION_AGENT_SETUP.мд",
   "Avtomatik statusga qaytarish": "Автоматик статусга қайтариш",
   "Avval buyurtmani tanlang.": "Аввал буюртмани танланг.",
   "Avval hududni tanlang.": "Аввал ҳудудни танланг.",
@@ -320,9 +321,10 @@ const uzCyrillic = {
   "Bu kod ma'lumotnomada yo'q. Kodni tekshiring yoki nuqtani xaritadan belgilang.": "Бу код маълумотномада йўқ. Кодни текширинг ёки нуқтани харитадан белгиланг.",
   "Bu login band.": "Бу логин банд.",
   "Bu ma'lumot tashqi reyestrdan keladi va tizimda tahrirlanmaydi.": "Бу маълумот ташқи реестрдан келади ва тизимда таҳрирланмайди.",
-  "Bu mahsulot bo'yicha zaxira yo'q. Buyurtmani hozir ham yaratsa bo'ladi, lekin mol kelishi uchun avval birja ticketi ochilishi kerak -- zaxira paydo bo'lgach, buyurtmaga shu yerdan ajratiladi.": "Бу маҳсулот бўйича захира йўқ. Буюртмани ҳозир ҳам яраца бўлади, лекин мол келиши учун аввал биржа тикети очилиши керак -- захира пайдо бўлгач, буюртмага шу ердан ажратилади.",
+  "Bu mahsulot bo'yicha ochilgan zaxira partiyasi yo'q.": "Бу маҳсулот бўйича очилган захира партияси йўқ.",
   "Bu mahsulot zaxirada bor": "Бу маҳсулот захирада бор",
   "Bu mahsulotni o'chirishni tasdiqlaysizmi?": "Бу маҳсулотни ўчиришни тасдиқлайсизми?",
+  "Bu mahsulotning partiyalari bor, lekin ularda mavjud miqdor qolmagan.": "Бу маҳсулотнинг партиялари бор, лекин уларда мавжуд миқдор қолмаган.",
   "Bu mashina SMN monitoringiga biriktirilmagan": "Бу машина СМН мониторингига бириктирилмаган",
   "Bu mashinaga biriktirilgan reys yo'q.": "Бу машинага бириктирилган рейс йўқ.",
   "Bu maydonlar mijoz kartochkasidan olinadi. O'zgartirish kerak bo'lsa, mijoz kartochkasida to'g'rilang.": "Бу майдонлар мижоз карточкасидан олинади. Ўзгартириш керак бўлса, мижоз карточкасида тўғриланг.",
@@ -351,6 +353,7 @@ const uzCyrillic = {
   "Bu topshiriqning muddati o'tib ketgan.": "Бу топшириқнинг муддати ўтиб кетган.",
   "Bu turkumdagi mahsulot odatda qanday yetkaziladi. Partiya yaratilganda oldindan tanlanadi, keyin almashtirish mumkin.": "Бу туркумдаги маҳсулот одатда қандай етказилади. Партия яратилганда олдиндан танланади, кейин алмаштириш мумкин.",
   "Bu xodimni va uning barcha davomat yozuvlarini o'chirishni tasdiqlaysizmi?": "Бу ходимни ва унинг барча давомат ёзувларини ўчиришни тасдиқлайсизми?",
+  "Bu yerda tanlangan zaxira partiyasi buyurtmaning ta'minotchisini va tannarxini belgilaydi, miqdor esa band qilinadi.": "Бу ерда танланган захира партияси буюртманинг таъминотчисини ва таннархини белгилайди, миқдор эса банд қилинади.",
   "Bu yozuv shartnomadan butunlay o'chiriladi.": "Бу ёзув шартномадан бутунлай ўчирилади.",
   "Bu zaxiradan hali birorta buyurtmaga ajratilmagan.": "Бу захирадан ҳали бирорта буюртмага ажратилмаган.",
   "Bugun": "Бугун",
@@ -427,6 +430,7 @@ const uzCyrillic = {
   "Buyurtmalar yuklanmoqda...": "Буюртмалар юкланмоқда...",
   "Buyurtmalari bo'lgan shartnomani o'chirib bo'lmaydi. Avval uning buyurtmalarini bekor qiling yoki olib tashlang.": "Буюртмалари бўлган шартномани ўчириб бўлмайди. Аввал унинг буюртмаларини бекор қилинг ёки олиб ташланг.",
   "Buyurtmalarni ko'rish": "Буюртмаларни кўриш",
+  "Buyurtmani hozir ham yaratsa bo'ladi. Mol kelishi uchun birja ticketi ochiladi, ticket qabul qilingach zaxira paydo bo'ladi va buyurtmaga o'shanda ajratiladi.": "Буюртмани ҳозир ҳам яратса бўлади. Мол келиши учун биржа тикети очилади, тикет қабул қилингач захира пайдо бўлади ва буюртмага ўшанда ажратилади.",
   "Buyurtmani ochish": "Буюртмани очиш",
   "Buyurtmani tahrirlash": "Буюртмани таҳрирлаш",
   "Buyurtmani tanlang": "Буюртмани танланг",
@@ -2486,7 +2490,6 @@ const uzCyrillic = {
   "Xarajat summasi": "Харажат суммаси",
   "Xarajatlar": "Харажатлар",
   "Xarid jarayoni": "Харид жараёни",
-  "Xarid jarayoni avtomatik ochiladi. Ta'minotchi holati: Tanlanmagan.": "Харид жараёни автоматик очилади. Таъминотчи ҳолати: Танланмаган.",
   "Xarid jarayonida avtomatik tanlanadi": "Харид жараёнида автоматик танланади",
   "Xarid kirimi": "Харид кирими",
   "Xarid tasdiqlangan": "Харид тасдиқланган",
@@ -2724,6 +2727,7 @@ const uzCyrillic = {
   "Yuklashni tasdiqlash": "Юклашни тасдиқлаш",
   "Yuksiz harakatda": "Юксиз ҳаракатда",
   "Yuqori": "Юқори",
+  "Yuqoridagi jadvaldan zaxira partiyasini tanlang.": "Юқоридаги жадвалдан захира партиясини танланг.",
   "Yura olmaydi": "Юра олмайди",
   "Yuridik": "Юридик",
   "Yuridik manzil": "Юридик манзил",
@@ -2738,7 +2742,7 @@ const uzCyrillic = {
   "Zarar bilan buyurtmalar yo'q.": "Зарар билан буюртмалар йўқ.",
   "Zavod": "Завод",
   "Zaxira": "Захира",
-  "Zaxira / Xarid": "Захира / Харид",
+  "Zaxira ajratilmadi. Mol kelishi uchun birja ticketi ochilishi kerak.": "Захира ажратилмади. Мол келиши учун биржа тикети очилиши керак.",
   "Zaxira ajratilmagan": "Захира ажратилмаган",
   "Zaxira band qilingan, lekin partiya hali ulanmagan.": "Захира банд қилинган, лекин партия ҳали уланмаган.",
   "Zaxira buyurtmaga ajratishga tayyor": "Захира буюртмага ажратишга тайёр",
@@ -2763,6 +2767,7 @@ const uzCyrillic = {
   "Zaxiradan ajratildi.": "Захирадан ажратилди.",
   "Zaxiradan ajratilgan": "Захирадан ажратилган",
   "Zaxiradan ajratish": "Захирадан ажратиш",
+  "Zaxiradan ajratish bitta mahsulotli buyurtma uchun ishlaydi. Bir nechta mahsulot tanlangan bo'lsa, ularni alohida buyurtmalarga bo'ling.": "Захирадан ажратиш битта маҳсулотли буюртма учун ишлайди. Бир нечта маҳсулот танланган бўлса, уларни алоҳида буюртмаларга бўлинг.",
   "Zaxiradan olish": "Захирадан олиш",
   "Zaxiraga olingan": "Захирага олинган",
   "Zaxiraga olingan sana": "Захирага олинган сана",
@@ -2819,6 +2824,7 @@ const uzCyrillic = {
   "so'm": "сўм",
   "soat": "соат",
   "supplier_id majburiy.": "supplier_id мажбурий.",
+  "t": "т",
   "t/kun": "т/кун",
   "ta hujjat": "та ҳужжат",
   "ta mashinada": "та машинада",
@@ -2873,6 +2879,7 @@ const uzCyrillicPatterns = {
   "Xodimlar sinxronlandi: {n} ta yangi, {n} ta mavjud edi.{n}": "Ходимлар синхронланди: {n} та янги, {n} та мавжуд эди.{n}",
   "Yetkazib berish muddati {n} kun oldin o'tgan.": "Етказиб бериш муддати {n} кун олдин ўтган.",
   "Yuklangan, lekin mijoz hali qabul qilmagan miqdor: {n}": "Юкланган, лекин мижоз ҳали қабул қилмаган миқдор: {n}",
+  "Zaxira buyurtma miqdoridan kam: {n} yetmaydi": "Захира буюртма миқдоридан кам: {n} етмайди",
   "kechikish: {n} daq.": "кечикиш: {n} дақ.",
   "keldi: {n}": "келди: {n}",
   "{n} Fayl yuklash": "{n} Файл юклаш",
@@ -2938,7 +2945,7 @@ const uzCyrillicPatterns = {
 };
 
 
-const uzCyrillicPairs = [["o'", "ў"], ["O'", "Ў"], ["g'", "ғ"], ["G'", "Ғ"], ["sh", "ш"], ["Sh", "Ш"], ["SH", "Ш"], ["ch", "ч"], ["Ch", "Ч"], ["CH", "Ч"], ["ya", "я"], ["Ya", "Я"], ["YA", "Я"], ["yo", "ё"], ["Yo", "Ё"], ["YO", "Ё"], ["yu", "ю"], ["Yu", "Ю"], ["YU", "Ю"], ["ye", "е"], ["Ye", "Е"], ["YE", "Е"], ["ts", "ц"], ["Ts", "Ц"], ["a", "а"], ["b", "б"], ["d", "д"], ["e", "е"], ["f", "ф"], ["g", "г"], ["h", "ҳ"], ["i", "и"], ["j", "ж"], ["k", "к"], ["l", "л"], ["m", "м"], ["n", "н"], ["o", "о"], ["p", "п"], ["q", "қ"], ["r", "р"], ["s", "с"], ["t", "т"], ["u", "у"], ["v", "в"], ["x", "х"], ["y", "й"], ["z", "з"], ["c", "к"], ["w", "в"], ["A", "А"], ["B", "Б"], ["D", "Д"], ["E", "Е"], ["F", "Ф"], ["G", "Г"], ["H", "Ҳ"], ["I", "И"], ["J", "Ж"], ["K", "К"], ["L", "Л"], ["M", "М"], ["N", "Н"], ["O", "О"], ["P", "П"], ["Q", "Қ"], ["R", "Р"], ["S", "С"], ["T", "Т"], ["U", "У"], ["V", "В"], ["X", "Х"], ["Y", "Й"], ["Z", "З"], ["C", "К"], ["W", "В"]];
+const uzCyrillicPairs = [["o'", "ў"], ["O'", "Ў"], ["g'", "ғ"], ["G'", "Ғ"], ["sh", "ш"], ["Sh", "Ш"], ["SH", "Ш"], ["ch", "ч"], ["Ch", "Ч"], ["CH", "Ч"], ["ya", "я"], ["Ya", "Я"], ["YA", "Я"], ["yo", "ё"], ["Yo", "Ё"], ["YO", "Ё"], ["yu", "ю"], ["Yu", "Ю"], ["YU", "Ю"], ["ye", "е"], ["Ye", "Е"], ["YE", "Е"], ["a", "а"], ["b", "б"], ["d", "д"], ["e", "е"], ["f", "ф"], ["g", "г"], ["h", "ҳ"], ["i", "и"], ["j", "ж"], ["k", "к"], ["l", "л"], ["m", "м"], ["n", "н"], ["o", "о"], ["p", "п"], ["q", "қ"], ["r", "р"], ["s", "с"], ["t", "т"], ["u", "у"], ["v", "в"], ["x", "х"], ["y", "й"], ["z", "з"], ["c", "к"], ["w", "в"], ["A", "А"], ["B", "Б"], ["D", "Д"], ["E", "Е"], ["F", "Ф"], ["G", "Г"], ["H", "Ҳ"], ["I", "И"], ["J", "Ж"], ["K", "К"], ["L", "Л"], ["M", "М"], ["N", "Н"], ["O", "О"], ["P", "П"], ["Q", "Қ"], ["R", "Р"], ["S", "С"], ["T", "Т"], ["U", "У"], ["V", "В"], ["X", "Х"], ["Y", "Й"], ["Z", "З"], ["C", "К"], ["W", "В"]];
 const uzCyrillicProtected = ["UzYolButlash", "Bitum ERP", "MAN TGS", "Hikvision", "Telegram", "ERP", "PDF", "CSV", "XLSX", "Excel", "API", "ID", "SMS", "URL", "Email", "UZS", "USD", "EUR", "RUB", "KZT", "Didox", "Rouming", "MXIK", "IKPU", "STIR", "GPS", "Ctrl"];
 // Oddiy o'girish xato qiladigan alohida so'zlar. Python tomonidagi
 // scripts/uz_translit.py WORD_FIXES bilan bir xil bo'lishi shart.
