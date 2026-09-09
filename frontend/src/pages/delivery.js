@@ -452,7 +452,7 @@ function measurements(form, names) {
 }
 
 function applySelectedTransport(form) {
-  const selected = form.elements.transport_id?.selectedOptions?.[0];
+  const selected = form.querySelector("[name='transport_id']:checked") || form.elements.transport_id?.selectedOptions?.[0];
   if (!selected?.value) return;
   if (form.elements.carrier_id) form.elements.carrier_id.value = selected.value;
   form.elements.driver_name.value = selected.dataset.driver || "";
@@ -1425,13 +1425,51 @@ function batchActiveTab(batch, active) {
   return `${section("Asosiy ma'lumotlar", detailList([["Partiya sanasi", batch.batch_date], ["Reja yuklash sanasi", batch.planned_loading_date], ["Reja yetkazish sanasi", batch.planned_delivery_date], ["Manba", optionLabel(sourceTypes, batch.source_type)], ["Yetkazib berish modeli", optionLabel(fulfillmentTypes, batch.fulfillment_type)], ["Buyurtma", batch.order?.order_number], ["Shartnoma", batch.contract?.contract_number], ["Mijoz", batch.client?.name]]))}${section("Miqdor xulosasi", `${summaryCards([["Reja", fmtQty(batch.summary?.total_planned_quantity, batch.items?.[0]?.unit)], ["Yuklangan", fmtQty(batch.summary?.total_loaded_quantity, batch.items?.[0]?.unit)], ["Qabul qilingan", quantityDisplay(batch.summary?.total_accepted_quantity, batch.items?.[0]?.unit)], ["Farq", quantityDisplay(batch.summary?.total_difference_quantity, batch.items?.[0]?.unit)]])}<p class="helper-text">Farq faqat qabul miqdori kiritilgandan keyin hisoblanadi.</p>`)}${section("Logistika xulosasi", detailList([["Tashuvchi", logistics.carrier_name], ["Haydovchi", logistics.driver_name], ["Haydovchi telefoni", logistics.driver_phone], ["Transport raqami", logistics.vehicle_number], ["Tirkama raqami", logistics.trailer_number], ["Yuklash manzili", logistics.loading_address], ["Yetkazish manzili", logistics.delivery_address], ["Logistika holati", optionLabel(logisticsStatuses, logistics.status)]]))}${section("Moliya va hujjatlar", summaryCards([["Mijoz hisobi", "Hisoblar modulida"], ["Ta'minotchi hisobi", "Ta'minotchi hisoblari modulida"], ["Transport xarajati", fmtMoney(logistics.cost_amount)], ["Mijozga transport narxi", fmtMoney(logistics.customer_price)], ["TTN", batch.documents?.some((doc) => doc.document_type === "ttn") ? "Yuklangan" : "Yuklanmagan"], ["Qabul dalolatnomasi", batch.documents?.some((doc) => doc.document_type === "acceptance_act") ? "Yuklangan" : "Yuklanmagan"], ["Sifat sertifikati", batch.documents?.some((doc) => doc.document_type === "quality_certificate") ? "Yuklangan" : "Yuklanmagan"]]))}`;
 }
 
+// Transport tanlash oddiy ro'yxat edi: davlat raqami, haydovchi va
+// ikkita belgi. Dispetcher esa boshqa savollarga javob izlaydi -- qaysi
+// mashina bo'sh, qaysi biri yuklash nuqtasiga yaqin, bakida yoqilg'i
+// yetadimi, sig'imi yukni ko'taradimi. Ularning hech biri ekranda yo'q
+// edi, natijada ikkita mashina bir vaqtda ikkitadan reysga biriktirilib
+// qolgan.
+function transportChoiceRow(row, selectedId, unit) {
+  const blocked = (row.blockers || []).length > 0;
+  const live = row.live || {};
+  const state = !live.object_id
+    ? statusChip({ label: "Monitoringda yo'q", tone: "muted" })
+    : live.online
+      ? statusChip(live.moving ? { label: "Harakatda", tone: "success" } : { label: "To'xtagan", tone: "muted" })
+      : statusChip({ label: "Aloqa yo'q", tone: "warning" });
+  const notes = [
+    ...(row.blockers || []).map((text) => `<span class="text-danger">${esc(localizeText(text))}</span>`),
+    ...(row.warnings || []).map((text) => `<span class="muted">${esc(localizeText(text))}</span>`),
+  ].join(" · ") || dash;
+  return `<tr class="${blocked ? "row-muted" : ""}">
+    <td><label class="inline-check"><input type="radio" name="transport_id" value="${row.id}"
+      data-driver="${esc(row.driver_name || "")}" data-phone="${esc(row.driver_phone || "")}"
+      data-vehicle="${esc(row.vehicle_number || "")}" data-trailer="${esc(row.trailer_number || "")}"
+      ${Number(selectedId) === row.id ? "checked" : ""} ${blocked ? "disabled" : ""} /> <span>Tanlash</span></label></td>
+    <td data-noloc>${esc(row.vehicle_number || "")}</td>
+    <td data-noloc>${fmt(row.driver_name)}</td>
+    <td>${row.capacity_tons != null ? fmtQty(row.capacity_tons, "t") : dash}</td>
+    <td>${state}</td>
+    <td>${row.distance_km != null ? fmtQty(row.distance_km, "km") : dash}</td>
+    <td>${live.fuel_liters != null ? fmtQty(live.fuel_liters, "litr") : dash}</td>
+    <td>${notes}</td>
+  </tr>`;
+}
+
 async function transportAssignmentModal(batch) {
   const logistics = batch.logistics || {};
-  const transportOptions = await fetchTransportsForSelect(logistics.transport_id || logistics.carrier_id);
-  const drivers = await fetchFleetDrivers();
+  const [choices, drivers] = await Promise.all([
+    api(`/api/delivery-batches/${batch.id}/transport-choices`).catch(() => null),
+    fetchFleetDrivers(),
+  ]);
+  const rows = choices?.items || [];
+  const unit = batch.items?.[0]?.unit;
   const quantity = batch.summary?.total_planned_quantity || batch.items?.[0]?.planned_quantity;
+  const ready = rows.filter((row) => !(row.blockers || []).length && !(row.warnings || []).length).length;
   return `<div class="modal-backdrop" data-modal-close>
-    <section class="modal-panel" role="dialog" aria-modal="true" aria-labelledby="transport-modal-title">
+    <section class="modal-panel wide" role="dialog" aria-modal="true" aria-labelledby="transport-modal-title">
       <div class="modal-header">
         <h2 id="transport-modal-title">Transportni biriktirish</h2>
         <button class="modal-close" type="button" data-modal-close aria-label="Yopish">×</button>
@@ -1443,20 +1481,23 @@ async function transportAssignmentModal(batch) {
             ["Buyurtma", batch.order?.order_number],
             ["Mijoz", batch.client?.name],
             ["Mahsulot", batchPrimaryProduct(batch)],
-            ["Miqdor", fmtQty(quantity, batch.items?.[0]?.unit)],
+            ["Miqdor", fmtQty(quantity, unit)],
             ["Yuklash manzili", logistics.loading_address],
             ["Yetkazish manzili", logistics.delivery_address],
             ["Reja yuklash sanasi", logistics.planned_pickup_date || batch.planned_loading_date],
             ["Reja yetkazish sanasi", logistics.planned_delivery_date || batch.planned_delivery_date],
           ])}</div>
+          <p class="helper-text"><span>Tayyor mashina</span>: <b data-noloc>${ready}</b><span data-noloc> / ${rows.length}</span>${choices && !choices.live_available ? ` · <span>${esc(localizeText(choices.live_reason || "Monitoring ulanmagan"))}</span>` : ""}${choices && !choices.loading_point ? ` · <span>Yuklash nuqtasi tanlanmagan, masofa hisoblanmadi</span>` : ""}</p>
+          ${tableOrEmpty(rows, ["Tanlash", "Transport", "Haydovchi", "Sig'im", "Holati", "Yuklashgacha", "Bakda", "Izoh"],
+            (row) => transportChoiceRow(row, logistics.transport_id, unit), "Parkda mashina yo'q.")}
           <div class="grid">
-            <label><span class="field-label-text">Transport</span><select name="transport_id"><option value="">Transportni tanlang</option>${transportOptions}</select></label>
             ${driverField(logistics, drivers)}
             ${textField("driver_phone", "Haydovchi telefoni", logistics.driver_phone)}
-            ${textField("vehicle_number", "Transport raqami", logistics.vehicle_number, "text", { required: true })}
-            ${textField("trailer_number", "Tirkama raqami", logistics.trailer_number)}
+            ${readonlyField("vehicle_number", "Transport raqami", logistics.vehicle_number)}
+            ${readonlyField("trailer_number", "Tirkama raqami", logistics.trailer_number)}
             ${textArea("notes", "Izoh", logistics.notes)}
           </div>
+          <p class="helper-text">Transport raqami va tirkama tanlangan mashinadan olinadi. Haydovchi mashina kartochkasidan qo'yiladi -- smenaga qarab o'zgartirsa bo'ladi.</p>
           <p class="helper-text">Reys vaqtlari, xarajat va mijoz narxi partiyani to'liq tahrirlashda kiritiladi.</p>
         </div>
         <div class="modal-footer">
@@ -1496,11 +1537,16 @@ async function openTransportAssignmentModal(batch) {
   backdrop?.addEventListener("click", (event) => {
     if (event.target.matches("[data-modal-close]")) close();
   });
-  form?.elements.transport_id?.addEventListener("change", () => applySelectedTransport(form));
+  // Radio -- bittalik ro'yxat emas, shuning uchun har biriga alohida
+  // bog'lanadi.
+  form?.querySelectorAll("[name='transport_id']").forEach((input) =>
+    input.addEventListener("change", () => applySelectedTransport(form)));
   form?.addEventListener("submit", async (event) => {
     event.preventDefault();
     const driver = field(form, "driver_name");
     const vehicle = field(form, "vehicle_number");
+    const chosen = form.querySelector("[name='transport_id']:checked");
+    if (!chosen) return showToast("Ro'yxatdan mashinani tanlang.", true);
     const status = vehicle ? "vehicle_assigned" : driver ? "carrier_assigned" : "not_assigned";
     try {
       await api(`/api/logistics/${logistics.id}`, {
@@ -1511,7 +1557,7 @@ async function openTransportAssignmentModal(batch) {
           driver_phone: field(form, "driver_phone"),
           vehicle_number: vehicle,
           trailer_number: field(form, "trailer_number"),
-          transport_id: field(form, "transport_id") ? Number(field(form, "transport_id")) : null,
+          transport_id: Number(chosen.value),
           notes: field(form, "notes"),
         }),
       });
@@ -1522,7 +1568,7 @@ async function openTransportAssignmentModal(batch) {
       showToast(error.message, true);
     }
   });
-  form?.elements.transport_id?.focus();
+  form?.querySelector("[name='transport_id']:not([disabled])")?.focus();
 }
 
 function loadingConfirmationModal(batch) {

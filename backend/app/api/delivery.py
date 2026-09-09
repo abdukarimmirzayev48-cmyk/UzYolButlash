@@ -31,14 +31,16 @@ from backend.app.models.finance import CustomerInvoice
 from backend.app.models.inventory import StockAllocation
 from backend.app.models.user import User
 from backend.app.models.order import FulfillmentType, Order, OrderItem
-from backend.app.models.transport import Transport, TransportEvent, TransportEventCheckResult, TransportEventType
+from backend.app.models.transport import Transport, TransportEvent, TransportEventCheckResult, TransportEventType, UNAVAILABLE_STATUSES
 from backend.app.services import delivery_stats
 from backend.app.services import fuel_watch
 from backend.app.services import delivery_method as delivery_method_service
 from backend.app.api.transports import live_payload as transport_live_payload
+from backend.app.api.transports import transports_live
 from backend.app.services import point_distance
 from backend.app.services import smn
 from backend.app.services import track_distance
+from backend.app.services import transport_choice
 from backend.app.services import trip_completion_check
 from backend.app.services.delivery_method import default_method_for
 from backend.app.services.auth import get_current_user, require_edit
@@ -270,6 +272,26 @@ def guard_transport_model(batch: DeliveryBatch | None, transport_id) -> None:
     """Ta'minotchi yetkazadigan partiyaga o'z mashinamiz biriktirilmaydi."""
     if transport_id and not is_company_managed(batch):
         raise HTTPException(status_code=422, detail=MSG_DIRECT_NO_TRANSPORT)
+
+
+def guard_transport_available(db: Session, transport_id) -> None:
+    """Ta'mirdagi yoki faol bo'lmagan mashinaga reys berilmaydi.
+
+    Xabar allaqachon yozilgan edi (`MSG_TRANSPORT_UNAVAILABLE`), lekin
+    hech qayerda tekshirilmasdi -- ya'ni ta'mirda turgan mashinani reysga
+    chiqarib yuborish mumkin edi.
+    """
+    if not transport_id:
+        return
+    transport = db.get(Transport, transport_id)
+    if not transport:
+        raise HTTPException(status_code=422, detail=MSG_TRANSPORT_NOT_FOUND)
+    if transport.status in UNAVAILABLE_STATUSES:
+        label = transport_choice.MSG_UNAVAILABLE.get(transport.status, transport.status.value)
+        raise HTTPException(
+            status_code=422,
+            detail=f"{MSG_TRANSPORT_UNAVAILABLE}: {label}",
+        )
 
 
 def is_company_managed(batch: DeliveryBatch | None) -> bool:
@@ -569,6 +591,7 @@ def ensure_logistics(db: Session, batch: DeliveryBatch, payload: LogisticsCreate
     data = payload.model_dump(exclude_unset=True) if payload else {}
     validate_logistics_dates(data)
     guard_transport_model(batch, data.get("transport_id"))
+    guard_transport_available(db, data.get("transport_id"))
     if logistics:
         if not logistics.logistics_number:
             logistics.logistics_number = unique_logistics_number(db, batch)
@@ -919,6 +942,25 @@ def create_batch(payload: DeliveryBatchCreate, db: Session = Depends(get_db)):
     if logistics.vehicle_number:
         notify_driver_of_trip(db, logistics)
     return get_batch_detail(batch.id, db)
+
+
+@router.get("/{batch_id}/transport-choices")
+def batch_transport_choices(batch_id: int, db: Session = Depends(get_db)) -> dict:
+    """Bu partiyaga qaysi mashinani berish mumkin -- sabablari bilan.
+
+    Dispetcher oynasi shu javobdan quriladi: har bir mashinaning holati,
+    yuklash nuqtasigacha masofasi, bakdagi yoqilg'i, band-emasligi va
+    sig'imi bitta ro'yxatda turadi.
+    """
+    batch = load_batch_detail(db, batch_id)
+    live = transports_live(db)
+    return {
+        "planned_quantity": transport_choice.planned_quantity(batch),
+        "loading_point": batch.loading_point.name if batch.loading_point else None,
+        "live_available": live.get("available", False),
+        "live_reason": live.get("reason"),
+        "items": transport_choice.build_candidates(db, batch, live),
+    }
 
 
 @router.get("/{batch_id}", response_model=DeliveryBatchDetail)
@@ -1600,6 +1642,7 @@ def update_logistics(logistics_id: int, payload: LogisticsUpdate, db: Session = 
     data = payload.model_dump(exclude_unset=True)
     validate_logistics_dates(data)
     guard_transport_model(logistics.batch, data.get("transport_id"))
+    guard_transport_available(db, data.get("transport_id"))
     requested_status = data.get("status")
     update_model(logistics, data)
     if requested_status == LogisticsStatus.completed:

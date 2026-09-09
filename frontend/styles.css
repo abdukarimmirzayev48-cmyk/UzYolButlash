@@ -2945,6 +2945,12 @@ tr:last-child td {
   color: var(--danger);
 }
 
+/* Berib bo'lmaydigan mashina qatori: ko'rinadi, lekin tanlanmaydi --
+   sababi yonida yozilgan. */
+tr.row-muted {
+  opacity: 0.55;
+}
+
 td > small.muted,
 td > small.text-danger,
 td > small.muted > a {
