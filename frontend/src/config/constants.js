@@ -52,9 +52,14 @@ const orderStatuses = [
   ["cancelled", "Bekor qilingan"],
 ];
 
+// Nomlar aynan nima bo'lishini aytadi: model endi haqiqiy qoida bo'lib,
+// partiyaga o'z mashinamiz biriktiriladimi-yo'qmi -- shuni belgilaydi.
+// «To'g'ridan-to'g'ri» va «Biz boshqaramiz» buni ayta olmasdi: birinchisi
+// nimadan nimagaligini aytmasdi, ikkinchisi esa «boshqarish» degan
+// noaniq so'z edi.
 const fulfillmentTypes = [
-  ["direct_supplier_to_customer", "To'g'ridan-to'g'ri"],
-  ["company_managed_delivery", "Biz boshqaramiz"],
+  ["direct_supplier_to_customer", "Ta'minotchi yetkazadi"],
+  ["company_managed_delivery", "Biz tashiymiz"],
 ];
 
 const sourceTypes = [

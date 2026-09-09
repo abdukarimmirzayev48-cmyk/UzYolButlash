@@ -30,7 +30,7 @@ from backend.app.models.delivery import (
 from backend.app.models.finance import CustomerInvoice
 from backend.app.models.inventory import StockAllocation
 from backend.app.models.user import User
-from backend.app.models.order import Order, OrderItem
+from backend.app.models.order import FulfillmentType, Order, OrderItem
 from backend.app.models.supplier import SupplierAddress, SupplierAddressType
 from backend.app.models.transport import Transport, TransportEvent, TransportEventCheckResult, TransportEventType
 from backend.app.services import delivery_stats
@@ -256,6 +256,50 @@ def preferred_supplier_address(db: Session, supplier_id: int | None) -> str | No
 MSG_TIMELINE_ORDER = "Reys vaqtlari ketma-ketligi buzilgan: keyingi nuqta oldingisidan erta bo'lishi mumkin emas."
 MSG_TRANSPORT_NOT_FOUND = "Tanlangan mashina topilmadi."
 MSG_TRANSPORT_UNAVAILABLE = "Mashina hozir yo'lga chiqa olmaydi"
+
+# Yetkazib berish modeli endi haqiqiy qoida, shunchaki yorliq emas.
+#
+# Ilgari model faqat bitta narsani qilardi -- buyurtmadagi logistika
+# narxini nolga tushirardi. Qolgan hamma joyda ikkala model bir xil
+# ishlardi: har qanday partiyaga to'liq logistika yozuvi ochilardi va
+# istalganiga o'z mashinamizni biriktirsa bo'lardi. Natijada 26 ta
+# «ta'minotchi yetkazadi» partiyasidan 23 tasiga o'z transportimiz
+# biriktirilgan edi -- ya'ni yozuv bir narsani, amaldagi ish boshqa
+# narsani ko'rsatardi.
+#
+# Endi model transportni belgilaydi: ta'minotchi yetkazadigan partiyaga
+# mashina biriktirilmaydi. O'zimiz tashiydigan bo'lsak, avval model
+# to'g'rilanadi -- shunda hujjat ham, hisob ham haqiqatga mos keladi.
+MSG_DIRECT_NO_TRANSPORT = (
+    "Bu partiyani ta'minotchi yetkazadi, shuning uchun unga transport "
+    "biriktirilmaydi. O'zimiz tashiydigan bo'lsak, partiyada yetkazib "
+    "berish modelini «Biz tashiymiz» qilib o'zgartiring."
+)
+MSG_MODEL_HAS_TRANSPORT = (
+    "Partiyaga transport biriktirilgan. Modelni «Ta'minotchi yetkazadi» "
+    "ga o'zgartirishdan oldin transportni olib tashlang."
+)
+
+
+def enum_str(value) -> str:
+    """Enum ham, satr ham kelishi mumkin -- bazaga satr yoziladi."""
+    return value.value if hasattr(value, "value") else str(value)
+
+
+def guard_transport_model(batch: DeliveryBatch | None, transport_id) -> None:
+    """Ta'minotchi yetkazadigan partiyaga o'z mashinamiz biriktirilmaydi."""
+    if transport_id and not is_company_managed(batch):
+        raise HTTPException(status_code=422, detail=MSG_DIRECT_NO_TRANSPORT)
+
+
+def is_company_managed(batch: DeliveryBatch | None) -> bool:
+    """Partiyani o'zimiz tashiymizmi.
+
+    Model partiyada saqlanadi (buyurtmadan meros bo'lib tushadi), chunki
+    bitta buyurtmaning bir partiyasini o'zimiz, ikkinchisini ta'minotchi
+    yetkazishi mumkin.
+    """
+    return bool(batch) and batch.fulfillment_type == FulfillmentType.company_managed_delivery.value
 
 
 def apply_measurements(logistics: Logistics, payload, fields: tuple[str, ...]) -> None:
@@ -544,6 +588,7 @@ def ensure_logistics(db: Session, batch: DeliveryBatch, payload: LogisticsCreate
     requested_status = payload.status if payload else None
     data = payload.model_dump(exclude_unset=True) if payload else {}
     validate_logistics_dates(data)
+    guard_transport_model(batch, data.get("transport_id"))
     if logistics:
         if not logistics.logistics_number:
             logistics.logistics_number = unique_logistics_number(db, batch)
@@ -855,7 +900,9 @@ def create_batch(payload: DeliveryBatchCreate, db: Session = Depends(get_db)):
     data = payload.model_dump(exclude={"items", "logistics", "documents", "initial_note"})
     data["client_id"] = order.client_id
     data["contract_id"] = order.contract_id
-    data["fulfillment_type"] = order.fulfillment_type.value
+    # Model partiyaga bog'lanadi: buyurtmadan meros bo'ladi, lekin operator
+    # aynan shu partiya uchun boshqacha qilib qo'yishi mumkin.
+    data["fulfillment_type"] = enum_str(data.get("fulfillment_type") or order.fulfillment_type)
     data["source_type"] = order.source_type.value
     # Yetkazish usuli ko'rsatilmagan bo'lsa, mahsulot turkumlaridan
     # chiqariladi -- operator uni partiya oynasida almashtira oladi.
@@ -1039,9 +1086,14 @@ def confirm_batch_loading(batch_id: int, payload: DeliveryBatchLoadingConfirm, d
     logistics = batch.logistics
     if not logistics:
         raise HTTPException(status_code=422, detail="Yuklandi deb belgilash uchun avval transportni biriktiring.")
-    allowed_statuses = {LogisticsStatus.carrier_assigned, LogisticsStatus.vehicle_assigned, LogisticsStatus.loading}
-    if logistics.status not in allowed_statuses and batch.status != BatchStatus.ready_for_loading:
-        raise HTTPException(status_code=422, detail="Yuklandi deb belgilash uchun avval transportni biriktiring.")
+    # Transport talabi faqat o'zimiz tashiydigan partiyaga tegishli.
+    # Ta'minotchi yetkazadigan partiyaga mashina biriktirilmaydi, ya'ni bu
+    # tekshiruv uni hech qachon o'tkazmas edi -- yuklashni belgilashning
+    # iloji bo'lmay qolardi.
+    if is_company_managed(batch):
+        allowed_statuses = {LogisticsStatus.carrier_assigned, LogisticsStatus.vehicle_assigned, LogisticsStatus.loading}
+        if logistics.status not in allowed_statuses and batch.status != BatchStatus.ready_for_loading:
+            raise HTTPException(status_code=422, detail="Yuklandi deb belgilash uchun avval transportni biriktiring.")
     if not batch.items:
         raise HTTPException(status_code=422, detail="Partiya mahsulotlari topilmadi.")
     planned_total = qty(sum((item.planned_quantity or Decimal("0") for item in batch.items), Decimal("0")))
@@ -1092,7 +1144,9 @@ def confirm_batch_delivery(batch_id: int, payload: DeliveryBatchDeliveryConfirm,
         raise HTTPException(status_code=422, detail="Yetkazildi deb belgilash uchun avval transportni biriktiring.")
     if batch.status in {BatchStatus.cancelled, BatchStatus.issue, BatchStatus.completed}:
         raise HTTPException(status_code=422, detail="Ushbu partiya holatida yetkazishni tasdiqlab bo'lmaydi.")
-    if not logistics.vehicle_number and not logistics.carrier_name and not logistics.driver_name:
+    # Mashina va haydovchi -- o'zimiz tashiydigan reysning shartlari.
+    # Ta'minotchi yetkazadigan partiyada ular bo'lmaydi.
+    if is_company_managed(batch) and not logistics.vehicle_number and not logistics.carrier_name and not logistics.driver_name:
         raise HTTPException(status_code=422, detail="Yetkazildi deb belgilash uchun avval transportni biriktiring.")
     actual_loading_date = logistics.actual_pickup_date or batch.actual_loading_date
     if not actual_loading_date:
@@ -1194,10 +1248,20 @@ def update_batch(batch_id: int, payload: DeliveryBatchUpdate, db: Session = Depe
             raise HTTPException(status_code=422, detail="Partiyada kamida bitta mahsulot bo'lishi kerak.")
         validate_items(db, order, payload.items, batch.id)
     data = payload.model_dump(exclude_unset=True, exclude={"items", "logistics"})
+    if data.get("fulfillment_type") is not None:
+        data["fulfillment_type"] = enum_str(data["fulfillment_type"])
+        # «Ta'minotchi yetkazadi» ga o'tishda mashina qolib ketmasin: aks
+        # holda yozuv «biz tashimaymiz» deb turadi, ostida esa bizning
+        # mashinamiz, odometri va yoqilg'i hisobi bilan.
+        if data["fulfillment_type"] != FulfillmentType.company_managed_delivery.value \
+                and batch.logistics and batch.logistics.transport_id:
+            raise HTTPException(status_code=422, detail=MSG_MODEL_HAS_TRANSPORT)
     if "order_id" in data:
         data["client_id"] = order.client_id
         data["contract_id"] = order.contract_id
-        data["fulfillment_type"] = order.fulfillment_type.value
+        # Buyurtma almashtirilsa model ham yangi buyurtmadan olinadi --
+        # foydalanuvchi aynan shu so'rovda boshqacha aytmagan bo'lsa.
+        data.setdefault("fulfillment_type", order.fulfillment_type.value)
         data["source_type"] = order.source_type.value
         # Yetkazish nuqtasi buyurtmadan meros bo'ladi: u shartnomadan
         # buyurtmaga, buyurtmadan partiyaga tushadi va yo'lda yo'qolmaydi.
@@ -1567,6 +1631,7 @@ def update_logistics(logistics_id: int, payload: LogisticsUpdate, db: Session = 
     old_vehicle_number = logistics.vehicle_number
     data = payload.model_dump(exclude_unset=True)
     validate_logistics_dates(data)
+    guard_transport_model(logistics.batch, data.get("transport_id"))
     requested_status = data.get("status")
     update_model(logistics, data)
     if requested_status == LogisticsStatus.completed:

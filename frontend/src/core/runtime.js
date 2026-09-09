@@ -2262,10 +2262,18 @@ function logisticsTimeline(logistics = {}, batch = {}) {
   return detailList(steps);
 }
 
+// Yetkazib berish modeli endi haqiqiy qoida, shunchaki yorliq emas: faqat
+// «Biz tashiymiz» partiyasida transport, reys va yoqilg'i bo'limlari
+// ko'rinadi va so'raladi. Backenddagi `is_company_managed` bilan bir xil
+// shart -- ikkovi bir-biriga zid javob bermasin.
+function isCompanyManaged(batch) {
+  return (batch?.fulfillment_type || batch?.order?.fulfillment_type) === "company_managed_delivery";
+}
+
 function logisticsWarnings(logistics = {}, batch = {}) {
   const warnings = [];
   if (logistics.status === "completed" && !logistics.actual_delivery_date) warnings.push("Yakunlangan logistika uchun haqiqiy yetkazish sanasi kiritilmagan.");
-  if (["loaded", "in_transit", "delivered"].includes(logistics.status) && !logistics.vehicle_number) warnings.push("Bu holat uchun transport raqami kiritilishi kerak.");
+  if (isCompanyManaged(batch) && ["loaded", "in_transit", "delivered"].includes(logistics.status) && !logistics.vehicle_number) warnings.push("Bu holat uchun transport raqami kiritilishi kerak.");
   if (batch.summary?.has_quantity_difference) warnings.push("Partiyada yuklangan va qabul qilingan miqdor farqi bor.");
   return warnings.length ? `<div class="empty error">${warnings.map(esc).join("<br>")}</div>` : "";
 }
@@ -2308,7 +2316,7 @@ function batchWarningMessages(batch = {}) {
   const warnings = [];
   const qStatus = batchQuantityStatus(batch);
   const dStatus = batchDocumentStatus(batch);
-  if (!logistics || logistics.status === "not_assigned") warnings.push("Transport biriktirilmagan.");
+  if (isCompanyManaged(batch) && (!logistics || logistics.status === "not_assigned")) warnings.push("Transport biriktirilmagan.");
   if (!batchHasAcceptedInput(batch)) warnings.push("Qabul qilingan miqdor hali kiritilmagan.");
   // Server farqni miqdorda ham, pulda ham hisoblab beradi va qaror qabul
   // qilinmaganini aytadi -- shunda ogohlantirish «farq bor» degan quruq
@@ -2336,8 +2344,10 @@ function batchNextAction(batch = {}) {
   const logistics = batch.logistics || {};
   const docs = batchDocumentStatus(batch);
   if (!logistics.id) return { title: "Logistika yozuvini yarating", button: "Logistika yaratish", path: `/delivery-batches/${batch.id}/edit` };
-  if (logistics.status === "not_assigned") return { title: "Transportni biriktiring", button: "Transport biriktirish", modal: "transport" };
-  if (["carrier_assigned", "vehicle_assigned", "loading"].includes(logistics.status) && !logistics.actual_pickup_date) return { title: "Haqiqiy yuklash sanasini kiriting", button: "Yuklandi deb belgilash", modal: "loading" };
+  // Ta'minotchi yetkazadigan partiyada transport bosqichi yo'q: keyingi
+  // qadam to'g'ridan-to'g'ri yuklashni tasdiqlash bo'ladi.
+  if (logistics.status === "not_assigned" && isCompanyManaged(batch)) return { title: "Transportni biriktiring", button: "Transport biriktirish", modal: "transport" };
+  if (!logistics.actual_pickup_date && (logistics.status === "not_assigned" || ["carrier_assigned", "vehicle_assigned", "loading"].includes(logistics.status))) return { title: "Haqiqiy yuklash sanasini kiriting", button: "Yuklandi deb belgilash", modal: "loading" };
   if (logistics.status === "loaded") return { title: "Yo'lga chiqdi deb belgilang", button: "Yo'lga chiqdi", action: "transit" };
   if (["in_transit", "arrived", "unloading"].includes(logistics.status) && !logistics.actual_delivery_date) return { title: "Yetkazilgan sanani kiriting", button: "Yetkazildi deb belgilash", modal: "delivery" };
   if (logistics.actual_delivery_date && !batchHasAcceptedInput(batch)) return { title: "Qabul qilingan miqdorni kiriting", button: "Qabul miqdorini kiritish", modal: "acceptance" };

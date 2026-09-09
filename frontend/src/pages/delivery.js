@@ -603,6 +603,10 @@ async function enrichBatchWizardState(state, orderId) {
   // Server mahsulot turkumlaridan chiqarib beradi; operator keyin
   // 3-qadamda o'zgartira oladi.
   state.deliveryMethod ||= state.order.suggested_delivery_method || "auto";
+  // Model buyurtmadan meros bo'ladi, lekin partiyaga bog'lanadi: bitta
+  // buyurtmaning bir partiyasini o'zimiz tashishimiz, ikkinchisini
+  // ta'minotchi yetkazishi mumkin.
+  state.fulfillmentType = state.order.fulfillment_type || "direct_supplier_to_customer";
   // Yetkazish nuqtasi buyurtmada ko'rsatilgan bo'lsa, partiyada ham o'sha
   // bo'ladi -- operator uni qaytadan izlamaydi.
   state.deliveryPointId ||= state.order.delivery_point_id ? String(state.order.delivery_point_id) : "";
@@ -681,15 +685,19 @@ function batchWizardQuantityTable(state) {
 
 function batchWizardSourcePanel(state) {
   if (!state.order) return `<div class="empty">Avval buyurtmani tanlang.</div>`;
-  const companyManaged = state.order.fulfillment_type === "company_managed_delivery";
+  const companyManaged = state.fulfillmentType === "company_managed_delivery";
   return `${wizardSupplierWarning(state)}${summaryCards([
     ["Manba", fmt(optionLabel(sourceTypes, state.order.source_type))],
-    ["Yetkazib berish modeli", fmt(optionLabel(fulfillmentTypes, state.order.fulfillment_type))],
+    ["Buyurtmadagi model", fmt(optionLabel(fulfillmentTypes, state.order.fulfillment_type))],
     ["Ta'minotchi", fmt(state.supplierName)],
     ["Ta'minotchi holati", fmt(optionLabel(supplierStatuses, state.order.supplier_status))],
   ])}
-  <div class="grid">${selectField("delivery_method", "Yetkazish usuli", deliveryMethods, state.deliveryMethod || "auto", { required: true })}</div>
-  <p class="form-hint">Mahsulot turkumidan oldindan tanlangan. Bu partiya boshqacha ketayotgan bo'lsa, o'zgartiring.</p><div class="empty compact">${companyManaged ? "Bu partiya kompaniya tomonidan boshqariladigan logistika orqali yetkaziladi. Partiya yaratilgandan so'ng logistika yozuvi avtomatik ochiladi." : "Bu partiya ta'minotchidan mijozga to'g'ridan-to'g'ri yetkaziladi. Logistika ma'lumotlari minimal ko'rinishda yuritiladi."}</div>`;
+  <div class="grid">
+    ${selectField("fulfillment_type", "Yetkazib berish modeli", fulfillmentTypes, state.fulfillmentType, { required: true })}
+    ${selectField("delivery_method", "Yetkazish usuli", deliveryMethods, state.deliveryMethod || "auto", { required: true })}
+  </div>
+  <p class="form-hint">Model buyurtmadan olinadi. Aynan shu partiyani boshqa tomon tashiydigan bo'lsa, shu yerda o'zgartiring.</p>
+  <div class="empty compact">${companyManaged ? "Bu partiyani o'zimiz tashiymiz: transport biriktiriladi, reys vaqti, yoqilg'i va masofa nazorat qilinadi." : "Bu partiyani ta'minotchi mijozga o'zi yetkazadi: transport biriktirilmaydi, yoqilg'i va reys hisobi yuritilmaydi. Sana, manzil, hujjat va qabul miqdori qoladi."}</div>`;
 }
 
 // Ikki nuqta orasidagi masofa koordinatalardan o'lchanadi. Bu taxmin --
@@ -761,7 +769,7 @@ function batchWizardConfirmPanel(state) {
   return `<div class="confirm-grid">
     ${section("Buyurtma", detailList([["Buyurtma raqami", state.order.order_number], ["Mijoz", state.order.client?.name], ["Shartnoma", state.order.contract?.contract_number]]))}
     ${section("Mahsulot va miqdor", detailList([["Mahsulot", selectedProducts || dash], ["Reja miqdor", fmtQty(totals.selected, state.order.items?.[0]?.unit)], ["Buyurtma qoldig'i", fmtQty(totals.remaining, state.order.items?.[0]?.unit)], ["Saqlangandan keyingi qoldiq", fmtQty(afterRemaining, state.order.items?.[0]?.unit)]]))}
-    ${section("Manba va model", detailList([["Manba", optionLabel(sourceTypes, state.order.source_type)], ["Yetkazib berish modeli", optionLabel(fulfillmentTypes, state.order.fulfillment_type)], ["Yetkazish usuli", "Avto"], ["Ta'minotchi", state.supplierName]]))}
+    ${section("Manba va model", detailList([["Manba", optionLabel(sourceTypes, state.order.source_type)], ["Yetkazib berish modeli", optionLabel(fulfillmentTypes, state.fulfillmentType)], ["Yetkazish usuli", "Avto"], ["Ta'minotchi", state.supplierName]]))}
     ${section("Reja", detailList([["Reja yuklash sanasi", state.plannedLoadingDate], ["Reja yetkazish sanasi", state.plannedDeliveryDate], ["Yuklash nuqtasi", pointNameById(state, state.loadingPointId)], ["Yetkazish nuqtasi", pointNameById(state, state.deliveryPointId)], ["Reja masofa", state.plannedDistanceKm ? fmtQty(state.plannedDistanceKm, "km") : null]]))}
   </div>`;
 }
@@ -814,7 +822,7 @@ function validateBatchWizardStep(state, targetStep = state.step) {
   if (targetStep >= 4 && state.plannedDeliveryDate < state.plannedLoadingDate) return "Reja yetkazish sanasi reja yuklash sanasidan oldin bo'lishi mumkin emas.";
   // Manzil endi qo'lda yozilmaydi -- u nuqta kartochkasidan keladi, shuning
   // uchun so'raladigan narsa ham nuqtaning o'zi.
-  if (targetStep >= 4 && state.order?.fulfillment_type === "company_managed_delivery" && !state.loadingPointId) return "Yuklash nuqtasini tanlang.";
+  if (targetStep >= 4 && state.fulfillmentType === "company_managed_delivery" && !state.loadingPointId) return "Yuklash nuqtasini tanlang.";
   if (targetStep >= 4 && !state.deliveryPointId) return "Yetkazish nuqtasini tanlang.";
   return null;
 }
@@ -823,6 +831,7 @@ function collectBatchWizardPayload(state) {
   const today = todayIso();
   return {
     order_id: state.order.id,
+    fulfillment_type: state.fulfillmentType,
     batch_number: generatedBatchNumber(state.order.order_number),
     batch_date: today,
     planned_loading_date: state.plannedLoadingDate,
@@ -870,6 +879,7 @@ function syncBatchWizardInputs(state) {
   }
   if (form.elements.notes) state.notes = form.elements.notes.value.trim();
   if (form.elements.delivery_method) state.deliveryMethod = form.elements.delivery_method.value;
+  if (form.elements.fulfillment_type) state.fulfillmentType = form.elements.fulfillment_type.value;
 }
 
 function renderBatchWizard(state) {
@@ -958,6 +968,7 @@ async function batchWizardForm() {
     notes: "",
     supplierName: "",
     supplierId: null,
+    fulfillmentType: "direct_supplier_to_customer",
   };
   if (prefillOrderId) await enrichBatchWizardState(state, prefillOrderId);
   return state;
@@ -980,6 +991,7 @@ function collectBatchItems(form) {
 function collectBatchPayload(form) {
   return {
     order_id: Number(field(form, "order_id")),
+    fulfillment_type: field(form, "fulfillment_type") || undefined,
     batch_number: field(form, "batch_number"),
     batch_date: field(form, "batch_date"),
     planned_loading_date: field(form, "planned_loading_date"),
@@ -1136,7 +1148,7 @@ async function batchForm(batch = null) {
         </div>` })}
         ${detailCard({ icon: "box", title: "Mahsulotlar", body: `<div id="batch-items">${order ? rows.map((item, index) => batchItemRow(order.items, item, index, balances)).join("") : `<div class="empty">Avval buyurtmani tanlang.</div>`}</div><button type="button" class="btn" id="add-batch-item" ${order ? "" : "disabled"}>Mahsulot qo'shish</button><div class="totals-bar"><div class="total-box"><span>Reja</span><strong data-batch-planned>${dash}</strong></div><div class="total-box"><span>Yuklangan</span><strong data-batch-loaded>${dash}</strong></div><div class="total-box"><span>Qabul qilingan</span><strong data-batch-accepted>${dash}</strong></div><div class="total-box"><span>Farq</span><strong data-batch-diff>${dash}</strong></div></div>` })}
         ${detailCard({ icon: "truck", title: "Manba va yetkazib berish modeli", body: `<div class="grid">
-          <label>Yetkazib berish modeli<input value="${esc(optionLabel(fulfillmentTypes, batch?.fulfillment_type || order?.fulfillment_type))}" disabled /></label>
+          ${selectField("fulfillment_type", "Yetkazib berish modeli", fulfillmentTypes, batch?.fulfillment_type || order?.fulfillment_type || "direct_supplier_to_customer")}
           <label>Manba<input value="${esc(optionLabel(sourceTypes, batch?.source_type || order?.source_type))}" disabled /></label>
           <label>Yetkazish usuli<input value="auto" disabled /></label>
           <input type="hidden" name="supplier_id" value="${esc(batch?.supplier_id || order?.supplier_id || "")}" />
@@ -1356,7 +1368,7 @@ function batchHeader(batch) {
         <summary>Amallar</summary>
         <div>
           <button type="button" data-nav="/delivery-batches/${batch.id}?tab=quantity">Qabul miqdorini kiritish</button>
-          ${editable ? `<button type="button" data-transport-assignment>Transport biriktirish</button>` : ""}
+          ${editable && isCompanyManaged(batch) ? `<button type="button" data-transport-assignment>Transport biriktirish</button>` : ""}
           <button type="button" data-nav="/delivery-batches/${batch.id}?tab=logistics">Logistika</button>
           ${editable ? `<button type="button" data-nav="/delivery-batches/${batch.id}/edit">To'liq tahrirlash</button>` : ""}
           ${canEdit("moliya") ? `<button type="button" data-nav="/customer-invoices/new?client_id=${batch.client_id}&contract_id=${batch.contract_id}&order_id=${batch.order_id}&delivery_batch_id=${batch.id}">Mijoz hisobi yaratish</button>
@@ -1372,6 +1384,11 @@ function batchTabs(active) {
   return `<div class="tabs workflow-tabs">${[["general", "Umumiy"], ["quantity", "Miqdor"], ["logistics", "Logistika"], ["finance", "Moliya"], ["documents", "Hujjatlar"], ["history", "Tarix"]].map(([key, label]) => `<button class="tab ${active === key ? "active" : ""}" data-batch-tab="${key}">${label}</button>`).join("")}</div>`;
 }
 
+function supplierDeliveryNote(batch) {
+  if (isCompanyManaged(batch)) return "";
+  return `<p class="helper-text"><span>Bu partiyani ta'minotchi mijozga o'zi yetkazadi: transport biriktirilmaydi, reys va yoqilg'i hisobi yuritilmaydi.</span> <span>O'zimiz tashiydigan bo'lsak, partiyani tahrirlashda modelni o'zgartiring.</span></p>`;
+}
+
 function batchActiveTab(batch, active) {
   const editable = canEdit("yetkazib_berish");
   if (active === "quantity") return section("Miqdor", `${editable ? `<div class="actions"><button class="btn primary" data-focus-acceptance>Qabul miqdorini kiritish</button></div>` : ""}<p class="helper-text">Farq faqat qabul miqdori kiritilgandan keyin hisoblanadi.</p><form id="batch-quantity-form">${tableOrEmpty(batch.items, ["Mahsulot", "Birlik", "Reja", "Yuklangan", "Qabul qilingan", "Farq", "Miqdor holati", "Izoh"], (item) => {
@@ -1380,11 +1397,16 @@ function batchActiveTab(batch, active) {
   }, "Mahsulotlar hali yo'q.")}${editable ? `<div class="form-footer"><button class="btn primary" type="submit">Miqdorlarni saqlash</button></div>` : ""}</form>`);
   if (active === "logistics") {
     const logistics = batch.logistics || {};
-    return `${section("Logistika xulosasi", `<div class="actions">${editable ? `<button class="btn primary" type="button" data-transport-assignment>Transportni biriktirish</button>` : ""}${logistics.id ? `<button class="btn" data-nav="/logistics/${logistics.id}">Logistika sahifasi</button>` : ""}</div>${summaryCards([["Logistika raqami", fmt(logisticsNumber(logistics, batch))], ["Partiya", fmt(batch.batch_number)], ["Buyurtma", fmt(batch.order?.order_number)], ["Mijoz", fmt(batch.client?.name)], ["Mahsulot", fmt(batchPrimaryProduct(batch))], ["Miqdor", fmtQty(batch.summary?.total_planned_quantity, batch.items?.[0]?.unit)], ["Manba", fmt(optionLabel(sourceTypes, batch.source_type))], ["Model", fmt(optionLabel(fulfillmentTypes, batch.fulfillment_type))], ["Logistika holati", statusBadge(logistics.status || "not_assigned")]])}${logisticsWarnings(logistics, batch)}`)}${section("Shartnoma transport shartlari", detailList([
+    const weHaul = isCompanyManaged(batch);
+    // Ta'minotchi yetkazadigan partiyada bizning mashinamiz yo'q, ya'ni
+    // reys vaqti, yoqilg'i va probeg ham yo'q. Ilgari bu bo'limlar
+    // baribir chizilardi va bo'sh turardi -- odam esa ularni to'ldirishi
+    // kerakmi yoki yo'qmi, bilmasdi.
+    return `${section("Logistika xulosasi", `<div class="actions">${editable && weHaul ? `<button class="btn primary" type="button" data-transport-assignment>Transportni biriktirish</button>` : ""}${logistics.id ? `<button class="btn" data-nav="/logistics/${logistics.id}">Logistika sahifasi</button>` : ""}</div>${summaryCards([["Logistika raqami", fmt(logisticsNumber(logistics, batch))], ["Partiya", fmt(batch.batch_number)], ["Buyurtma", fmt(batch.order?.order_number)], ["Mijoz", fmt(batch.client?.name)], ["Mahsulot", fmt(batchPrimaryProduct(batch))], ["Miqdor", fmtQty(batch.summary?.total_planned_quantity, batch.items?.[0]?.unit)], ["Manba", fmt(optionLabel(sourceTypes, batch.source_type))], ["Model", fmt(optionLabel(fulfillmentTypes, batch.fulfillment_type))], ["Logistika holati", statusBadge(logistics.status || "not_assigned")]])}${supplierDeliveryNote(batch)}${logisticsWarnings(logistics, batch)}`)}${section("Shartnoma transport shartlari", detailList([
       ["Yetkazib berish usuli", optionLabel(deliveryMethods, batch.transport_check?.delivery_method)],
       ["Transport to'lovi turi", optionLabel(transportPaymentTypes, batch.transport_check?.transport_payment_type)],
       ["Mijozga transport narxi", fmtMoney(batch.transport_check?.customer_price)],
-    ]))}${logisticsTimelinePanel(logistics)}${section("Transport biriktirish", detailList([["Parkdagi mashina", logistics.transport ? `${logistics.transport.vehicle_number}${logistics.transport.driver_name ? ` · ${logistics.transport.driver_name}` : ""}` : null], ...(logistics.transport || !logistics.carrier_name ? [] : [["Tashuvchi", logistics.carrier_name]]), ["Haydovchi", logistics.driver_name], ["Haydovchi telefoni", logistics.driver_phone], ["Transport raqami", logistics.vehicle_number], ["Tirkama raqami", logistics.trailer_number]]))}${section("Sanalar", detailList([["Reja yuklash sanasi", logistics.planned_pickup_date], ["Reja yetkazish sanasi", logistics.planned_delivery_date], ["Haqiqiy yuklash sanasi", logistics.actual_pickup_date], ["Haqiqiy yetkazish sanasi", logistics.actual_delivery_date]]))}${section("Manzillar", detailList([["Yuklash manzili", logistics.loading_address], ["Yetkazish manzili", logistics.delivery_address]]))}${section("Reys tafsilotlari", logisticsTripDetailsList(logistics, batch))}${section("Xarajatlar", detailList([["Transport xarajati", fmtMoney(logistics.cost_amount)], ["Mijozga transport narxi", fmtMoney(logistics.customer_price)], ["Kim to'laydi", optionLabel(paidByTypes, logistics.paid_by)], ["Transport foydasi", transportProfit(logistics)]]))}${section("Logistika izohlari", detailList([["Izoh", logistics.notes]]))}`;
+    ]))}${weHaul ? `${logisticsTimelinePanel(logistics)}${section("Transport biriktirish", detailList([["Parkdagi mashina", logistics.transport ? `${logistics.transport.vehicle_number}${logistics.transport.driver_name ? ` · ${logistics.transport.driver_name}` : ""}` : null], ...(logistics.transport || !logistics.carrier_name ? [] : [["Tashuvchi", logistics.carrier_name]]), ["Haydovchi", logistics.driver_name], ["Haydovchi telefoni", logistics.driver_phone], ["Transport raqami", logistics.vehicle_number], ["Tirkama raqami", logistics.trailer_number]]))}` : ""}${section("Sanalar", detailList([["Reja yuklash sanasi", logistics.planned_pickup_date], ["Reja yetkazish sanasi", logistics.planned_delivery_date], ["Haqiqiy yuklash sanasi", logistics.actual_pickup_date], ["Haqiqiy yetkazish sanasi", logistics.actual_delivery_date]]))}${section("Manzillar", detailList([["Yuklash manzili", logistics.loading_address], ["Yetkazish manzili", logistics.delivery_address]]))}${weHaul ? `${section("Reys tafsilotlari", logisticsTripDetailsList(logistics, batch))}${section("Xarajatlar", detailList([["Transport xarajati", fmtMoney(logistics.cost_amount)], ["Mijozga transport narxi", fmtMoney(logistics.customer_price)], ["Kim to'laydi", optionLabel(paidByTypes, logistics.paid_by)], ["Transport foydasi", transportProfit(logistics)]]))}` : ""}${section("Logistika izohlari", detailList([["Izoh", logistics.notes]]))}`;
   }
   if (active === "finance") {
     const logistics = batch.logistics || {};
@@ -1513,7 +1535,9 @@ function loadingConfirmationModal(batch) {
   const quantity = batch.summary?.total_planned_quantity || batch.items?.[0]?.planned_quantity;
   const unit = batch.items?.[0]?.unit || "";
   const today = todayIso();
-  const canLoad = ["carrier_assigned", "vehicle_assigned", "loading"].includes(logistics.status) || batch.status === "ready_for_loading";
+  const weHaul = isCompanyManaged(batch);
+  // Transport talabi faqat o'zimiz tashiydigan partiyaga tegishli.
+  const canLoad = !weHaul || ["carrier_assigned", "vehicle_assigned", "loading"].includes(logistics.status) || batch.status === "ready_for_loading";
   return `<div class="modal-backdrop" data-modal-close>
     <section class="modal-panel" role="dialog" aria-modal="true" aria-labelledby="loading-modal-title">
       <div class="modal-header">
@@ -1529,9 +1553,11 @@ function loadingConfirmationModal(batch) {
             ["Mijoz", batch.client?.name],
             ["Mahsulot", batchPrimaryProduct(batch)],
             ["Reja miqdor", fmtQty(quantity, unit)],
-            ["Tashuvchi", carrierDisplay(logistics)],
-            ["Haydovchi", logistics.driver_name],
-            ["Transport raqami", logistics.vehicle_number],
+            ...(weHaul ? [
+              ["Tashuvchi", carrierDisplay(logistics)],
+              ["Haydovchi", logistics.driver_name],
+              ["Transport raqami", logistics.vehicle_number],
+            ] : []),
             ["Yuklash manzili", logistics.loading_address],
             ["Reja yuklash sanasi", logistics.planned_pickup_date || batch.planned_loading_date],
           ])}</div>
@@ -1542,13 +1568,14 @@ function loadingConfirmationModal(batch) {
           <h3 class="modal-subtitle">Chiqishdagi o'lchovlar</h3>
           <p class="helper-text">Bu raqamlar faqat mashina yuklash nuqtasida turganda olinadi. Keyin ularni tiklab bo'lmaydi.</p>
           <div class="grid">
+            ${weHaul ? `
             ${textField("odometer_start_km", "Odometr: chiqishda", logistics.odometer_start_km || "", "number")}
-            ${textField("fuel_before_liters", "Bakdagi yoqilg'i: chiqishda", logistics.fuel_before_liters || "", "number")}
+            ${textField("fuel_before_liters", "Bakdagi yoqilg'i: chiqishda", logistics.fuel_before_liters || "", "number")}` : ""}
             ${textField("gross_weight_tons", "Tarozi: brutto", logistics.gross_weight_tons || "", "number")}
             ${textField("tare_weight_tons", "Tarozi: tara", logistics.tare_weight_tons || "", "number")}
             ${textField("loading_temperature_c", "Yuklash temperaturasi, °C", logistics.loading_temperature_c || "", "number")}
             ${textField("loading_seal", "Yuklash plombasi", logistics.loading_seal || "")}
-            ${textField("departed_at", "Yo'lga chiqdi", isoToLocalInput(logistics.departed_at), "datetime-local")}
+            ${weHaul ? textField("departed_at", "Yo'lga chiqdi", isoToLocalInput(logistics.departed_at), "datetime-local") : ""}
           </div>
           <div class="grid">
             ${textArea("notes", "Izoh", "")}
@@ -1764,8 +1791,9 @@ function deliveryConfirmationModal(batch) {
   const unit = batch.items?.[0]?.unit || "";
   const today = todayIso();
   const actualLoadingDate = logistics.actual_pickup_date || batch.actual_loading_date;
+  const weHaul = isCompanyManaged(batch);
   const canDeliver = Boolean(logistics.id) && Boolean(actualLoadingDate) && ["loaded", "in_transit", "arrived", "unloading"].includes(logistics.status);
-  const warning = !logistics.id || (!logistics.vehicle_number && !logistics.carrier_name && !logistics.driver_name)
+  const warning = !logistics.id || (weHaul && !logistics.vehicle_number && !logistics.carrier_name && !logistics.driver_name)
     ? "Yetkazildi deb belgilash uchun avval transportni biriktiring."
     : !actualLoadingDate
       ? "Yetkazildi deb belgilash uchun avval yuklashni tasdiqlang."
@@ -1919,6 +1947,7 @@ function completionValidation(batch, finance = {}) {
 
 function completionConfirmationModal(batch, finance = {}) {
   const logistics = batch.logistics || {};
+  const weHaul = isCompanyManaged(batch);
   const unit = batch.items?.[0]?.unit || "";
   const today = todayIso();
   const validation = completionValidation(batch, finance);
@@ -1947,15 +1976,15 @@ function completionConfirmationModal(batch, finance = {}) {
           ])}</div>
           <div class="grid">
             ${textField("completed_date", "Yakunlash sanasi", today, "date", { required: true })}
-            ${textField("returned_at", "Bazaga qaytdi", isoToLocalInput(logistics.returned_at), "datetime-local")}
+            ${weHaul ? textField("returned_at", "Bazaga qaytdi", isoToLocalInput(logistics.returned_at), "datetime-local") : ""}
           </div>
-          <h3 class="modal-subtitle">Qaytishdagi o'lchovlar</h3>
+          ${weHaul ? `<h3 class="modal-subtitle">Qaytishdagi o'lchovlar</h3>
           <p class="helper-text">Yoqilg'i hisobi shu raqamlar bilan yopiladi: normadan chetlanish shundan hisoblanadi.</p>
           <div class="grid">
             ${textField("odometer_end_km", "Odometr: qaytishda", logistics.odometer_end_km || "", "number")}
             ${textField("fuel_after_liters", "Bakdagi yoqilg'i: qaytishda", logistics.fuel_after_liters || "", "number")}
             ${textField("fuel_added_liters", "Yo'lda quyildi", logistics.fuel_added_liters || "", "number")}
-          </div>
+          </div>` : ""}
           <div class="grid">
             ${textArea("notes", "Yakunlash izohi", "")}
           </div>
@@ -2322,8 +2351,12 @@ function liveVehicleBody(live) {
 async function renderLogisticsDetail(id) {
   app.innerHTML = `<div class="page"><div class="empty">Yuklanmoqda...</div></div>`;
   const row = await api(`/api/logistics/${id}`);
-  const live = await api(`/api/logistics/${id}/live`).catch(() => null);
   const batch = row.batch || {};
+  // Ta'minotchi yetkazadigan reysda bizning mashinamiz yo'q: monitoringni
+  // so'rashning ham, transport va yoqilg'i bo'limlarini chizishning ham
+  // ma'nosi yo'q.
+  const weHaul = isCompanyManaged(batch);
+  const live = weHaul ? await api(`/api/logistics/${id}/live`).catch(() => null) : null;
   const number = logisticsNumber(row, batch);
   const tone = logisticsStatusTone(row.status);
   const statusLabel = optionLabel(logisticsStatuses, row.status);
@@ -2368,11 +2401,11 @@ async function renderLogisticsDetail(id) {
 
       ${logisticsWarnings(row, batch)}
 
-      <div class="detail-summary-cards">
+      ${weHaul ? `<div class="detail-summary-cards">
         ${detailSummaryCard({ label: "Transport xarajati", value: fmtMoney(row.cost_amount), caption: costCaption })}
         ${detailSummaryCard({ label: "Mijoz transport narxi", value: fmtMoney(row.customer_price), caption: priceCaption })}
         ${detailSummaryCard({ label: "Transport foydasi", value: transportProfit(row), caption: profitCaption })}
-      </div>
+      </div>` : supplierDeliveryNote(batch)}
 
       ${detailCard({
         icon: "list", title: "Logistika xulosasi",
@@ -2386,12 +2419,12 @@ async function renderLogisticsDetail(id) {
         ]),
       })}
 
-      ${detailCard({
+      ${weHaul ? detailCard({
         icon: "route", title: "Jonli holat",
         body: liveVehicleBody(live),
-      })}
+      }) : ""}
 
-      ${detailCard({
+      ${weHaul ? detailCard({
         icon: "truck", title: "Transport biriktirish",
         body: `<div class="detail-field-grid">
           <div class="detail-field"><span>ABZ nuqtasi</span><strong>${fmt(deliveryPointDetail(row.batch?.delivery_point))}</strong></div>
@@ -2404,27 +2437,27 @@ async function renderLogisticsDetail(id) {
           <div class="detail-field"><span>Transport raqami</span><strong>${row.vehicle_number ? `<span class="detail-chip" style="cursor:default">${detailIcon("hash", 12)} ${esc(row.vehicle_number)}</span>` : dash}</strong></div>
           <div class="detail-field"><span>Tirkama raqami</span><strong>${fmt(row.trailer_number)}</strong></div>
         </div>`,
-      })}
+      }) : ""}
 
-      ${detailCard({
+      ${weHaul ? detailCard({
         icon: "clock", title: "Reys vaqtlari",
         body: logisticsTimelineBody(row),
-      })}
+      }) : ""}
 
       ${detailCard({
         icon: "box", title: "Yuk nazorati",
         body: logisticsCargoBody(row),
       })}
 
-      ${detailCard({
+      ${weHaul ? detailCard({
         icon: "droplet", title: "Yoqilg'i hisobi",
         body: logisticsFuelBody(row),
-      })}
+      }) : ""}
 
-      ${detailCard({
+      ${weHaul ? detailCard({
         icon: "check", title: "Reys nazorati",
         body: logisticsCheckBody(row),
-      })}
+      }) : ""}
 
       ${detailCard({
         icon: "calendar", title: "Sanalar",
@@ -2449,7 +2482,7 @@ async function renderLogisticsDetail(id) {
         </div>`,
       })}
 
-      ${detailCard({
+      ${weHaul ? detailCard({
         icon: "flag", title: "Reys tafsilotlari",
         body: detailFieldGrid([
           ["Yo'nalish (Ob'ekt)", row.route_name],
@@ -2466,9 +2499,9 @@ async function renderLogisticsDetail(id) {
           ["Boshqa xarajatlar", fmtMoney(row.other_expenses_amount)],
           ["Komandirovka xarajatlari", fmtMoney(row.business_trip_expenses_amount)],
         ]) + tripGapBanner(row, tripFilled),
-      })}
+      }) : ""}
 
-      ${detailCard({
+      ${weHaul ? detailCard({
         icon: "dollar", title: "Xarajatlar",
         body: `<div class="detail-summary-cards">
           ${detailSummaryCard({ label: "Transport xarajati", value: fmtMoney(row.cost_amount), caption: "Haqiqiy xarajat" })}
@@ -2476,7 +2509,7 @@ async function renderLogisticsDetail(id) {
           ${detailSummaryCard({ label: "Transport foydasi", value: transportProfit(row), caption: "Narx – xarajat" })}
           ${detailSummaryCard({ label: "Kim to'laydi", value: fmt(optionLabel(paidByTypes, row.paid_by)), caption: "To'lov mas'uli" })}
         </div>`,
-      })}
+      }) : ""}
 
       ${detailCard({
         icon: "paperclip", title: "Hujjatlar", badge: row.documents?.length || 0,
