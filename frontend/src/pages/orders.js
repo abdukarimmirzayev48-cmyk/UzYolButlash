@@ -68,26 +68,10 @@ function calculateOrderForm(form, contractItems = [], balances = []) {
     balanceBox.innerHTML = orderRowBalanceHtml(balance);
     localizeDom(balanceBox);
   });
-  const sourceType = form.elements.source_type?.value;
-  const fulfillmentType = form.elements.fulfillment_type?.value;
-  if (sourceType === "russia_direct" && !form.elements.markup_amount.value) {
-    form.elements.markup_amount.value = formatNumberInputValue(Math.round(subtotal * 0.05));
-  }
-  const markup = numberValue(form.elements.markup_amount?.value);
-  const logisticsInput = form.elements.logistics_price;
-  if (fulfillmentType === "direct_supplier_to_customer") {
-    logisticsInput.value = 0;
-    logisticsInput.disabled = true;
-  } else {
-    logisticsInput.disabled = false;
-  }
-  const logistics = fulfillmentType === "direct_supplier_to_customer" ? 0 : numberValue(logisticsInput.value);
-  const total = subtotal + vat + markup + logistics;
+  const total = subtotal + vat;
   form.querySelector("[data-order-quantity]").textContent = fmtQty(quantity);
   form.querySelector("[data-order-subtotal]").textContent = fmtMoney(subtotal);
   form.querySelector("[data-order-vat]").textContent = fmtMoney(vat);
-  form.querySelector("[data-order-markup]").textContent = fmtMoney(markup);
-  form.querySelector("[data-order-logistics]").textContent = fulfillmentType === "direct_supplier_to_customer" ? dash : fmtMoney(logistics);
   form.querySelector("[data-order-total]").textContent = fmtMoney(total);
 }
 
@@ -112,8 +96,6 @@ function collectOrderPayload(form) {
     supplier_name: field(form, "supplier_name"),
     supplier_status: field(form, "supplier_status") || "not_selected",
     supplier_notes: field(form, "supplier_notes"),
-    markup_amount: field(form, "markup_amount") || 0,
-    logistics_price: field(form, "logistics_price") || 0,
     notes: field(form, "notes"),
     created_by: field(form, "created_by"),
     items: collectOrderItems(form),
@@ -186,8 +168,6 @@ ${section("Manba va yetkazib berish", `
           <div class="grid">
             ${selectField("source_type", "Manba", sourceTypes, sourceDefault)}
             ${readonlyField("fulfillment_type_display", "Yetkazib berish modeli", localizeText(optionLabel(fulfillmentTypes, order?.fulfillment_type || defaultFulfillmentFor(sourceDefault))))}
-            ${moneyInputField("markup_amount", "Ustama summasi", order?.markup_amount ?? "")}
-            <div class="total-box"><span>Ustama summasi</span><strong data-order-markup>${dash}</strong></div>
           </div>
         `)}
         ${section("Mavjud zaxiradan ajratish", `
@@ -206,13 +186,12 @@ ${section("Manba va yetkazib berish", `
             ${textArea("supplier_notes", "Ta'minotchi izohi", order?.supplier_notes)}
           </div>
         `)}
-        ${section("Narx va logistika", `
+        ${section("Summa", `
           <div class="grid">
-            ${textField("logistics_price", "Logistika narxi", order?.logistics_price || 0, "number")}
-            <div class="total-box"><span>Logistika</span><strong data-order-logistics>${dash}</strong></div>
             <div class="total-box"><span>Mahsulot summasi</span><strong data-order-subtotal>${dash}</strong></div>
             <div class="total-box"><span>Jami summa</span><strong data-order-total>${dash}</strong></div>
           </div>
+          <p class="helper-text">Buyurtma summasi shartnoma narxidan chiqadi. Ustama va logistika narxi olib tashlandi: ular buyurtma jamiga qo'shilardi, lekin partiyadan qurilgan hisob-fakturaga tushmasdi.</p>
         `)}
         ${section("Hujjatlar", `<div class="empty">Buyurtma hujjatlari saqlangandan keyin hujjatlar bo'limida qo'shiladi.</div>`)}
         <div class="form-footer">
@@ -349,7 +328,11 @@ async function renderNewOrder() {
 }
 
 function orderWizardStepper(step) {
-  const steps = ["Shartnoma", "Mahsulot", "Manba", "Zaxiradan ajratish", "Narx", "Tasdiqlash"];
+  // Narx bosqichi olib tashlandi: mahsulot narxi shartnomada belgilangan
+  // va mahsulot bosqichida ko'rinadi. Ustama va logistika narxi buyurtma
+  // jamiga qo'shilardi, lekin partiyadan qurilgan hisob-fakturaga
+  // tushmasdi -- ya'ni mijozga baribir yetib bormasdi.
+  const steps = ["Shartnoma", "Mahsulot", "Manba", "Zaxiradan ajratish", "Tasdiqlash"];
   if (window.BitumFrontend?.components?.stepper) return window.BitumFrontend.components.stepper(steps, step);
   return `<div class="batch-wizard-stepper">${steps.map((label, index) => {
     const key = index + 1;
@@ -407,10 +390,10 @@ function orderWizardTotals(state) {
     vat += vatAmount;
     selected.push({ ...balance, quantity: amount, subtotal: rowSubtotal, vat_amount: vatAmount, total_with_vat: rowSubtotal + vatAmount });
   });
-  const markupAmount = numberValue(state.markupAmount);
-  const markupPercent = subtotal ? (markupAmount / subtotal) * 100 : 0;
-  const logistics = state.fulfillmentType === "company_managed_delivery" ? numberValue(state.logisticsPrice) : 0;
-  return { quantity, subtotal, vat, markupPercent, markupAmount, logistics, total: subtotal + vat + markupAmount + logistics, selected };
+  // Buyurtma jami -- mahsulot va QQS. Ustama va logistika narxi olib
+  // tashlandi: ular buyurtma jamiga qo'shilardi, lekin partiyadan
+  // qurilgan hisob-fakturaga tushmasdi.
+  return { quantity, subtotal, vat, total: subtotal + vat, selected };
 }
 
 function orderWizardContractSummary(state) {
@@ -464,24 +447,6 @@ function updateOrderWizardProductTotals(state, input) {
   // Only the figure is replaced; the label beside it is its own node so the
   // dictionary translates it once and the live update never touches it.
   if (afterNode) afterNode.textContent = fmtQty(after, balance.unit);
-}
-
-// The sum is what gets charged; the percent is shown only so the user can
-// sanity-check it against the goods total.
-function orderMarkupNote(totals) {
-  if (!totals.subtotal) return "";
-  if (!totals.markupAmount) {
-    return `<p class="helper-text">Ustama qo'shilmasa bo'sh qoldiring.</p>`;
-  }
-  return `<p class="helper-text"><span>Mahsulot summasi:</span> <b data-noloc>${fmtMoney(totals.subtotal)}</b> · <span>ustama ulushi:</span> <b data-noloc>${totals.markupPercent.toFixed(2)}%</b></p>`;
-}
-
-function refreshOrderMarkupNote(state) {
-  const note = orderMarkupNote(orderWizardTotals(state));
-  document.querySelectorAll("[data-markup-note]").forEach((holder) => {
-    holder.innerHTML = note;
-    localizeDom(holder);
-  });
 }
 
 // Buyurtma mahsuloti uchun mos zaxira partiyalari: nomi va birligi bir xil
@@ -657,32 +622,6 @@ function orderWizardStockPanel(state) {
 // cursor out of the field being typed into; not redrawing at all left the
 // totals showing the figures from before the number was entered, and only the
 // next step revealed the real amount.
-function orderWizardPriceCards(state) {
-  const totals = orderWizardTotals(state);
-  return summaryCards([
-    ["Mahsulot summasi (QQSsiz)", fmtMoney(totals.subtotal)],
-    ["QQS", fmtMoney(totals.vat)],
-    ["Ustama summasi", fmtMoney(totals.markupAmount)],
-    ["Logistika narxi", state.fulfillmentType === "direct_supplier_to_customer" ? dash : fmtMoney(totals.logistics)],
-    ["Mijozdan undiriladigan jami", fmtMoney(totals.total)],
-  ]);
-}
-
-function refreshOrderWizardPriceCards(state) {
-  const holder = document.querySelector("[data-order-wizard-price-cards]");
-  if (!holder) return;
-  holder.innerHTML = orderWizardPriceCards(state);
-  localizeDom(holder);
-}
-
-function orderWizardPricePanel(state) {
-  const totals = orderWizardTotals(state);
-  const logisticsInput = state.fulfillmentType === "direct_supplier_to_customer"
-    ? `<label>Logistika narxi<input name="logistics_price" value="0" disabled /></label>`
-    : textField("logistics_price", "Logistika narxi", state.logisticsPrice, "number");
-  return `<div class="grid">${moneyInputField("markup_amount", "Ustama summasi", state.markupAmount)}${logisticsInput}${textArea("notes", "Izoh", state.notes || "")}</div><div data-markup-note>${orderMarkupNote(totals)}</div><div data-order-wizard-price-cards>${orderWizardPriceCards(state)}</div><p class="helper-text">Logistika yozuvi partiya yaratilgandan keyin ochiladi.</p>`;
-}
-
 function orderWizardConfirmPanel(state) {
   const totals = orderWizardTotals(state);
   const lot = (state.stockLots || []).find((item) => Number(item.id) === Number(state.stockLotId));
@@ -691,9 +630,9 @@ function orderWizardConfirmPanel(state) {
   return `<div class="confirm-grid">
     ${section("Shartnoma", detailList([["Shartnoma raqami", state.contract?.contract_number], ["Mijoz", state.contract?.client?.name], ["Amal qilish muddati", state.contract?.valid_until]]))}
     ${section("Mahsulot", detailList([["Mahsulot", productText], ["Miqdor", fmtQty(totals.quantity, totals.selected?.[0]?.unit)], ["Mahsulot summasi (QQS bilan)", fmtMoney(totals.subtotal + totals.vat)], ["Saqlangandan keyingi qoldiq", remainingText]]))}
-    ${section("Manba va model", detailList([["Manba", optionLabel(sourceTypes, state.sourceType)], ["Yetkazib berish modeli", optionLabel(fulfillmentTypes, state.fulfillmentType)], ["Ustama summasi", fmtMoney(totals.markupAmount)]]))}
+    ${section("Manba va model", detailList([["Manba", optionLabel(sourceTypes, state.sourceType)], ["Yetkazib berish modeli", optionLabel(fulfillmentTypes, state.fulfillmentType)]]))}
     ${section("Zaxiradan ajratish", state.stockLotId ? detailList([["Ticket", lot?.ticket_number], ["Ta'minotchi", lot?.supplier_name], ["Ajratilgan miqdor", fmtQty(state.stockAllocatedQuantity, lot?.unit)], ["Birlik xarid narxi", fmtMoney(lot?.unit_cost)]]) : `<div class="empty">Zaxira ajratilmadi. Mol kelishi uchun birja ticketi ochilishi kerak.</div>`)}
-    ${section("Narx", detailList([["Mahsulot summasi (QQSsiz)", fmtMoney(totals.subtotal)], ["QQS", fmtMoney(totals.vat)], ["Ustama summasi", fmtMoney(totals.markupAmount)], ["Logistika narxi", state.fulfillmentType === "direct_supplier_to_customer" ? dash : fmtMoney(totals.logistics)], ["Mijozdan undiriladigan jami", fmtMoney(totals.total)]]))}
+    ${section("Summa", detailList([["Mahsulot summasi (QQSsiz)", fmtMoney(totals.subtotal)], ["QQS", fmtMoney(totals.vat)], ["Mijozdan undiriladigan jami", fmtMoney(totals.total)]]))}
   </div>`;
 }
 
@@ -781,7 +720,6 @@ function orderWizardBody(state) {
   if (state.step === 2) return section("Mahsulot va miqdor", `${orderRequiredDateField(state)}${orderWizardProductsTable(state)}<div class="grid">${deliveryPointPicker("Yetkazish nuqtasi", state.deliveryPointId, state.deliveryPointOptions || [])}</div><p class="form-hint">Shartnomadagi nuqta oldindan qo'yiladi; boshqa joyga jo'natilsa shu yerda o'zgartiriladi. Bu manzil yetkazish partiyasi va haydovchi yo'l varaqasiga o'tadi.</p>`);
   if (state.step === 3) return section("Manba va yetkazib berish modeli", orderWizardSourcePanel(state));
   if (state.step === 4) return section("Zaxiradan ajratish", orderWizardStockPanel(state));
-  if (state.step === 5) return section("Narx va logistika", orderWizardPricePanel(state));
   return section("Tekshirish va yaratish", orderWizardConfirmPanel(state));
 }
 
@@ -789,7 +727,7 @@ function orderWizardHtml(state) {
   return `<div class="page batch-wizard-page">
     <div class="page-header"><div class="page-title"><h1>Yangi buyurtma</h1><p>Shartnoma bo'yicha buyurtmani bosqichma-bosqich yarating.</p></div><div class="actions"><button class="btn" type="button" data-order-wizard-cancel>Bekor qilish</button></div></div>
     ${orderWizardStepper(state.step)}
-    <form id="order-wizard-form">${orderWizardBody(state)}<div class="form-footer"><button type="button" class="btn" data-order-wizard-back ${state.step <= 1 ? "disabled" : ""}>Ortga</button>${state.step < 6 ? `<button type="button" class="btn primary" data-order-wizard-next>Keyingi</button>` : `<button type="submit" class="btn primary">Buyurtmani yaratish</button>`}</div></form>
+    <form id="order-wizard-form">${orderWizardBody(state)}<div class="form-footer"><button type="button" class="btn" data-order-wizard-back ${state.step <= 1 ? "disabled" : ""}>Ortga</button>${state.step < 5 ? `<button type="button" class="btn primary" data-order-wizard-next>Keyingi</button>` : `<button type="submit" class="btn primary">Buyurtmani yaratish</button>`}</div></form>
   </div>`;
 }
 
@@ -817,7 +755,6 @@ function validateOrderWizardStep(state, targetStep = state.step) {
       return "Tanlangan zaxira buyurtma miqdorini qoplamaydi. Boshqa partiyani tanlang yoki zaxirani keyinroq buyurtma kartochkasidan ajrating.";
     }
   }
-  if (targetStep >= 5 && numberValue(state.logisticsPrice) < 0) return "Logistika narxi manfiy bo'lishi mumkin emas.";
   return null;
 }
 
@@ -831,8 +768,6 @@ function collectOrderWizardPayload(state) {
     delivery_point_id: state.deliveryPointId ? Number(state.deliveryPointId) : null,
     fulfillment_type: state.fulfillmentType,
     source_type: state.sourceType,
-    markup_amount: normalizeNumberInputValue(state.markupAmount || "0"),
-    logistics_price: state.fulfillmentType === "direct_supplier_to_customer" ? 0 : normalizeNumberInputValue(state.logisticsPrice || 0),
     notes: state.notes || null,
     items: totals.selected.map((item) => ({
       contract_item_id: item.contract_item_id,
@@ -851,8 +786,6 @@ async function renderOrderWizard() {
     orderDate: todayIso(),
     sourceType: params.get("source_type") || "",
     fulfillmentType: "direct_supplier_to_customer",
-    markupAmount: "",
-    logisticsPrice: "0",
     stockLots: [],
     // Foydalanuvchi manbaga qo'l urgach taklif o'zgartirmaydi -- aks holda
     // har chizishda tanlovi qaytadan bosib ketilardi.
@@ -917,24 +850,12 @@ async function renderOrderWizard() {
       // mahalliy molni o'zimiz tashiymiz. Foydalanuvchi keyin
       // o'zgartirishi mumkin -- istisnolar bo'ladi.
       if (state.sourceType) state.fulfillmentType = defaultFulfillmentFor(state.sourceType);
-      if (state.fulfillmentType === "direct_supplier_to_customer") state.logisticsPrice = "0";
-      // Russian direct supply carries a 5% markup by default; offered as a
-      // ready-made sum so the user can still overwrite it.
-      if (state.sourceType === "russia_direct" && !numberValue(state.markupAmount)) {
-        state.markupAmount = String(Math.round(orderWizardTotals(state).subtotal * 0.05));
-      }
       await loadStockLots();
       await draw();
     });
     form.elements.fulfillment_type?.addEventListener("change", async () => {
       state.fulfillmentType = form.elements.fulfillment_type.value;
-      if (state.fulfillmentType === "direct_supplier_to_customer") state.logisticsPrice = "0";
       await draw();
-    });
-    form.elements.markup_amount?.addEventListener("input", () => {
-      state.markupAmount = form.elements.markup_amount.value;
-      refreshOrderMarkupNote(state);
-      refreshOrderWizardPriceCards(state);
     });
     document.querySelector("[data-use-stock]")?.addEventListener("click", async () => {
       state.stockChoiceTouched = false;
@@ -948,10 +869,6 @@ async function renderOrderWizard() {
       state.stockAllocatedQuantity = String(orderWizardTotals(state).quantity);
       await draw();
     }));
-    form.elements.logistics_price?.addEventListener("input", () => {
-      state.logisticsPrice = form.elements.logistics_price.value;
-      refreshOrderWizardPriceCards(state);
-    });
     form.elements.notes?.addEventListener("input", () => { state.notes = form.elements.notes.value; });
     document.querySelector("[data-order-wizard-cancel]")?.addEventListener("click", () => navigate("/orders"));
     document.querySelector("[data-order-wizard-back]")?.addEventListener("click", async () => {

@@ -632,15 +632,11 @@ def create_order(payload: OrderCreate, db: Session = Depends(get_db)):
     if not data.get("delivery_point_id"):
         data["delivery_point_id"] = contract.delivery_point_id
     order = Order(**data)
-    # Default markup for Russian direct supply, applied only when the caller
-    # expressed no preference at all -- otherwise an explicit "no markup"
-    # would be overwritten on every save.
-    # `is None` on purpose: an explicit 0 means "no markup" and must not be
-    # overwritten by the default.
+    # Import uchun 5% ustama avtomatik qo'yilardi. Endi qo'yilmaydi:
+    # ustama maydoni interfeysdan olib tashlandi, ya'ni avtomatik yozilgan
+    # raqamni hech kim ko'rmas va tuzata olmasdi. Narx shartnomada
+    # belgilanadi.
     markup_from_percent = payload.markup_amount is None and payload.markup_percent is not None
-    if order.source_type == SourceType.russia_direct and payload.markup_amount is None and payload.markup_percent is None:
-        order.markup_percent = Decimal("5")
-        markup_from_percent = True
     apply_defaults(order)
     db.add(order)
     db.flush()
