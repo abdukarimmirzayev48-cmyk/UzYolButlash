@@ -361,14 +361,17 @@ async function enrichOrderWizardContract(state, contractId) {
   // Left blank on purpose: defaulting to the contract's last day made every
   // order look like it was due at the end of the contract.
   state.requiredDate = "";
+  // Shartnomada yetkazish usuli kelishilgan -- nuqtalar ro'yxati shunga
+  // qarab filtrlanadi: avtoga ABZ, temiryo'lga stansiya. Bu filtr ilgari
+  // faqat shartnomada nuqta ko'rsatilgan bo'lsa ishlardi (25 shartnomadan
+  // 2 tasida), qolganlarida ro'yxat filtrsiz ochilar va temiryo'l
+  // shartnomasiga ABZ tanlab qo'yish mumkin edi.
+  state.deliveryMethod = state.contract?.transport_terms?.delivery_method || null;
+  state.deliveryPointOptions = await deliveryPointList(state.contract?.delivery_point_id || null, null, state.deliveryMethod);
   // Nuqta esa aksincha: shartnomada ko'rsatilgan bo'lsa, buyurtmada ham
   // o'sha bo'ladi va uni qayta tanlash shart emas.
   if (state.contract?.delivery_point_id) {
     state.deliveryPointId = String(state.contract.delivery_point_id);
-    // Shartnomada yetkazish usuli kelishilgan -- nuqtalar ro'yxati shunga
-  // qarab filtrlanadi, ya'ni tuz shartnomasiga ABZ tanlab bo'lmaydi.
-  state.deliveryMethod = state.contract.transport_terms?.delivery_method || null;
-  state.deliveryPointOptions = await deliveryPointList(state.contract.delivery_point_id, null, state.deliveryMethod);
   }
   state.stockLotId = "";
   state.stockAllocatedQuantity = "";
