@@ -675,12 +675,42 @@ function batchWizardOrderSummary(state) {
   ])}`;
 }
 
+// Partiya nechta reysga bo'linishini oldindan aytish uchun parkdagi eng
+// katta sisterna sig'imi kerak. Bitta so'rov, natijasi sehrgar holatida
+// saqlanadi.
+async function fetchLargestCapacity() {
+  const data = await api("/api/transports?page_size=200").catch(() => ({ items: [] }));
+  return (data.items || []).reduce((max, item) => Math.max(max, numberValue(item.capacity_tons)), 0);
+}
+
+// Miqdor bitta mashinaga sig'masa, buni miqdor kiritilayotgan paytda
+// aytish kerak -- partiya yaratilib bo'lgandan keyin emas.
+function batchWizardTripSplitNote(state) {
+  const capacity = numberValue(state.largestCapacity);
+  const totals = wizardOrderTotals(state);
+  const quantity = numberValue(totals.selected);
+  const unit = state.order?.items?.[0]?.unit;
+  if (!capacity || !quantity || quantity <= capacity) return "";
+  const trips = Math.ceil(quantity / capacity);
+  return `<p class="helper-text"><span>Bu miqdor bitta sisternaga sig'maydi.</span> <span>Eng katta sig'im</span>: <b data-noloc>${fmtQty(capacity, unit)}</b> · <span>kerak bo'ladigan reys</span>: <b data-noloc>${trips}</b>. <span>Partiya yaratilgach, kartochkada shuncha reys ochiladi.</span></p>`;
+}
+
+// Miqdor har bosishda o'zgaradi, izoh esa panel qayta chizilmagani
+// uchun eski raqamda qolib ketardi. Butun qadamni qayta chizsak, kursor
+// maydondan chiqib ketadi -- shuning uchun faqat izoh yangilanadi.
+function refreshTripSplitNote(state) {
+  const holder = document.querySelector("[data-trip-split-note]");
+  if (!holder) return;
+  holder.innerHTML = batchWizardTripSplitNote(state);
+  localizeDom(holder);
+}
+
 function batchWizardQuantityTable(state) {
   if (!state.order) return `<div class="empty">Miqdor kiritish uchun avval buyurtmani tanlang.</div>`;
   return `${tableOrEmpty(state.balances || [], ["Mahsulot", "Buyurtma miqdori", "Oldin partiya qilingan", "Qoldiq", "Ushbu partiya"], (balance) => {
     const value = state.quantities?.[balance.order_item_id] ?? balance.remaining_quantity_for_planning;
     return `<tr><td>${fmt(balance.product_name)}</td><td>${fmtQty(balance.order_quantity, balance.unit)}</td><td>${fmtQty(balance.planned_quantity_total, balance.unit)}</td><td>${fmtQty(balance.remaining_quantity_for_planning, balance.unit)}</td><td><input data-wizard-qty="${balance.order_item_id}" type="number" step="any" min="0" max="${esc(balance.remaining_quantity_for_planning)}" value="${esc(value)}" /></td></tr>`;
-  }, "Buyurtma mahsulotlari topilmadi.")}<p class="helper-text">Qabul qilingan miqdor keyinchalik, mahsulot mijoz tomonidan qabul qilingandan so'ng kiritiladi.</p>`;
+  }, "Buyurtma mahsulotlari topilmadi.")}<div data-trip-split-note>${batchWizardTripSplitNote(state)}</div><p class="helper-text">Qabul qilingan miqdor keyinchalik, mahsulot mijoz tomonidan qabul qilingandan so'ng kiritiladi.</p>`;
 }
 
 function batchWizardSourcePanel(state) {
@@ -916,7 +946,10 @@ function bindBatchWizard(state) {
     if (orderId) await enrichBatchWizardState(state, orderId);
     renderBatchWizard(state);
   });
-  form?.addEventListener("input", () => syncBatchWizardInputs(state));
+  form?.addEventListener("input", () => {
+    syncBatchWizardInputs(state);
+    refreshTripSplitNote(state);
+  });
   document.querySelector("[data-wizard-back]")?.addEventListener("click", () => {
     syncBatchWizardInputs(state);
     state.step = Math.max(1, state.step - 1);
@@ -961,6 +994,9 @@ async function batchWizardForm() {
     distance: null,
     distanceTouched: false,
     deliveryPoints: await deliveryPointList(),
+    // Partiya miqdori bitta sisternaga sig'adimi -- shuni aytish uchun
+    // parkning eng katta sig'imi kerak.
+    largestCapacity: await fetchLargestCapacity(),
     notes: "",
     supplierName: "",
     supplierId: null,

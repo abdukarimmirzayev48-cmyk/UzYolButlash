@@ -958,6 +958,20 @@ def remaining_for_trip(batch: DeliveryBatch) -> Decimal:
     return qty(transport_choice.planned_quantity(batch) - trips_planned_total(batch))
 
 
+def suggested_trip_quantity(db: Session, batch: DeliveryBatch) -> Decimal:
+    """Yangi reysga taklif qilinadigan miqdor.
+
+    Qolgan miqdor eng katta sisternadan oshsa, u bitta reysga sig'maydi
+    -- shuning uchun taklif sig'im bilan cheklanadi va operator qolganiga
+    yana reys ochadi.
+    """
+    remaining = remaining_for_trip(batch)
+    largest = db.scalar(select(func.max(Transport.capacity_tons)))
+    if largest and remaining > Decimal(largest):
+        return qty(Decimal(largest))
+    return remaining
+
+
 @router.post("/{batch_id}/trips", response_model=LogisticsRead, status_code=201, dependencies=[Depends(require_edit("yetkazib_berish"))])
 def add_batch_trip(batch_id: int, payload: LogisticsCreate | None = None, db: Session = Depends(get_db)):
     """Partiyaga yana bitta reys qo'shadi.
@@ -979,7 +993,7 @@ def add_batch_trip(batch_id: int, payload: LogisticsCreate | None = None, db: Se
     defaults.update({key: value for key, value in data.items() if value is not None})
     if not defaults.get("planned_quantity"):
         # Qolgan miqdor -- eng ehtimolli javob, operator uni o'zgartira oladi.
-        remaining = remaining_for_trip(batch)
+        remaining = suggested_trip_quantity(db, batch)
         if remaining <= 0:
             # Miqdorsiz reys ochish -- bo'sh yozuv yaratish demak. Butun
             # miqdor allaqachon biriktirilgan bo'lsa, avval mavjud reys
