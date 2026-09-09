@@ -588,6 +588,28 @@ def trip_of(batch: DeliveryBatch, logistics_id: int | None):
     return batch.logistics
 
 
+def distribute_accepted_to_items(batch: DeliveryBatch) -> None:
+    """Reyslarda qabul qilingan jami miqdorni partiya bandlariga taqsimlaydi.
+
+    Yuklangan miqdor bilan bir xil qoida: bandlar mahsulot bo'yicha,
+    reyslar mashina bo'yicha bo'linadi, shuning uchun taqsimot yuklangan
+    ulush bo'yicha ketadi.
+    """
+    accepted_total = qty(sum((Decimal(trip.accepted_quantity or 0) for trip in batch.trips), Decimal("0")))
+    loaded_total = qty(sum((Decimal(item.loaded_quantity or 0) for item in batch.items), Decimal("0")))
+    if not batch.items:
+        return
+    remaining = accepted_total
+    for index, item in enumerate(batch.items):
+        if index == len(batch.items) - 1:
+            item.accepted_quantity = qty(remaining)
+        else:
+            share = qty((accepted_total * Decimal(item.loaded_quantity or 0)) / loaded_total) if loaded_total else Decimal("0")
+            item.accepted_quantity = share
+            remaining = qty(remaining - share)
+        item.difference_quantity = qty(Decimal(item.loaded_quantity or 0) - Decimal(item.accepted_quantity or 0))
+
+
 def distribute_loaded_to_items(batch: DeliveryBatch) -> None:
     """Reyslarda yuklangan jami miqdorni partiya bandlariga taqsimlaydi.
 
@@ -1211,6 +1233,29 @@ def confirm_batch_acceptance(
     batch = load_batch_detail(db, batch_id)
     if batch.status == BatchStatus.cancelled:
         raise HTTPException(status_code=422, detail="Bekor qilingan partiyada qabulni tasdiqlab bo'lmaydi.")
+    # Reys bo'yicha qabul -- asosiy yo'l: har bir mashina alohida qabul
+    # qilinadi. Partiya bandlaridagi miqdor shundan hisoblanadi.
+    if payload.trips:
+        trips = {trip.id: trip for trip in batch.trips}
+        for row in payload.trips:
+            trip = trips.get(row.logistics_id)
+            if trip is None:
+                raise HTTPException(status_code=404, detail="Reys topilmadi.")
+            loaded = qty(trip.loaded_quantity or Decimal("0"))
+            if loaded <= 0:
+                raise HTTPException(status_code=422, detail=f"{trip.logistics_number or trip.id}: reys hali yuklanmagan.")
+            if row.accepted_quantity > loaded:
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"{trip.logistics_number or trip.id}: qabul miqdori yuklangandan ko'p bo'lishi mumkin emas.",
+                )
+            trip.accepted_quantity = qty(row.accepted_quantity)
+            trip.status = LogisticsStatus.accepted
+            if row.comment is not None:
+                trip.notes = row.comment
+        distribute_accepted_to_items(batch)
+        sync_batch_status_from_logistics(batch)
+
     items = {item.id: item for item in batch.items}
     for row in payload.items:
         item = items.get(row.id)
@@ -1241,7 +1286,16 @@ def confirm_batch_acceptance(
         batch.difference_resolved_at = None
         batch.difference_resolved_by = None
 
-    batch.status = BatchStatus.quantity_difference if difference.exists else BatchStatus.accepted
+    # Farq bo'lsa partiya «miqdor farqi» holatida turadi -- reyslar
+    # holatidan qat'i nazar, chunki qaror qabul qilinmagan.
+    if difference.exists:
+        batch.status = BatchStatus.quantity_difference
+    else:
+        sync_batch_status_from_logistics(batch)
+        if batch.status != BatchStatus.accepted:
+            # Reyslarning hammasi qabul qilinmagan bo'lsa ham, bandlar
+            # bo'yicha qabul kiritilgan -- eski yo'l shunday ishlagan.
+            batch.status = BatchStatus.accepted
     sync_order_status(batch.order, db=db)
     db.commit()
     return get_batch_detail(batch.id, db)

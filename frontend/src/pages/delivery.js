@@ -1471,15 +1471,16 @@ function batchTripsSection(batch, editable) {
         : `<p class="helper-text">Butun miqdor reyslarga biriktirilgan.</p>`;
   return section("Reyslar", `${editable && weHaul ? `<div class="actions"><button class="btn" type="button" data-add-trip>Reys qo'shish</button></div>` : ""}${note}${tableOrEmpty(
     trips,
-    ["Reys", "Reja", "Yuklangan", "Transport", "Haydovchi", "Holati", "Reja sanalar", editable ? "Amallar" : ""],
+    ["Reys", "Reja", "Yuklangan", "Qabul", "Kamomad", "Transport", "Haydovchi", "Holati", editable ? "Amallar" : ""],
     (trip) => `<tr>
       <td><button class="ops-primary-link" data-nav="/logistics/${trip.id}" data-noloc>${esc(trip.logistics_number || trip.id)}</button></td>
       <td>${trip.planned_quantity != null ? fmtQty(trip.planned_quantity, unit) : dash}</td>
       <td>${trip.loaded_quantity != null ? fmtQty(trip.loaded_quantity, unit) : dash}</td>
+      <td>${trip.accepted_quantity != null ? fmtQty(trip.accepted_quantity, unit) : dash}</td>
+      <td class="${numberValue(trip.loaded_quantity) - numberValue(trip.accepted_quantity) > 0 && trip.accepted_quantity != null ? "ops-warning" : ""}">${trip.accepted_quantity != null ? fmtQty(numberValue(trip.loaded_quantity) - numberValue(trip.accepted_quantity), unit) : dash}</td>
       <td data-noloc>${trip.transport_id ? esc(trip.vehicle_number || "") : ""}${trip.transport_id ? "" : statusChip({ label: "Biriktirilmagan", tone: "warning" })}</td>
       <td data-noloc>${fmt(trip.driver_name)}</td>
       <td>${statusBadge(trip.status)}</td>
-      <td data-noloc>${fmt(trip.planned_pickup_date)} — ${fmt(trip.planned_delivery_date)}</td>
       ${editable ? `<td><div class="ops-row-actions">${tripStageButtons(trip, weHaul)}<button class="link-btn" data-nav="/logistics/${trip.id}">Ochish</button>${trips.length > 1 && ["not_assigned", "carrier_assigned", "vehicle_assigned"].includes(trip.status) ? `<button class="link-btn" type="button" data-delete-trip="${trip.id}">O'chirish</button>` : ""}</div></td>` : ""}
     </tr>`,
     "Reyslar hali ochilmagan."
@@ -1745,6 +1746,25 @@ const BATCH_DIFFERENCE_RESOLUTIONS = [
   ["write_off", "Hisobdan chiqariladi", "Yo'l yo'qotishi sifatida hisobdan chiqariladi."],
 ];
 
+// Qabul reys bo'yicha kiritiladi: har bir mashina alohida qabul
+// qilinadi va kamomad ham reys bo'yicha chiqadi -- qaysi mashinada
+// yo'qolgani ma'lum bo'lsa, javobgar ham ma'lum. Mahsulot bo'yicha
+// taqsimot buni yashirardi: bitta mashinaning 3 tonnasi ikki mahsulotga
+// 1,5 dan bo'linib ketardi.
+function acceptanceTripRows(batch) {
+  const unit = batch.items?.[0]?.unit;
+  return (batch.trips || []).filter((trip) => numberValue(trip.loaded_quantity) > 0).map((trip) => {
+    const accepted = trip.accepted_quantity ?? "";
+    return `<tr data-acceptance-trip-row="${trip.id}">
+      <td data-noloc>${esc(trip.logistics_number || trip.id)}</td>
+      <td data-noloc>${fmt(trip.vehicle_number)}</td>
+      <td data-acceptance-loaded>${fmtQty(trip.loaded_quantity, unit)}</td>
+      <td><input data-acceptance-trip="${trip.id}" data-loaded="${esc(trip.loaded_quantity ?? 0)}" data-unit="${esc(unit || "")}" type="number" step="any" min="0" required value="${esc(accepted)}" /></td>
+      <td class="number-cell" data-noloc data-acceptance-trip-diff="${trip.id}">${dash}</td>
+    </tr>`;
+  }).join("");
+}
+
 function acceptanceRows(batch) {
   return (batch.items || []).map((item) => {
     const accepted = item.accepted_quantity ?? "";
@@ -1787,10 +1807,15 @@ function acceptanceConfirmationModal(batch) {
             ["Mijoz", batch.client?.name],
             ["Haqiqiy yetkazish sanasi", batch.logistics?.actual_delivery_date || batch.actual_delivery_date],
           ])}</div>
-          <div class="table-scroll"><table>
+          ${acceptanceTripRows(batch)
+            ? `<div class="table-scroll"><table>
+            <thead><tr><th>Reys</th><th>Transport</th><th>Yuklangan</th><th>Qabul qilingan <span class="required-mark">*</span></th><th>Farq</th></tr></thead>
+            <tbody>${acceptanceTripRows(batch)}</tbody>
+          </table></div><p class="helper-text">Qabul har bir mashina bo'yicha alohida kiritiladi. Mahsulot bo'yicha taqsimot shundan hisoblanadi.</p>`
+            : `<div class="table-scroll"><table>
             <thead><tr><th>Mahsulot</th><th>Reja</th><th>Yuklangan</th><th>Qabul qilingan <span class="required-mark">*</span></th><th>Farq</th></tr></thead>
             <tbody>${acceptanceRows(batch)}</tbody>
-          </table></div>
+          </table></div>`}
           ${acceptanceDifferencePanel()}
         </div>
         <div class="modal-footer">
@@ -1802,10 +1827,31 @@ function acceptanceConfirmationModal(batch) {
   </div>`;
 }
 
-function acceptanceTotals(form) {
+function acceptanceTotals(form, batch = null) {
   let quantity = 0;
   let amount = 0;
   let filled = 0;
+  // Reys bo'yicha kiritilsa, kamomad ham reyslardan yig'iladi. Narx
+  // partiya bandidan olinadi -- reysda narx yo'q, u mahsulotning
+  // xossasi.
+  const tripInputs = form.querySelectorAll("[data-acceptance-trip]");
+  if (tripInputs.length) {
+    const item = batch?.items?.[0] || {};
+    tripInputs.forEach((input) => {
+      const cell = form.querySelector(`[data-acceptance-trip-diff="${input.dataset.acceptanceTrip}"]`);
+      if (input.value === "") {
+        if (cell) cell.textContent = dash;
+        return;
+      }
+      filled += 1;
+      const shortfall = numberValue(input.dataset.loaded) - numberValue(input.value);
+      if (cell) cell.textContent = fmtQty(shortfall, input.dataset.unit);
+      if (shortfall <= 0) return;
+      quantity += shortfall;
+      amount += shortfall * numberValue(item.unit_price) * (1 + numberValue(item.vat_rate) / 100);
+    });
+    return { quantity, amount, filled, unit: tripInputs[0]?.dataset.unit || "" };
+  }
   form.querySelectorAll("[data-acceptance-input]").forEach((input) => {
     const cell = form.querySelector(`[data-acceptance-diff="${input.dataset.acceptanceInput}"]`);
     if (input.value === "") {
@@ -1823,8 +1869,8 @@ function acceptanceTotals(form) {
   return { quantity, amount, filled, unit: first?.dataset.unit || "" };
 }
 
-function refreshAcceptanceDecision(form) {
-  const totals = acceptanceTotals(form);
+function refreshAcceptanceDecision(form, batch = null) {
+  const totals = acceptanceTotals(form, batch);
   const panel = form.querySelector("[data-acceptance-decision]");
   if (!panel) return totals;
   panel.hidden = totals.quantity <= 0;
@@ -1851,14 +1897,18 @@ function openAcceptanceModal(batch) {
   backdrop?.addEventListener("click", (event) => {
     if (event.target.matches("[data-modal-close]")) close();
   });
-  form?.addEventListener("input", () => refreshAcceptanceDecision(form));
-  refreshAcceptanceDecision(form);
+  form?.addEventListener("input", () => refreshAcceptanceDecision(form, batch));
+  refreshAcceptanceDecision(form, batch);
   form?.addEventListener("submit", async (event) => {
     event.preventDefault();
-    const totals = refreshAcceptanceDecision(form);
+    const totals = refreshAcceptanceDecision(form, batch);
+    const tripInputs = [...form.querySelectorAll("[data-acceptance-trip]")];
     const inputs = [...form.querySelectorAll("[data-acceptance-input]")];
-    if (totals.filled !== inputs.length) {
-      return modalFormError(form, "Har bir mahsulot uchun qabul qilingan miqdorni kiriting.", "");
+    const required = tripInputs.length || inputs.length;
+    if (totals.filled !== required) {
+      return modalFormError(form, tripInputs.length
+        ? "Har bir reys uchun qabul qilingan miqdorni kiriting."
+        : "Har bir mahsulot uchun qabul qilingan miqdorni kiriting.", "");
     }
     const resolution = form.elements.difference_resolution
       ? [...form.querySelectorAll("[name=difference_resolution]")].find((radio) => radio.checked)?.value
@@ -1870,8 +1920,12 @@ function openAcceptanceModal(batch) {
       await api(`/api/delivery-batches/${batch.id}/confirm-acceptance`, {
         method: "POST",
         body: JSON.stringify({
-          items: inputs.map((input) => ({
+          items: tripInputs.length ? [] : inputs.map((input) => ({
             id: Number(input.dataset.acceptanceInput),
+            accepted_quantity: normalizeNumberInputValue(input.value),
+          })),
+          trips: tripInputs.map((input) => ({
+            logistics_id: Number(input.dataset.acceptanceTrip),
             accepted_quantity: normalizeNumberInputValue(input.value),
           })),
           difference_resolution: resolution || null,
@@ -1885,7 +1939,7 @@ function openAcceptanceModal(batch) {
       showToast(error.message, true);
     }
   });
-  form?.querySelector("[data-acceptance-input]")?.focus();
+  form?.querySelector("[data-acceptance-trip], [data-acceptance-input]")?.focus();
 }
 
 function openLoadingConfirmationModal(batch, tripId = null) {

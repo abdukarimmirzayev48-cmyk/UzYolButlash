@@ -194,6 +194,9 @@ class Logistics(Base, TimestampMixin):
     # ilgari u to'g'ridan-to'g'ri yozilardi va ikkinchi reys birinchisini
     # bosib ketardi.
     loaded_quantity: Mapped[Decimal | None] = mapped_column(Numeric(18, 3))
+    # Mijoz shu reysdan qabul qilgani. Kamomad reys bo'yicha chiqadi:
+    # qaysi mashinada yo'qolgani ma'lum bo'lsa, javobgar ham ma'lum.
+    accepted_quantity: Mapped[Decimal | None] = mapped_column(Numeric(18, 3))
     delivery_method: Mapped[DeliveryMethod] = mapped_column(SAEnum(DeliveryMethod, length=16), default=DeliveryMethod.auto, nullable=False)
     status: Mapped[LogisticsStatus] = mapped_column(SAEnum(LogisticsStatus), default=LogisticsStatus.not_assigned, nullable=False, index=True)
     carrier_id: Mapped[int | None] = mapped_column(index=True)

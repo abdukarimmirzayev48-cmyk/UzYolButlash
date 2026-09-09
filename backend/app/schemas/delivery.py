@@ -81,6 +81,7 @@ class LogisticsBase(BaseModel):
     # Shu reysda haqiqatda yuklangani. Partiya bandlaridagi miqdor
     # reyslarning yig'indisidan hisoblanadi.
     loaded_quantity: Decimal | None = None
+    accepted_quantity: Decimal | None = None
     status: LogisticsStatus = LogisticsStatus.not_assigned
     carrier_id: int | None = None
     carrier_name: str | None = None
@@ -408,8 +409,24 @@ class DeliveryBatchAcceptanceItem(BaseModel):
     comment: str | None = None
 
 
+class DeliveryBatchTripAcceptance(BaseModel):
+    """Bitta reysning qabuli.
+
+    Har bir mashina alohida qabul qilinadi va kamomad ham reys bo'yicha
+    chiqadi -- qaysi mashinada yo'qolgani ma'lum bo'lsa, javobgar ham
+    ma'lum bo'ladi.
+    """
+
+    logistics_id: int
+    accepted_quantity: Decimal = Field(ge=0)
+    comment: str | None = None
+
+
 class DeliveryBatchAcceptanceConfirm(BaseModel):
     items: list[DeliveryBatchAcceptanceItem] = Field(default_factory=list)
+    # Reys bo'yicha qabul. Berilsa, partiya bandlaridagi miqdor
+    # reyslarning yig'indisidan hisoblanadi.
+    trips: list[DeliveryBatchTripAcceptance] = Field(default_factory=list)
     # Farq bo'lsa majburiy -- tekshiruv API qatlamida, chunki u qabul qilingan
     # miqdorlarga bog'liq.
     difference_resolution: str | None = None
