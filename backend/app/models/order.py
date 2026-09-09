@@ -33,12 +33,24 @@ class FulfillmentType(str, Enum):
 
 
 class SourceType(str, Enum):
+    """Mol qayerdan keladi -- ikki javob bor, uchinchisi yo'q.
+
+    Ilgari oltita tur bor edi: Jarqo'rg'on, Sherobod, «Boshqa» va
+    «Ta'minotchi omboridagi zaxira». Amalda ular ishlamasdi -- Jarqo'rg'on
+    deb belgilangan buyurtmalar Buxoro va Farg'onadan yuklanardi, Sherobod
+    esa birorta buyurtmada ishlatilmagan. Qaysi bazadan yuklanganini endi
+    yuklash nuqtasi aniq aytadi, ya'ni uni manba takrorlashi shart emas.
+
+    Zaxira ham alohida manba emas: molni mahalliy ta'minotchidan olib
+    zaxiraga qo'yamiz, ya'ni manba baribir mahalliy. Buning uchun
+    `Order.from_stock` belgisi bor.
+
+    Ikki tur ikki xil ishni anglatadi: importda logistikaga aralashmaymiz,
+    faqat holatni kuzatamiz; mahalliyda butun jarayonni o'zimiz boshqaramiz.
+    """
+
     russia_direct = "russia_direct"
     uzbekistan_local = "uzbekistan_local"
-    jarkurgan = "jarkurgan"
-    sherobod = "sherobod"
-    supplier_held_stock = "supplier_held_stock"
-    other = "other"
 
 
 class SupplierStatus(str, Enum):
@@ -70,7 +82,13 @@ class Order(Base, TimestampMixin):
     fulfillment_type: Mapped[FulfillmentType] = mapped_column(
         SAEnum(FulfillmentType), default=FulfillmentType.direct_supplier_to_customer, nullable=False, index=True
     )
-    source_type: Mapped[SourceType] = mapped_column(SAEnum(SourceType), default=SourceType.other, nullable=False, index=True)
+    source_type: Mapped[SourceType] = mapped_column(SAEnum(SourceType), default=SourceType.uzbekistan_local, nullable=False, index=True)
+    # Mol zaxiradan olinadimi. Ilgari bu manba turi edi («Ta'minotchi
+    # omboridagi zaxira»), lekin zaxira manba emas: molni mahalliy
+    # ta'minotchidan olib zaxiraga qo'yamiz, ya'ni manba baribir mahalliy.
+    # Alohida belgi bo'lgani uchun endi import qilingan mol ham zaxiraga
+    # tushishi mumkin.
+    from_stock: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, index=True)
     # Bitum qayerga yetkaziladi. Nuqta ma'lumotnomasidan tanlanadi va
     # manzil bu yerda qayta yozilmaydi.
     delivery_point_id: Mapped[int | None] = mapped_column(ForeignKey("delivery_points.id", ondelete="SET NULL"), index=True)

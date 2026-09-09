@@ -864,9 +864,7 @@ def ensure_order_has_source(order, payload) -> None:
     on the order. A supplier named on the batch itself also satisfies this --
     that is a record, just entered later.
     """
-    from backend.app.models.order import SourceType
-
-    if order.source_type == SourceType.supplier_held_stock:
+    if order.from_stock:
         return
     if payload.supplier_id or (payload.supplier_name or "").strip():
         return

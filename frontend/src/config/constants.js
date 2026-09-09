@@ -62,14 +62,23 @@ const fulfillmentTypes = [
   ["company_managed_delivery", "Biz tashiymiz"],
 ];
 
+// Manba oltita edi va ular ishlamasdi: «Jarqo'rg'on» deb belgilangan
+// buyurtmalar Buxoro va Farg'onadan yuklanardi, «Sherobod» birorta
+// buyurtmada ishlatilmagan. Qaysi bazadan yuklanganini endi yuklash
+// nuqtasi aniq aytadi. Zaxira ham manba emas -- u alohida belgi
+// (`from_stock`), chunki mol mahalliy ta'minotchidan olinib zaxiraga
+// qo'yiladi va manba baribir mahalliy bo'lib qoladi.
 const sourceTypes = [
-  ["russia_direct", "Rossiyadan to'g'ridan-to'g'ri"],
-  ["uzbekistan_local", "O'zbekiston ichki bozor"],
-  ["jarkurgan", "Jarqo'rg'on"],
-  ["sherobod", "Sherobod"],
-  ["supplier_held_stock", "Ta'minotchi omboridagi zaxira"],
-  ["other", "Boshqa"],
+  ["russia_direct", "Import (Rossiyadan)"],
+  ["uzbekistan_local", "Mahalliy ta'minotchidan"],
 ];
+
+// Manba yetkazib berish modelini belgilaydi: importda logistikaga
+// aralashmaymiz, mahalliy molni o'zimiz tashiymiz. Backenddagi
+// `default_fulfillment_for` bilan bir xil.
+function defaultFulfillmentFor(sourceType) {
+  return sourceType === "russia_direct" ? "direct_supplier_to_customer" : "company_managed_delivery";
+}
 
 const exchangeTicketStatuses = [
   ["draft", "Qoralama"],

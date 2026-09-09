@@ -620,13 +620,13 @@ def main() -> None:
         db.flush()
 
         scenarios = [
-            (ContractStatus.active, OrderStatus.created, SupplierStatus.not_selected, None, FulfillmentType.company_managed_delivery, SourceType.jarkurgan, d("40"), d("5200000"), None),
+            (ContractStatus.active, OrderStatus.created, SupplierStatus.not_selected, None, FulfillmentType.company_managed_delivery, SourceType.uzbekistan_local, d("40"), d("5200000"), None),
             (ContractStatus.active, OrderStatus.supplier_search, SupplierStatus.searching, suppliers[0], FulfillmentType.company_managed_delivery, SourceType.uzbekistan_local, d("55"), d("5350000"), None),
-            (ContractStatus.active, OrderStatus.supplier_selected, SupplierStatus.selected, suppliers[1], FulfillmentType.direct_supplier_to_customer, SourceType.jarkurgan, d("30"), d("5450000"), None),
+            (ContractStatus.active, OrderStatus.supplier_selected, SupplierStatus.selected, suppliers[1], FulfillmentType.direct_supplier_to_customer, SourceType.uzbekistan_local, d("30"), d("5450000"), None),
             (ContractStatus.signed, OrderStatus.waiting_payment, SupplierStatus.confirmed, suppliers[2], FulfillmentType.company_managed_delivery, SourceType.russia_direct, d("70"), d("5550000"), None),
             (ContractStatus.active, OrderStatus.in_delivery, SupplierStatus.confirmed, suppliers[0], FulfillmentType.company_managed_delivery, SourceType.uzbekistan_local, d("65"), d("5300000"), (BatchStatus.in_transit, LogisticsStatus.in_transit, d("25"), d("25"), None)),
-            (ContractStatus.active, OrderStatus.partially_delivered, SupplierStatus.confirmed, suppliers[3], FulfillmentType.company_managed_delivery, SourceType.other, d("90"), d("5250000"), (BatchStatus.accepted, LogisticsStatus.accepted, d("45"), d("45"), d("42"))),
-            (ContractStatus.completed, OrderStatus.delivered, SupplierStatus.confirmed, suppliers[4], FulfillmentType.direct_supplier_to_customer, SourceType.jarkurgan, d("50"), d("5400000"), (BatchStatus.completed, LogisticsStatus.completed, d("50"), d("50"), d("50"))),
+            (ContractStatus.active, OrderStatus.partially_delivered, SupplierStatus.confirmed, suppliers[3], FulfillmentType.company_managed_delivery, SourceType.uzbekistan_local, d("90"), d("5250000"), (BatchStatus.accepted, LogisticsStatus.accepted, d("45"), d("45"), d("42"))),
+            (ContractStatus.completed, OrderStatus.delivered, SupplierStatus.confirmed, suppliers[4], FulfillmentType.direct_supplier_to_customer, SourceType.uzbekistan_local, d("50"), d("5400000"), (BatchStatus.completed, LogisticsStatus.completed, d("50"), d("50"), d("50"))),
             (ContractStatus.cancelled, OrderStatus.cancelled, SupplierStatus.changed, suppliers[5], FulfillmentType.company_managed_delivery, SourceType.russia_direct, d("35"), d("5600000"), None),
         ]
 

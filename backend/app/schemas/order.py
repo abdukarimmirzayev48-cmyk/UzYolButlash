@@ -150,7 +150,8 @@ class OrderBase(BaseModel):
     required_date: date | None = None
     status: OrderStatus = OrderStatus.draft
     fulfillment_type: FulfillmentType = FulfillmentType.direct_supplier_to_customer
-    source_type: SourceType = SourceType.other
+    source_type: SourceType = SourceType.uzbekistan_local
+    from_stock: bool = False
     supplier_id: int | None = None
     supplier_name: str | None = None
     supplier_status: SupplierStatus = SupplierStatus.not_selected
@@ -179,6 +180,7 @@ class OrderUpdate(BaseModel):
     status: OrderStatus | None = None
     fulfillment_type: FulfillmentType | None = None
     source_type: SourceType | None = None
+    from_stock: bool | None = None
     supplier_id: int | None = None
     supplier_name: str | None = None
     supplier_status: SupplierStatus | None = None
@@ -235,6 +237,7 @@ class OrderRead(BaseModel):
     status: OrderStatus
     fulfillment_type: FulfillmentType
     source_type: SourceType
+    from_stock: bool
     supplier_id: int | None
     supplier_name: str | None
     supplier_status: SupplierStatus

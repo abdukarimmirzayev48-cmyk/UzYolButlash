@@ -2663,7 +2663,7 @@ function contractNextAction(contract = {}) {
 function orderTracks(order = {}, related = {}) {
   const summary = order.summary || {};
   const unit = order.items?.[0]?.unit || "";
-  const isStock = order.source_type === "supplier_held_stock";
+  const isStock = Boolean(order.from_stock);
   const supplied = isStock ? Boolean(related.allocations?.length) : Boolean(order.supplier_name);
   const total = numberValue(summary.total_quantity);
   const planned = numberValue(summary.planned_quantity);
@@ -2741,7 +2741,7 @@ function orderMetrics(order, related = {}) {
 
 function orderProcessPanel(order, related = {}, warnings = []) {
   const summary = order.summary || {};
-  const isStock = order.source_type === "supplier_held_stock";
+  const isStock = Boolean(order.from_stock);
   const supplied = isStock ? Boolean(related.allocations?.length) : Boolean(order.supplier_name);
   const total = numberValue(summary.total_quantity);
   const planned = numberValue(summary.planned_quantity);

@@ -643,7 +643,7 @@ function wizardNeedsSupplier(state) {
   if (!order) return false;
   // Zaxiradan olinsa ta'minotchi partiyaning emas, zaxira partiyasining
   // ustida turadi.
-  if (order.source_type === "supplier_held_stock") return false;
+  if (order.from_stock) return false;
   return !(state.supplierId || (state.supplierName || "").trim()
     || order.supplier_id || (order.supplier_name || "").trim());
 }

@@ -1,6 +1,6 @@
 """Does the chosen supplier match the source the order says the goods come from?
 
-An order whose source was "Rossiyadan to'g'ridan-to'g'ri" was saved with
+An order whose source was "Import (Rossiyadan)" was saved with
 Jarqo'rg'on Bitum Trade MCHJ as its supplier -- a company registered in
 Surxondaryo. Nothing objected, and the delivery batch then took its loading
 address from that supplier, so the paperwork said the goods were being loaded
@@ -59,20 +59,12 @@ UZBEK_REGIONS = (
     "хоразм",
 )
 
-# Ikkala ishlab chiqarish nuqtamiz ham Surxondaryoda. Sherobod uchun qoida
-# yozilmagan edi: ro'yxatda variant turardi, lekin uni hech narsa
-# tekshirmasdi -- ya'ni Sherobod deb belgilangan buyurtmaga istalgan
-# hududdagi ta'minotchi biriktirilaverardi.
-SURXONDARYO_REGIONS = ("surxondaryo", "сурхондарё")
-JARKURGAN_REGIONS = SURXONDARYO_REGIONS
-JARKURGAN_DISTRICTS = ("jarqo'rg'on", "жарқўрғон", "жаркурган")
-SHEROBOD_REGIONS = SURXONDARYO_REGIONS
-SHEROBOD_DISTRICTS = ("sherobod", "шеробод", "шерабад")
-
-MSG_RUSSIA_LOCAL_SUPPLIER = "Manba «Rossiyadan to'g'ridan-to'g'ri», ta'minotchi esa O'zbekistonda ro'yxatdan o'tgan"
-MSG_LOCAL_FOREIGN_SUPPLIER = "Manba «O'zbekistondan», ta'minotchining O'zbekistonda manzili yo'q"
-MSG_JARKURGAN_ELSEWHERE = "Manba «Jarqo'rg'on», ta'minotchi esa boshqa hududda"
-MSG_SHEROBOD_ELSEWHERE = "Manba «Sherobod», ta'minotchi esa boshqa hududda"
+# Jarqo'rg'on va Sherobod uchun alohida qoidalar bor edi. Ular manba
+# turlari bilan birga olib tashlandi: qaysi bazadan yuklanganini endi
+# yuklash nuqtasi aniq aytadi, ya'ni uni ta'minotchining yuridik manzili
+# orqali taxmin qilishning ma'nosi yo'q.
+MSG_RUSSIA_LOCAL_SUPPLIER = "Manba «Import (Rossiyadan)», ta'minotchi esa O'zbekistonda ro'yxatdan o'tgan"
+MSG_LOCAL_FOREIGN_SUPPLIER = "Manba «Mahalliy ta'minotchidan», ta'minotchining O'zbekistonda manzili yo'q"
 
 
 def normalise(value: str | None) -> str:
@@ -105,23 +97,10 @@ def check_source(*, source_type: str, addresses: list[dict]) -> list[str]:
     # half of a warning is rendered untranslated and lowercasing someone's
     # address looks like a bug of its own.
     written = sorted({(address.get("region") or "").strip() for address in addresses if region_key(address.get("region"))})
-    districts = {normalise(address.get("district")) for address in addresses}
     warnings: list[str] = []
 
     if source_type == "russia_direct" and regions:
         warnings.append(f"{MSG_RUSSIA_LOCAL_SUPPLIER}: {', '.join(written)}")
     elif source_type == "uzbekistan_local" and not regions:
         warnings.append(MSG_LOCAL_FOREIGN_SUPPLIER)
-    elif source_type == "jarkurgan":
-        # The region alone is enough: a Surxondaryo supplier is at least in the
-        # right place, and the district is often left blank.
-        if not regions.intersection(JARKURGAN_REGIONS) and not any(
-            district.startswith(prefix) for district in districts for prefix in JARKURGAN_DISTRICTS
-        ):
-            warnings.append(MSG_JARKURGAN_ELSEWHERE)
-    elif source_type == "sherobod":
-        if not regions.intersection(SHEROBOD_REGIONS) and not any(
-            district.startswith(prefix) for district in districts for prefix in SHEROBOD_DISTRICTS
-        ):
-            warnings.append(MSG_SHEROBOD_ELSEWHERE)
     return warnings

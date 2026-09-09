@@ -28,7 +28,7 @@ from backend.app.models.inventory import (
     StockMovementType,
     StockStatus,
 )
-from backend.app.models.order import Order, OrderItem, SourceType, SupplierStatus
+from backend.app.models.order import Order, OrderItem, SupplierStatus
 from backend.app.models.supplier import Supplier, SupplierAddress, SupplierAddressType
 from backend.app.schemas.client import Page
 from backend.app.schemas.inventory import (
@@ -783,7 +783,9 @@ def reserve_stock_for_order(
     lot.quantity_available = qty(lot.quantity_available - amount)
     lot.quantity_reserved = qty(lot.quantity_reserved + amount)
     update_stock_status(lot)
-    order.source_type = SourceType.supplier_held_stock
+    # Zaxira manba emas -- alohida belgi. Manba turiga tegilmaydi: mol
+    # import qilingan bo'lsa ham zaxiraga tushishi mumkin.
+    order.from_stock = True
     order.supplier_id = lot.supplier_id
     order.supplier_name = lot.supplier.name if lot.supplier else order.supplier_name
     order.supplier_status = SupplierStatus.confirmed
@@ -813,8 +815,9 @@ def reserve_stock_for_order(
 
 
 def link_stock_allocation_to_batch(db: Session, batch: DeliveryBatch) -> None:
-    if batch.source_type != SourceType.supplier_held_stock.value:
-        return
+    # Ilgari bu yerda manba turi tekshirilardi. Endi shart kerak emas:
+    # zaxiradan ajratilmagan buyurtmada quyidagi qidiruv baribir hech
+    # narsa topmaydi.
     existing = db.scalars(select(StockAllocation).where(StockAllocation.delivery_batch_id == batch.id)).first()
     if existing:
         return
