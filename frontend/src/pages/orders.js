@@ -158,7 +158,7 @@ async function orderForm(order = null) {
             ${readonlyField("order_number", "Buyurtma raqami", order?.order_number || generatedOrderNumber())}
             ${textField("order_date", "Buyurtma sanasi", order?.order_date || today, "date")}
             ${textField("required_date", "Talab qilingan sana", order?.required_date || "", "date")}
-            ${deliveryPointPicker("Yetkazish nuqtasi", order?.delivery_point_id ?? contract?.delivery_point_id, points)}
+            ${deliveryPointPicker("Yetkazish nuqtasi", order?.delivery_point_id ?? contract?.delivery_point_id, points, { clientId: order?.client_id ?? contract?.client_id })}
             ${readonlyField("status_label", "Status", optionLabel(orderStatuses, order?.status || "created"))}
             ${textField("created_by", "Yaratgan", order?.created_by)}
             ${textArea("notes", "Izoh", order?.notes)}
@@ -720,7 +720,7 @@ function orderWizardBody(state) {
   if (state.step === 1) return section("Shartnoma tanlash", `${selectField("contract_id", "Shartnoma", [["", "Shartnomani tanlang"]], "", { required: true }).replace("</select>", `${state.contractOptions || ""}</select>`)}${orderWizardContractSummary(state)}`);
   // Mahsulot manzildan oldin: nima jo'natilayotgani qayerga jo'natish
   // mumkinligini belgilaydi -- tuzga stansiya, bitumga ABZ.
-  if (state.step === 2) return section("Mahsulot va miqdor", `${orderRequiredDateField(state)}${orderWizardProductsTable(state)}<div class="grid">${deliveryPointPicker("Yetkazish nuqtasi", state.deliveryPointId, state.deliveryPointOptions || [])}</div><p class="form-hint">Shartnomadagi nuqta oldindan qo'yiladi; boshqa joyga jo'natilsa shu yerda o'zgartiriladi. Bu manzil yetkazish partiyasi va haydovchi yo'l varaqasiga o'tadi.</p>`);
+  if (state.step === 2) return section("Mahsulot va miqdor", `${orderRequiredDateField(state)}${orderWizardProductsTable(state)}<div class="grid">${deliveryPointPicker("Yetkazish nuqtasi", state.deliveryPointId, state.deliveryPointOptions || [], { clientId: state.contract?.client_id })}</div><p class="form-hint">Shartnomadagi nuqta oldindan qo'yiladi; boshqa joyga jo'natilsa shu yerda o'zgartiriladi. Bu manzil yetkazish partiyasi va haydovchi yo'l varaqasiga o'tadi.</p>`);
   if (state.step === 3) return section("Manba va yetkazib berish modeli", orderWizardSourcePanel(state));
   if (state.step === 4) return section("Zaxiradan ajratish", orderWizardStockPanel(state));
   return section("Tekshirish va yaratish", orderWizardConfirmPanel(state));

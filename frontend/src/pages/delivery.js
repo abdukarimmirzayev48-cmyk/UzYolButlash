@@ -745,7 +745,7 @@ function batchWizardPlanPanel(state) {
   <h3 class="modal-subtitle">Yuklash nuqtasi</h3>
   <div class="grid">${deliveryPointPicker("Yuklash nuqtasi", state.loadingPointId, points, { name: "loading_point_id", required: true })}</div>
   <h3 class="modal-subtitle">Yetkazish nuqtasi</h3>
-  <div class="grid">${deliveryPointPicker("Yetkazish nuqtasi", state.deliveryPointId, points, { required: true })}</div>
+  <div class="grid">${deliveryPointPicker("Yetkazish nuqtasi", state.deliveryPointId, points, { required: true, clientId: state.order?.client_id })}</div>
   <p class="form-hint">Manzil nuqta kartochkasidan olinadi: viloyat, tuman, aniq manzil, mas'ul va telefoni.</p>
   <div class="grid">
     ${textField("planned_distance_km", "Reja masofa (km)", state.plannedDistanceKm || "", "number")}
@@ -1156,7 +1156,7 @@ async function batchForm(batch = null) {
           <h3>Yuklash nuqtasi</h3>
           <div class="grid">${deliveryPointPicker("Yuklash nuqtasi", batch?.loading_point_id, deliveryPoints, { name: "loading_point_id" })}</div>
           <h3>Yetkazish nuqtasi</h3>
-          <div class="grid">${deliveryPointPicker("Yetkazish nuqtasi", batch?.delivery_point_id ?? order?.delivery_point_id, deliveryPoints)}</div>
+          <div class="grid">${deliveryPointPicker("Yetkazish nuqtasi", batch?.delivery_point_id ?? order?.delivery_point_id, deliveryPoints, { clientId: batch?.client_id ?? order?.client_id })}</div>
           <p class="form-hint">Nuqta tanlansa, manzil uning kartochkasidan olinadi: viloyat, tuman, aniq manzil, mas'ul va telefoni.</p>
           <h3>Transport biriktirish</h3>
           <div class="grid">

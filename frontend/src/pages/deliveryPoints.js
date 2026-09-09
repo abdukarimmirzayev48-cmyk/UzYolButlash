@@ -727,6 +727,7 @@ async function bindStationLookup(root = app) {
 // Shuning uchun ro'yxat umumiy o'zgaruvchida emas, har bir tanlagichning
 // o'zida saqlanadi.
 const deliveryPickerStore = new Map();
+const deliveryPickerClients = new Map();
 let deliveryPickerSeq = 0;
 
 async function deliveryPointList(selectedId = null, clientId = null, method = null) {
@@ -745,14 +746,22 @@ async function deliveryPointList(selectedId = null, clientId = null, method = nu
   return items;
 }
 
-function pointOptionLabel(item) {
-  return `${item.name}${item.full_address ? ` — ${item.full_address}` : ""}`;
+function pointOptionLabel(item, clientId) {
+  // Mijoz bilan bog'liqlik nuqtaning o'zida turadi: ABZ yoki stansiya
+  // mijozga biriktirilgan bo'lsa, uni ro'yxatda ajratib ko'rsatamiz.
+  // Manzil mijoz kartochkasidan olinmaydi -- u yuridik manzil.
+  const own = clientId && Number(item.client_id) === Number(clientId) ? "★ " : "";
+  return `${own}${item.name}${item.full_address ? ` — ${item.full_address}` : ""}`;
 }
 
-function deliveryPointPicker(label, selectedId, items, { required = false, name = "delivery_point_id" } = {}) {
+function deliveryPointPicker(label, selectedId, items, { required = false, name = "delivery_point_id", clientId = null } = {}) {
   const key = `pp${++deliveryPickerSeq}`;
-  const rows = items || [];
+  // Mijozga biriktirilgan nuqtalar ro'yxat boshida turadi.
+  const rows = clientId
+    ? [...(items || [])].sort((a, b) => (Number(b.client_id) === Number(clientId)) - (Number(a.client_id) === Number(clientId)))
+    : (items || []);
   deliveryPickerStore.set(key, rows);
+  deliveryPickerClients.set(key, clientId);
   const selected = rows.find((item) => item.id === Number(selectedId)) || null;
   const option = (value, text, active) => `<option value="${esc(value)}" ${active ? "selected" : ""}>${esc(text)}</option>`;
   return `<div class="point-picker" data-point-picker="${key}">
@@ -811,6 +820,7 @@ function bindDeliveryPointPicker(root = app) {
 
 function bindOnePointPicker(root, holder) {
   const rows = deliveryPickerStore.get(holder.dataset.pointPicker) || [];
+  const clientId = deliveryPickerClients.get(holder.dataset.pointPicker) || null;
   const regionSelect = holder.querySelector("[data-point-region]");
   const districtSelect = holder.querySelector("[data-point-district]");
   const pointSelect = holder.querySelector("select[data-selected]");
@@ -828,7 +838,7 @@ function bindOnePointPicker(root, holder) {
     const rows = visible();
     const current = rows.some((item) => item.id === Number(keepId)) ? Number(keepId) : "";
     pointSelect.innerHTML = `<option value="">Tanlanmagan</option>${rows
-      .map((item) => `<option value="${item.id}" ${item.id === current ? "selected" : ""}>${esc(pointOptionLabel(item))}</option>`)
+      .map((item) => `<option value="${item.id}" ${item.id === current ? "selected" : ""}>${esc(pointOptionLabel(item, clientId))}</option>`)
       .join("")}`;
     pointSelect.value = current ? String(current) : "";
     // Birinchi marta kombo qurilади, keyingilarida esa faqat xabar

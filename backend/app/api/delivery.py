@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session, selectinload
 from backend.app.db.session import get_db
 from backend.app.api.inventory import link_stock_allocation_to_batch, mark_stock_delivered_for_batch, mark_stock_picked_up_for_batch
 from backend.app.core.paths import UPLOADS_DIR
-from backend.app.models.client import AddressType, Client, ClientAddress
+from backend.app.models.client import Client
 from backend.app.models.contract import Contract
 from backend.app.models.delivery import (
     BatchStatus,
@@ -31,7 +31,6 @@ from backend.app.models.finance import CustomerInvoice
 from backend.app.models.inventory import StockAllocation
 from backend.app.models.user import User
 from backend.app.models.order import FulfillmentType, Order, OrderItem
-from backend.app.models.supplier import SupplierAddress, SupplierAddressType
 from backend.app.models.transport import Transport, TransportEvent, TransportEventCheckResult, TransportEventType
 from backend.app.services import delivery_stats
 from backend.app.services import fuel_watch
@@ -231,26 +230,16 @@ def delivery_point_address(db: Session, point_id: int | None) -> str | None:
     return " · ".join(part for part in parts if part) or None
 
 
-def preferred_client_address(db: Session, client_id: int | None) -> str | None:
-    if not client_id:
-        return None
-    rows = db.scalars(select(ClientAddress).where(ClientAddress.client_id == client_id)).all()
-    for address_type in (AddressType.delivery, AddressType.legal, AddressType.warehouse, AddressType.railway_station):
-        address = next((row.address for row in rows if row.address_type == address_type and row.address), None)
-        if address:
-            return address
-    return next((row.address for row in rows if row.address), None)
-
-
-def preferred_supplier_address(db: Session, supplier_id: int | None) -> str | None:
-    if not supplier_id:
-        return None
-    rows = db.scalars(select(SupplierAddress).where(SupplierAddress.supplier_id == supplier_id)).all()
-    for address_type in (SupplierAddressType.loading, SupplierAddressType.factory, SupplierAddressType.warehouse, SupplierAddressType.legal):
-        address = next((row.address for row in rows if row.address_type == address_type and row.address), None)
-        if address:
-            return address
-    return next((row.address for row in rows if row.address), None)
+# Yuklash va yetkazish manzili faqat nuqta ma'lumotnomasidan olinadi.
+#
+# Ilgari nuqta bo'lmasa manzil mijoz yoki ta'minotchi kartochkasidan
+# to'ldirilardi. U esa yuridik manzil -- haydovchi bormaydigan joy, va
+# ko'pincha butunlay boshqa viloyatda. Ishlab chiqarishda 41 ta reysdan
+# 39 tasining ikkala manzili ham aynan shu yo'l bilan yozilgan edi.
+#
+# Mijoz bilan bog'liqlik nuqtaning o'zida turadi: ABZ yoki stansiya
+# mijozga biriktiriladi (`DeliveryPoint.client_id`), ya'ni bog'lanish
+# manzil matni orqali emas, ma'lumotnoma orqali bo'ladi.
 
 
 MSG_TIMELINE_ORDER = "Reys vaqtlari ketma-ketligi buzilgan: keyingi nuqta oldingisidan erta bo'lishi mumkin emas."
@@ -566,8 +555,8 @@ def logistics_defaults(db: Session, batch: DeliveryBatch) -> dict[str, Any]:
         "status": LogisticsStatus.not_assigned,
         "planned_pickup_date": batch.planned_loading_date,
         "planned_delivery_date": batch.planned_delivery_date,
-        "loading_address": preferred_supplier_address(db, batch.supplier_id),
-        "delivery_address": delivery_point_address(db, batch.delivery_point_id) or preferred_client_address(db, batch.client_id),
+        "loading_address": delivery_point_address(db, batch.loading_point_id),
+        "delivery_address": delivery_point_address(db, batch.delivery_point_id),
         "cost_amount": Decimal("0"),
         "customer_price": Decimal("0"),
         "paid_by": PaidBy.company,
@@ -595,12 +584,9 @@ def ensure_logistics(db: Session, batch: DeliveryBatch, payload: LogisticsCreate
     if not logistics.planned_delivery_date:
         logistics.planned_delivery_date = batch.planned_delivery_date
     if blank(logistics.loading_address):
-        logistics.loading_address = preferred_supplier_address(db, batch.supplier_id)
+        logistics.loading_address = delivery_point_address(db, batch.loading_point_id)
     if blank(logistics.delivery_address):
-        # Partiyada ABZ nuqtasi ko'rsatilgan bo'lsa, manzil o'shandan.
-        # Mijoz kartochkasidagi manzil -- yuridik manzil bo'lishi mumkin, ya'ni
-        # haydovchi bormaydigan joy. Nuqta esa aynan yuk tushiriladigan joy.
-        logistics.delivery_address = delivery_point_address(db, batch.delivery_point_id) or preferred_client_address(db, batch.client_id)
+        logistics.delivery_address = delivery_point_address(db, batch.delivery_point_id)
     if logistics.cost_amount is None:
         logistics.cost_amount = Decimal("0")
     if logistics.customer_price is None:
