@@ -409,6 +409,16 @@ class DeliveryBatchAcceptanceItem(BaseModel):
     comment: str | None = None
 
 
+class LogisticsRevert(BaseModel):
+    """Bosqichni orqaga qaytarish so'rovi.
+
+    Sabab majburiy: tuzatishning o'zi ham hujjat va u kim, qachon, nima
+    uchun qaytarganini ko'rsatishi kerak.
+    """
+
+    reason: str = Field(min_length=3, max_length=500)
+
+
 class DeliveryBatchTripAcceptance(BaseModel):
     """Bitta reysning qabuli.
 

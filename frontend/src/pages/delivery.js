@@ -1400,6 +1400,7 @@ function batchHeader(batch) {
         <div>
           <button type="button" data-nav="/delivery-batches/${batch.id}?tab=quantity">Qabul miqdorini kiritish</button>
           ${editable && isCompanyManaged(batch) ? `<button type="button" data-transport-assignment>Transport biriktirish</button>` : ""}
+          ${editable && batch.status === "completed" ? `<button type="button" data-reopen-batch>Partiyani qayta ochish</button>` : ""}
           <button type="button" data-nav="/delivery-batches/${batch.id}?tab=logistics">Logistika</button>
           ${editable ? `<button type="button" data-nav="/delivery-batches/${batch.id}/edit">To'liq tahrirlash</button>` : ""}
           ${canEdit("moliya") ? `<button type="button" data-nav="/customer-invoices/new?client_id=${batch.client_id}&contract_id=${batch.contract_id}&order_id=${batch.order_id}&delivery_batch_id=${batch.id}">Mijoz hisobi yaratish</button>
@@ -1429,6 +1430,78 @@ const MSG_TRIPS_OVER = "Reyslar miqdori partiya miqdoridan oshgan";
 // kutayotgan bo'lsa, ikkinchisi allaqachon yo'lda bo'lishi mumkin.
 // Ilgari bosqich tugmalari partiyaga tegishli edi va faqat birinchi
 // reysga ta'sir qilardi.
+// Orqaga qaytarish sababi so'raladi. Brauzerning `prompt` i emas:
+// sabab hujjatga yoziladi va oyna nima tozalanishini ham ko'rsatishi
+// kerak -- odam nimani yo'qotayotganini bilib turib bosishi lozim.
+function reasonDialog({ title, message, confirmLabel }) {
+  return new Promise((resolve) => {
+    document.querySelector(".modal-backdrop")?.remove();
+    document.body.insertAdjacentHTML("beforeend", `<div class="modal-backdrop" data-modal-close>
+      <section class="modal-panel" role="dialog" aria-modal="true">
+        <div class="modal-header"><h2>${esc(title)}</h2><button class="modal-close" type="button" data-modal-close aria-label="Yopish">×</button></div>
+        <form id="reason-form">
+          <div class="modal-body">
+            <p class="helper-text">${message}</p>
+            <div class="grid">${textArea("reason", "Sabab", "")}</div>
+            <p class="helper-text">Sabab partiya tarixiga yoziladi.</p>
+          </div>
+          <div class="modal-footer">
+            <button class="btn" type="button" data-modal-close>Bekor qilish</button>
+            <button class="btn primary" type="submit">${esc(confirmLabel)}</button>
+          </div>
+        </form>
+      </section>
+    </div>`);
+    const backdrop = document.querySelector(".modal-backdrop");
+    localizeDom(backdrop);
+    const close = (value) => { backdrop?.remove(); resolve(value); };
+    backdrop?.addEventListener("click", (event) => {
+      if (event.target.matches("[data-modal-close]")) close(null);
+    });
+    const form = document.querySelector("#reason-form");
+    form?.addEventListener("submit", (event) => {
+      event.preventDefault();
+      const reason = (field(form, "reason") || "").trim();
+      if (reason.length < 3) return modalFormError(form, "Sababni yozing.", "reason");
+      close(reason);
+    });
+    form?.elements.reason?.focus();
+  });
+}
+
+async function revertTripStage(batch, tripId) {
+  const trip = tripOf(batch, tripId);
+  const reason = await reasonDialog({
+    title: "Bosqichni orqaga qaytarish",
+    message: `<span>Reys</span> <b data-noloc>${esc(trip.logistics_number || trip.id)}</b> <span>bir bosqich orqaga qaytariladi. O'sha bosqichda kiritilgan sana va raqamlar tozalanadi -- ularni qayta kiritish kerak bo'ladi.</span>`,
+    confirmLabel: "Orqaga qaytarish",
+  });
+  if (!reason) return;
+  try {
+    await api(`/api/logistics/${trip.id}/revert`, { method: "POST", body: JSON.stringify({ reason }) });
+    showToast("Bosqich orqaga qaytarildi.");
+    renderBatchDetail(batch.id);
+  } catch (error) {
+    showToast(error.message, true);
+  }
+}
+
+async function reopenBatch(batch) {
+  const reason = await reasonDialog({
+    title: "Partiyani qayta ochish",
+    message: "<span>Yakunlangan partiya qayta ochiladi va bosqichlarni tuzatish mumkin bo'ladi.</span>",
+    confirmLabel: "Qayta ochish",
+  });
+  if (!reason) return;
+  try {
+    await api(`/api/delivery-batches/${batch.id}/reopen`, { method: "POST", body: JSON.stringify({ reason }) });
+    showToast("Partiya qayta ochildi.");
+    renderBatchDetail(batch.id);
+  } catch (error) {
+    showToast(error.message, true);
+  }
+}
+
 function tripStageButtons(trip, weHaul) {
   const buttons = [];
   if (weHaul && ["not_assigned", "carrier_assigned"].includes(trip.status)) {
@@ -1442,6 +1515,11 @@ function tripStageButtons(trip, weHaul) {
   }
   if (weHaul && !["not_assigned", "carrier_assigned"].includes(trip.status)) {
     buttons.push(`<button class="link-btn" type="button" data-transport-assignment="${trip.id}">Transport</button>`);
+  }
+  // Xato bo'lsa tuzatish kerak: bosqich orqaga qaytariladi va o'sha
+  // bosqichda kiritilgan raqamlar tozalanadi.
+  if (!["not_assigned", "completed"].includes(trip.status)) {
+    buttons.push(`<button class="link-btn" type="button" data-revert-trip="${trip.id}">Orqaga</button>`);
   }
   return buttons.join("");
 }
@@ -2297,6 +2375,10 @@ function bindBatchDetailActions(batch) {
       showToast(error.message, true);
     }
   });
+  document.querySelectorAll("[data-revert-trip]").forEach((button) => {
+    button.addEventListener("click", () => revertTripStage(batch, button.dataset.revertTrip));
+  });
+  document.querySelector("[data-reopen-batch]")?.addEventListener("click", () => reopenBatch(batch));
   document.querySelectorAll("[data-delete-trip]").forEach((button) => {
     button.addEventListener("click", async () => {
       if (!confirmMsg("Reys o'chirilsinmi?")) return;

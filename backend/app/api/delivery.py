@@ -41,6 +41,7 @@ from backend.app.services import point_distance
 from backend.app.services import smn
 from backend.app.services import track_distance
 from backend.app.services import transport_choice
+from backend.app.services import trip_revert
 from backend.app.services import trip_completion_check
 from backend.app.services.delivery_method import default_method_for
 from backend.app.services.auth import get_current_user, require_edit
@@ -80,6 +81,7 @@ from backend.app.schemas.delivery import (
     LogisticsNoteRead,
     LogisticsNoteUpdate,
     LogisticsRead,
+    LogisticsRevert,
     LogisticsUpdate,
     OrderItemBatchBalance,
 )
@@ -1085,6 +1087,8 @@ def open_trips_to_cover(db: Session, batch: DeliveryBatch) -> int:
     return opened
 
 
+MSG_BATCH_COMPLETED_REVERT = "Yakunlangan partiyada bosqichni orqaga qaytarib bo'lmaydi. Avval partiyani qayta oching."
+MSG_INVOICED_REVERT = "Bu partiya bo'yicha mijozga hisob-faktura qo'yilgan. Bosqichni qaytarishdan oldin hisob bilan nima qilinishini hal qiling."
 MSG_TRIP_QUANTITY = "Reys miqdori 0 dan katta bo'lishi kerak."
 MSG_TRIP_OVER = "Reyslar miqdori partiya miqdoridan oshib ketadi"
 MSG_TRIP_STARTED = "Boshlangan reysni o'chirib bo'lmaydi"
@@ -1555,6 +1559,47 @@ def update_batch(batch_id: int, payload: DeliveryBatchUpdate, db: Session = Depe
     return get_batch_detail(batch.id, db)
 
 
+@router.post("/{batch_id}/reopen", response_model=DeliveryBatchDetail, dependencies=[Depends(require_edit("yetkazib_berish"))])
+def reopen_batch(
+    batch_id: int,
+    payload: LogisticsRevert,
+    db: Session = Depends(get_db),
+    user=Depends(get_current_user),
+):
+    """Yakunlangan partiyani qayta ochadi.
+
+    Yakunlash oxirgi eshik edi: undan keyin hech narsani tuzatib
+    bo'lmasdi -- na sanani, na miqdorni, na hujjatni. Amalda esa xato
+    aynan yakunlagandan keyin ko'rinadi.
+
+    Partiya reyslarning holatiga qaytadi, sabab tarixga yoziladi.
+    """
+    batch = load_batch_detail(db, batch_id)
+    reason = (payload.reason or "").strip()
+    if not reason:
+        raise HTTPException(status_code=422, detail=trip_revert.MSG_REASON_REQUIRED)
+    if batch.status != BatchStatus.completed:
+        raise HTTPException(status_code=422, detail="Bu partiya yakunlanmagan.")
+    if db.scalar(select(func.count()).select_from(CustomerInvoice).where(CustomerInvoice.delivery_batch_id == batch.id)):
+        raise HTTPException(status_code=422, detail=MSG_INVOICED_REVERT)
+
+    # Reyslar «yakunlandi» holatida bo'lsa, ular qabul bosqichiga
+    # qaytariladi: partiya ochiq, reys esa yopiq bo'lib qololmaydi.
+    for trip in batch.trips:
+        if trip.status == LogisticsStatus.completed:
+            trip.status = LogisticsStatus.accepted
+    batch.status = BatchStatus.accepted
+    sync_batch_status_from_logistics(batch)
+    db.add(DeliveryBatchNote(
+        delivery_batch_id=batch.id,
+        note=f"Partiya qayta ochildi. Sabab: {reason}",
+        created_by=getattr(user, "username", None),
+    ))
+    sync_order_status(batch.order, db=db)
+    db.commit()
+    return get_batch_detail(batch.id, db)
+
+
 @router.delete("/{batch_id}", status_code=204, dependencies=[Depends(require_edit("yetkazib_berish"))])
 def delete_batch(batch_id: int, db: Session = Depends(get_db)):
     batch = get_batch_or_404(db, batch_id)
@@ -1919,6 +1964,60 @@ def update_logistics(logistics_id: int, payload: LogisticsUpdate, db: Session = 
     db.refresh(logistics)
     if logistics.vehicle_number and logistics.vehicle_number != old_vehicle_number:
         notify_driver_of_trip(db, logistics)
+    return logistics_read(logistics)
+
+
+@logistics_router.post("/{logistics_id}/revert", response_model=LogisticsRead, dependencies=[Depends(require_edit("yetkazib_berish"))])
+def revert_trip_stage(
+    logistics_id: int,
+    payload: LogisticsRevert,
+    db: Session = Depends(get_db),
+    user=Depends(get_current_user),
+):
+    """Reysni bir bosqich orqaga qaytaradi.
+
+    Xato kiritilgan sana yoki miqdorni tuzatishning yagona yo'li
+    statusni qo'lda almashtirish edi -- u esa faqat yorliqni
+    o'zgartirar, o'sha bosqichda yozilgan raqamlar joyida qolaverardi.
+
+    Bu yerda bosqichda to'ldirilgan maydonlar tozalanadi, sabab esa
+    tarixga yoziladi: tuzatish ham hujjat.
+    """
+    logistics = db.get(Logistics, logistics_id)
+    if not logistics:
+        raise HTTPException(status_code=404, detail="Logistika topilmadi.")
+    reason = (payload.reason or "").strip()
+    if not reason:
+        raise HTTPException(status_code=422, detail=trip_revert.MSG_REASON_REQUIRED)
+
+    batch = logistics.batch
+    if batch and batch.status == BatchStatus.completed:
+        raise HTTPException(status_code=422, detail=MSG_BATCH_COMPLETED_REVERT)
+    if batch and db.scalar(select(func.count()).select_from(CustomerInvoice).where(CustomerInvoice.delivery_batch_id == batch.id)):
+        # Pul allaqachon mijozga qo'yilgan. Bosqichni orqaga surish
+        # hisob-faktura ostidagi raqamlarni o'zgartiradi -- avval hisob
+        # bilan nima qilinishi hal bo'lsin.
+        raise HTTPException(status_code=422, detail=MSG_INVOICED_REVERT)
+
+    stage = trip_revert.stage_for(logistics.status)
+    if not stage:
+        raise HTTPException(status_code=422, detail=trip_revert.MSG_NOTHING_TO_REVERT)
+
+    trip_revert.revert(logistics, stage)
+    if batch:
+        distribute_loaded_to_items(batch)
+        distribute_accepted_to_items(batch)
+        sync_batch_status_from_logistics(batch)
+        note = f"{logistics.logistics_number or logistics.id}: «{stage.label}» bosqichi orqaga qaytarildi. Sabab: {reason}"
+        db.add(DeliveryBatchNote(delivery_batch_id=batch.id, note=note, created_by=getattr(user, "username", None)))
+        sync_order_status(batch.order, db=db)
+    db.add(LogisticsNote(
+        logistics_id=logistics.id,
+        note=f"«{stage.label}» bosqichi orqaga qaytarildi. Sabab: {reason}",
+        created_by=getattr(user, "username", None),
+    ))
+    db.commit()
+    db.refresh(logistics)
     return logistics_read(logistics)
 
 
