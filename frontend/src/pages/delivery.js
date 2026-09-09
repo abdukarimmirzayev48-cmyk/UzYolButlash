@@ -1425,6 +1425,33 @@ function supplierDeliveryNote(batch) {
 // birining o'z mashinasi, miqdori, probegi va yoqilg'i hisobi bor.
 const MSG_TRIPS_OVER = "Reyslar miqdori partiya miqdoridan oshgan";
 
+// Har bir reysning o'z keyingi qadami bor: bittasi hali mashina
+// kutayotgan bo'lsa, ikkinchisi allaqachon yo'lda bo'lishi mumkin.
+// Ilgari bosqich tugmalari partiyaga tegishli edi va faqat birinchi
+// reysga ta'sir qilardi.
+function tripStageButtons(trip, weHaul) {
+  const buttons = [];
+  if (weHaul && ["not_assigned", "carrier_assigned"].includes(trip.status)) {
+    buttons.push(`<button class="link-btn" type="button" data-transport-assignment="${trip.id}">Transport</button>`);
+  }
+  if (["carrier_assigned", "vehicle_assigned", "loading"].includes(trip.status)) {
+    buttons.push(`<button class="link-btn" type="button" data-loading-confirmation="${trip.id}">Yuklandi</button>`);
+  }
+  if (["loaded", "in_transit", "arrived", "unloading"].includes(trip.status)) {
+    buttons.push(`<button class="link-btn" type="button" data-delivery-confirmation="${trip.id}">Yetkazildi</button>`);
+  }
+  if (weHaul && !["not_assigned", "carrier_assigned"].includes(trip.status)) {
+    buttons.push(`<button class="link-btn" type="button" data-transport-assignment="${trip.id}">Transport</button>`);
+  }
+  return buttons.join("");
+}
+
+// Bosqich tasdiqlari endi aniq reysga tegishli: partiyada bir nechta
+// mashina bo'lishi mumkin va ularning har biri o'z vaqtida yuklanadi.
+function tripOf(batch, tripId) {
+  return (batch.trips || []).find((row) => Number(row.id) === Number(tripId)) || batch.logistics || {};
+}
+
 function batchTripsSection(batch, editable) {
   const trips = batch.trips || [];
   const unit = batch.items?.[0]?.unit;
@@ -1444,15 +1471,16 @@ function batchTripsSection(batch, editable) {
         : `<p class="helper-text">Butun miqdor reyslarga biriktirilgan.</p>`;
   return section("Reyslar", `${editable && weHaul ? `<div class="actions"><button class="btn" type="button" data-add-trip>Reys qo'shish</button></div>` : ""}${note}${tableOrEmpty(
     trips,
-    ["Reys", "Miqdor", "Transport", "Haydovchi", "Holati", "Reja sanalar", editable ? "Amallar" : ""],
+    ["Reys", "Reja", "Yuklangan", "Transport", "Haydovchi", "Holati", "Reja sanalar", editable ? "Amallar" : ""],
     (trip) => `<tr>
       <td><button class="ops-primary-link" data-nav="/logistics/${trip.id}" data-noloc>${esc(trip.logistics_number || trip.id)}</button></td>
       <td>${trip.planned_quantity != null ? fmtQty(trip.planned_quantity, unit) : dash}</td>
+      <td>${trip.loaded_quantity != null ? fmtQty(trip.loaded_quantity, unit) : dash}</td>
       <td data-noloc>${trip.transport_id ? esc(trip.vehicle_number || "") : ""}${trip.transport_id ? "" : statusChip({ label: "Biriktirilmagan", tone: "warning" })}</td>
       <td data-noloc>${fmt(trip.driver_name)}</td>
       <td>${statusBadge(trip.status)}</td>
       <td data-noloc>${fmt(trip.planned_pickup_date)} — ${fmt(trip.planned_delivery_date)}</td>
-      ${editable ? `<td><div class="ops-row-actions">${weHaul ? `<button class="link-btn" type="button" data-transport-assignment="${trip.id}">Transport</button>` : ""}<button class="link-btn" data-nav="/logistics/${trip.id}">Ochish</button>${trips.length > 1 ? `<button class="link-btn" type="button" data-delete-trip="${trip.id}">O'chirish</button>` : ""}</div></td>` : ""}
+      ${editable ? `<td><div class="ops-row-actions">${tripStageButtons(trip, weHaul)}<button class="link-btn" data-nav="/logistics/${trip.id}">Ochish</button>${trips.length > 1 && ["not_assigned", "carrier_assigned", "vehicle_assigned"].includes(trip.status) ? `<button class="link-btn" type="button" data-delete-trip="${trip.id}">O'chirish</button>` : ""}</div></td>` : ""}
     </tr>`,
     "Reyslar hali ochilmagan."
   )}`);
@@ -1648,8 +1676,8 @@ async function openTransportAssignmentModal(batch, tripId = null) {
   form?.querySelector("[name='transport_id']:not([disabled])")?.focus();
 }
 
-function loadingConfirmationModal(batch) {
-  const logistics = batch.logistics || {};
+function loadingConfirmationModal(batch, tripId = null) {
+  const logistics = tripOf(batch, tripId);
   const quantity = batch.summary?.total_planned_quantity || batch.items?.[0]?.planned_quantity;
   const unit = batch.items?.[0]?.unit || "";
   const today = todayIso();
@@ -1860,11 +1888,11 @@ function openAcceptanceModal(batch) {
   form?.querySelector("[data-acceptance-input]")?.focus();
 }
 
-function openLoadingConfirmationModal(batch) {
-  const logistics = batch.logistics || {};
+function openLoadingConfirmationModal(batch, tripId = null) {
+  const logistics = tripOf(batch, tripId);
   if (!logistics.id) return showToast("Yuklandi deb belgilash uchun avval transportni biriktiring.", true);
   document.querySelector(".modal-backdrop")?.remove();
-  document.body.insertAdjacentHTML("beforeend", loadingConfirmationModal(batch));
+  document.body.insertAdjacentHTML("beforeend", loadingConfirmationModal(batch, logistics.id));
   const backdrop = document.querySelector(".modal-backdrop");
   const form = document.querySelector("#loading-confirmation-form");
   const close = () => backdrop?.remove();
@@ -1886,6 +1914,7 @@ function openLoadingConfirmationModal(batch) {
       await api(`/api/delivery-batches/${batch.id}/confirm-loading`, {
         method: "POST",
         body: JSON.stringify({
+          logistics_id: logistics.id,
           actual_loading_date: field(form, "actual_loading_date"),
           loaded_quantity: field(form, "loaded_quantity"),
           notes: field(form, "notes"),
@@ -1903,8 +1932,8 @@ function openLoadingConfirmationModal(batch) {
   form?.elements.actual_loading_date?.focus();
 }
 
-function deliveryConfirmationModal(batch) {
-  const logistics = batch.logistics || {};
+function deliveryConfirmationModal(batch, tripId = null) {
+  const logistics = tripOf(batch, tripId);
   const loadedQuantity = batch.summary?.total_loaded_quantity || batch.items?.[0]?.loaded_quantity;
   const unit = batch.items?.[0]?.unit || "";
   const today = todayIso();
@@ -1969,11 +1998,11 @@ function deliveryConfirmationModal(batch) {
   </div>`;
 }
 
-function openDeliveryConfirmationModal(batch) {
-  const logistics = batch.logistics || {};
+function openDeliveryConfirmationModal(batch, tripId = null) {
+  const logistics = tripOf(batch, tripId);
   if (!logistics.id) return showToast("Yetkazildi deb belgilash uchun avval transportni biriktiring.", true);
   document.querySelector(".modal-backdrop")?.remove();
-  document.body.insertAdjacentHTML("beforeend", deliveryConfirmationModal(batch));
+  document.body.insertAdjacentHTML("beforeend", deliveryConfirmationModal(batch, logistics.id));
   const backdrop = document.querySelector(".modal-backdrop");
   const form = document.querySelector("#delivery-confirmation-form");
   const close = () => backdrop?.remove();
@@ -1993,6 +2022,7 @@ function openDeliveryConfirmationModal(batch) {
       await api(`/api/delivery-batches/${batch.id}/confirm-delivery`, {
         method: "POST",
         body: JSON.stringify({
+          logistics_id: logistics.id,
           actual_delivery_date: actualDeliveryDate,
           notes: field(form, "notes"),
           ...measurements(form, ["unloading_temperature_c", "unloading_seal", "arrived_at"]),
@@ -2216,11 +2246,11 @@ function bindBatchDetailActions(batch) {
   });
 
   document.querySelectorAll("[data-loading-confirmation]").forEach((button) => {
-    button.addEventListener("click", () => openLoadingConfirmationModal(batch));
+    button.addEventListener("click", () => openLoadingConfirmationModal(batch, button.dataset.loadingConfirmation || null));
   });
 
   document.querySelectorAll("[data-delivery-confirmation]").forEach((button) => {
-    button.addEventListener("click", () => openDeliveryConfirmationModal(batch));
+    button.addEventListener("click", () => openDeliveryConfirmationModal(batch, button.dataset.deliveryConfirmation || null));
   });
 
   document.querySelectorAll("[data-completion-confirmation]").forEach((button) => {

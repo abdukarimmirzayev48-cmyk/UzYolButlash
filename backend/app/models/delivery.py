@@ -189,6 +189,11 @@ class Logistics(Base, TimestampMixin):
     # davrda kerak emas edi -- endi reyslar yig'indisi partiya miqdorini
     # berishi kerak.
     planned_quantity: Mapped[Decimal | None] = mapped_column(Numeric(18, 3))
+    # Shu reysda haqiqatda yuklangani. Partiya bandlaridagi
+    # `loaded_quantity` shu qiymatlarning yig'indisidan hisoblanadi --
+    # ilgari u to'g'ridan-to'g'ri yozilardi va ikkinchi reys birinchisini
+    # bosib ketardi.
+    loaded_quantity: Mapped[Decimal | None] = mapped_column(Numeric(18, 3))
     delivery_method: Mapped[DeliveryMethod] = mapped_column(SAEnum(DeliveryMethod, length=16), default=DeliveryMethod.auto, nullable=False)
     status: Mapped[LogisticsStatus] = mapped_column(SAEnum(LogisticsStatus), default=LogisticsStatus.not_assigned, nullable=False, index=True)
     carrier_id: Mapped[int | None] = mapped_column(index=True)

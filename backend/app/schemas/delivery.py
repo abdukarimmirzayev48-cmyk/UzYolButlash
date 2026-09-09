@@ -78,6 +78,9 @@ class LogisticsBase(BaseModel):
     # `LogisticsRead` ham meros oladi va eski yozuvni o'qib bo'lmay
     # qolardi -- tekshiruv endpointda turadi.
     planned_quantity: Decimal | None = None
+    # Shu reysda haqiqatda yuklangani. Partiya bandlaridagi miqdor
+    # reyslarning yig'indisidan hisoblanadi.
+    loaded_quantity: Decimal | None = None
     status: LogisticsStatus = LogisticsStatus.not_assigned
     carrier_id: int | None = None
     carrier_name: str | None = None
@@ -372,6 +375,9 @@ class DeliveryBatchLoadingConfirm(BaseModel):
     formasida bo'lgani uchun hech kim kiritmasdi.
     """
 
+    # Qaysi reys yuklandi. Berilmasa birinchisi olinadi -- bitta reysli
+    # partiyalar uchun eski xatti-harakat saqlanadi.
+    logistics_id: int | None = None
     actual_loading_date: date
     loaded_quantity: Decimal = Field(gt=0)
     notes: str | None = None
@@ -388,6 +394,7 @@ class DeliveryBatchLoadingConfirm(BaseModel):
 class DeliveryBatchDeliveryConfirm(BaseModel):
     """Ob'ektda o'lchanadigan narsalar: temperatura va plomba."""
 
+    logistics_id: int | None = None
     actual_delivery_date: date
     notes: str | None = None
     unloading_temperature_c: Decimal | None = None

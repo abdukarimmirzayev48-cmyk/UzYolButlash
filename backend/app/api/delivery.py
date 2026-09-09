@@ -554,19 +554,93 @@ def sync_logistics_status(logistics: Logistics, batch: DeliveryBatch, requested_
     logistics.status = LogisticsStatus.not_assigned
 
 
-def sync_batch_status_from_logistics(batch: DeliveryBatch, logistics: Logistics) -> None:
+# Reys qanchalik oldinga ketgani. Partiya holati shu darajalardan
+# hisoblanadi.
+TRIP_RANK = {
+    LogisticsStatus.not_assigned: 0,
+    LogisticsStatus.carrier_search: 0,
+    LogisticsStatus.carrier_assigned: 1,
+    LogisticsStatus.vehicle_assigned: 1,
+    LogisticsStatus.loading: 2,
+    LogisticsStatus.loaded: 3,
+    LogisticsStatus.in_transit: 4,
+    LogisticsStatus.arrived: 5,
+    LogisticsStatus.unloading: 5,
+    LogisticsStatus.delivered: 6,
+    LogisticsStatus.accepted: 7,
+    LogisticsStatus.completed: 8,
+    LogisticsStatus.cancelled: 0,
+    LogisticsStatus.issue: 0,
+}
+
+
+def trip_of(batch: DeliveryBatch, logistics_id: int | None):
+    """So'ralgan reys, yoki birinchisi.
+
+    Partiya bitta reysli bo'lgan davrdagi chaqiruvlar reys raqamini
+    yubormaydi -- ular uchun birinchi reys ishlatiladi.
+    """
+    if logistics_id:
+        found = next((trip for trip in batch.trips if trip.id == logistics_id), None)
+        if not found:
+            raise HTTPException(status_code=404, detail="Reys topilmadi.")
+        return found
+    return batch.logistics
+
+
+def distribute_loaded_to_items(batch: DeliveryBatch) -> None:
+    """Reyslarda yuklangan jami miqdorni partiya bandlariga taqsimlaydi.
+
+    Bandlar mahsulot bo'yicha bo'linadi, reyslar esa mashina bo'yicha --
+    ikkovi bir-biriga to'g'ridan-to'g'ri mos kelmaydi. Shuning uchun
+    umumiy yuklangan miqdor reja ulushiga qarab bandlarga bo'linadi.
+    """
+    loaded_total = qty(sum((Decimal(trip.loaded_quantity or 0) for trip in batch.trips), Decimal("0")))
+    planned_total = qty(sum((Decimal(item.planned_quantity or 0) for item in batch.items), Decimal("0")))
+    if not batch.items:
+        return
+    if loaded_total <= 0:
+        for item in batch.items:
+            item.loaded_quantity = None
+        return
+    remaining = loaded_total
+    for index, item in enumerate(batch.items):
+        if index == len(batch.items) - 1:
+            item.loaded_quantity = qty(remaining)
+        else:
+            share = qty((loaded_total * Decimal(item.planned_quantity or 0)) / planned_total) if planned_total else Decimal("0")
+            item.loaded_quantity = share
+            remaining = qty(remaining - share)
+
+
+def sync_batch_status_from_logistics(batch: DeliveryBatch, logistics: Logistics | None = None) -> None:
+    """Partiya holati barcha reyslardan chiqadi.
+
+    Ilgari u bitta reysdan olinardi. Partiyada uch reys bo'lsa va
+    birinchisi yetkazib bo'lgan bo'lsa, partiya «yetkazildi» deb turar,
+    qolgan ikkitasi esa hali yo'lda bo'lardi.
+
+    Qoida oddiy: partiya harakatni birinchi mashina yo'lga chiqishi bilan
+    boshlaydi, lekin «yetkazildi» yoki «qabul qilindi» bo'lishi uchun
+    hamma reys shu holatga yetishi kerak.
+    """
     protected = {BatchStatus.cancelled, BatchStatus.issue, BatchStatus.completed}
     if batch.status in protected:
         return
-    if logistics.status == LogisticsStatus.loaded:
-        batch.status = BatchStatus.loaded
-    elif logistics.status == LogisticsStatus.in_transit:
-        batch.status = BatchStatus.in_transit
-    elif logistics.status == LogisticsStatus.delivered:
-        batch.status = BatchStatus.arrived
-    elif logistics.status == LogisticsStatus.accepted:
+    trips = [trip for trip in batch.trips if trip.status not in (LogisticsStatus.cancelled,)]
+    if not trips:
+        return
+    ranks = [TRIP_RANK.get(trip.status, 0) for trip in trips]
+    slowest, fastest = min(ranks), max(ranks)
+    if slowest >= 7:
         batch.status = BatchStatus.accepted
-    elif logistics.status == LogisticsStatus.vehicle_assigned:
+    elif slowest >= 6:
+        batch.status = BatchStatus.arrived
+    elif fastest >= 4:
+        batch.status = BatchStatus.in_transit
+    elif fastest >= 3:
+        batch.status = BatchStatus.loaded
+    elif slowest >= 1:
         batch.status = BatchStatus.ready_for_loading
 
 
@@ -1169,7 +1243,7 @@ def confirm_batch_acceptance(
 @router.post("/{batch_id}/confirm-loading", response_model=DeliveryBatchDetail, dependencies=[Depends(require_edit("yetkazib_berish"))])
 def confirm_batch_loading(batch_id: int, payload: DeliveryBatchLoadingConfirm, db: Session = Depends(get_db)):
     batch = load_batch_detail(db, batch_id)
-    logistics = batch.logistics
+    logistics = trip_of(batch, payload.logistics_id)
     if not logistics:
         raise HTTPException(status_code=422, detail="Yuklandi deb belgilash uchun avval transportni biriktiring.")
     # Transport talabi faqat o'zimiz tashiydigan partiyaga tegishli.
@@ -1188,17 +1262,18 @@ def confirm_batch_loading(batch_id: int, payload: DeliveryBatchLoadingConfirm, d
         raise HTTPException(status_code=422, detail="Yuklangan miqdor 0 dan katta bo'lishi kerak.")
     if planned_total <= 0:
         raise HTTPException(status_code=422, detail="Partiyada reja miqdor topilmadi.")
-    if loaded_total > planned_total and not payload.allow_over_planned:
+    # Solishtirish reysning o'z rejasi bilan: partiya bir nechta reysga
+    # bo'lingan bo'lsa, butun partiya miqdori bilan solishtirish ma'nosiz.
+    trip_planned = qty(logistics.planned_quantity or planned_total)
+    if loaded_total > trip_planned and not payload.allow_over_planned:
         raise HTTPException(status_code=409, detail="Yuklangan miqdor reja miqdoridan oshgan. Davom etishni tasdiqlang.")
 
-    remaining = loaded_total
-    for index, item in enumerate(batch.items):
-        if index == len(batch.items) - 1:
-            item.loaded_quantity = qty(remaining)
-        else:
-            share = qty((loaded_total * (item.planned_quantity or Decimal("0"))) / planned_total) if planned_total else Decimal("0")
-            item.loaded_quantity = share
-            remaining = qty(remaining - share)
+    # Yuklangan miqdor reysning o'zida saqlanadi, partiya bandlari esa
+    # barcha reyslarning yig'indisidan hisoblanadi -- aks holda ikkinchi
+    # reysning yuklashi birinchisining raqamini bosib ketardi.
+    logistics.loaded_quantity = loaded_total
+    distribute_loaded_to_items(batch)
+    for item in batch.items:
         item.accepted_quantity = None
         item.difference_quantity = None
         if payload.notes:
@@ -1210,8 +1285,10 @@ def confirm_batch_loading(batch_id: int, payload: DeliveryBatchLoadingConfirm, d
     ))
     logistics.actual_pickup_date = payload.actual_loading_date
     logistics.status = LogisticsStatus.loaded
-    batch.actual_loading_date = payload.actual_loading_date
-    batch.status = BatchStatus.loaded
+    if not batch.actual_loading_date:
+        # Partiyaning yuklash sanasi -- birinchi mashina yo'lga chiqqan kun.
+        batch.actual_loading_date = payload.actual_loading_date
+    sync_batch_status_from_logistics(batch)
     mark_stock_picked_up_for_batch(db, batch)
     if payload.notes:
         logistics.notes = payload.notes
@@ -1225,7 +1302,7 @@ def confirm_batch_loading(batch_id: int, payload: DeliveryBatchLoadingConfirm, d
 @router.post("/{batch_id}/confirm-delivery", response_model=DeliveryBatchDetail, dependencies=[Depends(require_edit("yetkazib_berish"))])
 def confirm_batch_delivery(batch_id: int, payload: DeliveryBatchDeliveryConfirm, db: Session = Depends(get_db)):
     batch = load_batch_detail(db, batch_id)
-    logistics = batch.logistics
+    logistics = trip_of(batch, payload.logistics_id)
     if not logistics:
         raise HTTPException(status_code=422, detail="Yetkazildi deb belgilash uchun avval transportni biriktiring.")
     if batch.status in {BatchStatus.cancelled, BatchStatus.issue, BatchStatus.completed}:
@@ -1245,8 +1322,10 @@ def confirm_batch_delivery(batch_id: int, payload: DeliveryBatchDeliveryConfirm,
     apply_measurements(logistics, payload, ("unloading_temperature_c", "unloading_seal", "arrived_at"))
     logistics.actual_delivery_date = payload.actual_delivery_date
     logistics.status = LogisticsStatus.delivered
-    batch.actual_delivery_date = payload.actual_delivery_date
-    batch.status = BatchStatus.arrived
+    # Partiyaning yetkazish sanasi -- oxirgi mashina yetkazgan kun.
+    if not batch.actual_delivery_date or payload.actual_delivery_date > batch.actual_delivery_date:
+        batch.actual_delivery_date = payload.actual_delivery_date
+    sync_batch_status_from_logistics(batch)
     mark_stock_delivered_for_batch(db, batch)
     for item in batch.items:
         item.accepted_quantity = None

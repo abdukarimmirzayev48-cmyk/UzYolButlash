@@ -1738,6 +1738,7 @@ const uzCyrillic = {
   "Reys raqamlarisiz yakunlandi": "Рейс рақамларисиз якунланди",
   "Reys tafsilotlari": "Рейс тафсилотлари",
   "Reys tafsilotlari to'liq kiritilmagan. Ma'lumotlarni to'ldirish uchun tahrirlash tugmasini bosing.": "Рейс тафсилотлари тўлиқ киритилмаган. Маълумотларни тўлдириш учун таҳрирлаш тугмасини босинг.",
+  "Reys topilmadi.": "Рейс топилмади.",
   "Reys vaqtlari": "Рейс вақтлари",
   "Reys vaqtlari ketma-ketligi buzilgan": "Рейс вақтлари кетма-кетлиги бузилган",
   "Reys vaqtlari ketma-ketligi buzilgan: keyingi nuqta oldingisidan erta bo'lishi mumkin emas.": "Рейс вақтлари кетма-кетлиги бузилган: кейинги нуқта олдингисидан эрта бўлиши мумкин эмас.",
