@@ -16,6 +16,11 @@ MSG_REMAINING_PAYMENT_RULE = "Qolgan summa tayyor partiya bo'yicha hisob-faktura
 
 class ContractStatus(str, Enum):
     draft = "draft"
+    # Mijoz shartnomani Uzex orqali namunaga muvofiq qaytardi va u
+    # ko'rib chiqilyapti. Ilgari bunday holat yo'q edi: qaytib kelgan
+    # shartnoma imzolanguncha «loyiha» bo'lib turardi, ya'ni bir-ikki
+    # kun davom etadigan muhokama ekranda umuman ko'rinmasdi.
+    under_discussion = "under_discussion"
     signed = "signed"
     active = "active"
     completed = "completed"

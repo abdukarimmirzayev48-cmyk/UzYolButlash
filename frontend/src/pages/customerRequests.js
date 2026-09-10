@@ -707,9 +707,9 @@ function requestDashboardBlocks(board) {
 // keyin nima qilish mumkin.
 
 const REQUEST_STATUS_HELP = {
-  new: "Talabnomani o'rganing va mijozga Didox orqali shartnoma namunasini yuboring.",
-  reviewing: "Shartnoma namunasi mijozda. Uning xati kelgach shartnoma tayyorlashga o'tiladi.",
-  contract_preparation: "Talabnoma tugadi. Keyingi ish shartnomalar bo'limida davom etadi.",
+  new: "Tashkilotning rasmiy xatini biriktiring -- talabnoma shundan keyin ko'rib chiqishga o'tadi.",
+  reviewing: "Xat qabul qilindi. Shartnoma namunasini tayyorlab, Didox orqali tashkilotga yuboring va namunani biriktiring.",
+  contract_preparation: "Namuna mijozda. Talabnomaning ishi tugadi -- keyingi qadam shartnomalar bo'limida.",
   rejected: "Talabnoma rad etilgan.",
 };
 
@@ -737,7 +737,7 @@ function requestStatusFlow(request) {
 function requestStatusCard(request) {
   const editable = canEdit("sotuv");
   const help = REQUEST_STATUS_HELP[request.status] || "";
-  // Xat yo'q bo'lsa, shartnoma tayyorlashga o'tish tugmasi ishlamaydi.
+  // Kerakli hujjat yo'q bo'lsa, keyingi bosqich tugmasi ishlamaydi.
   // Buni tugma bosilgandan keyin xato bilan aytish o'rniga, oldindan
   // aytamiz -- va hujjat yuklash aynan shu yerda turadi.
   // Server keyingi qadam qanday hujjat kutayotganini aytadi -- brauzer
@@ -766,12 +766,14 @@ function requestStatusCard(request) {
 
 // ---- Hujjatlar ------------------------------------------------------------
 //
-// Shartnoma mijozning xati asosida tayyorlanadi. Ilgari xat pochtada yoki
-// qog'oz papkada qolardi: talabnomani ochgan odam uni topa olmasdi.
+// Shartnoma tashkilotning xati asosida tayyorlanadi. Ilgari xat pochtada
+// yoki qog'oz papkada qolardi: talabnomani ochgan odam uni topa olmasdi.
 
+// Tartib hayotdagi tartib bilan bir xil: avval xat keladi, keyin uning
+// asosida namuna tayyorlanadi.
 const REQUEST_DOCUMENT_TYPES = [
+  ["letter", "Tashkilot xati"],
   ["contract_sample", "Shartnoma namunasi (Didox)"],
-  ["letter", "Mijoz xati"],
   ["specification", "Spetsifikatsiya"],
   ["other", "Boshqa"],
 ];
@@ -781,8 +783,8 @@ const REQUEST_DOCUMENT_TYPES = [
 // sharti. Ilgari ular pastda alohida bo'lim bo'lib turardi va nima uchun
 // kerakligi ko'rinmasdi.
 const REQUEST_DOCUMENT_HELP = {
-  contract_sample: "Mijozga Didox orqali yuborilgan shartnoma namunasini biriktiring.",
-  letter: "Shartnoma tayyorlash uchun mijozning rasmiy xatini biriktiring.",
+  letter: "Ko'rib chiqishga o'tish uchun tashkilotning rasmiy xatini biriktiring.",
+  contract_sample: "Didox orqali yuborilgan shartnoma namunasini biriktiring.",
 };
 
 function requestDocumentsBlock(request, { required = false, needed = null } = {}) {

@@ -2454,7 +2454,7 @@ function batchStepState(batch = {}) {
 // ichida qat'iy tartibli, ya'ni «bajarilgan» hech qachon «bajarilmagan» dan
 // keyin turmaydi.
 
-const CONTRACT_STATUS_TRACK = ["draft", "signed", "active", "completed"];
+const CONTRACT_STATUS_TRACK = ["draft", "under_discussion", "signed", "active", "completed"];
 
 function trackPercent(part, whole) {
   const total = numberValue(whole);
@@ -2672,7 +2672,11 @@ function contractNextAction(contract = {}) {
   const advanceExpected = numberValue(summary.advance_amount) > 0;
   if (!contract.client_id) return { title: "Shartnomani mijozga bog'lang", hint: "Buyurtma va hisob-faktura yaratish uchun shartnoma mijozga bog'langan bo'lishi kerak.", button: "Mijozni bog'lash", modal: "contract-link-client" };
   if (contract.status === "cancelled") return { title: "Shartnoma bekor qilingan", button: "Tarixni ko'rish", path: `/contracts/${id}?tab=notes`, done: true };
-  if (contract.status === "draft") return { title: "Shartnomani imzolangan deb belgilang", hint: "Shartnoma hozir qoralama. Imzolangandan keyin avans hisobini qo'yish mumkin bo'ladi.", button: "Imzolangan deb belgilash", attrs: { "data-contract-status": "signed", "data-contract-direction": "forward" } };
+  // Loyihadan to'g'ridan-to'g'ri imzolanganga o'tib bo'lmaydi: oradagi
+  // qadam -- mijoz shartnomani Uzex orqali qaytarishi. Ilgari bu tugma
+  // «signed» ni yuborardi va server uni rad etardi.
+  if (contract.status === "draft") return { title: "Mijozdan qaytgan shartnomani tasdiqlang", hint: "Namuna mijozda. Uzex orqali qaytgach, shartnomani muhokamaga o'tkazing.", button: "Muhokamaga o'tkazish", attrs: { "data-contract-status": "under_discussion", "data-contract-direction": "forward" } };
+  if (contract.status === "under_discussion") return { title: "Imzolangan nusxani biriktiring", hint: "Shartnoma muhokamada. Imzolangach PDF nusxasini yuklang va imzolangan deb belgilang.", button: "Imzolangan deb belgilash", attrs: { "data-contract-status": "signed", "data-contract-direction": "forward" } };
   if (contract.status === "signed") return { title: "Shartnomani faollashtiring", hint: "Shartnoma imzolangan. Faol holatga o'tkazilgandan keyin ish boshlanadi.", button: "Faollashtirish", attrs: { "data-contract-status": "active", "data-contract-direction": "forward" } };
   if (advanceExpected && numberValue(billing.advance_invoiced) <= 0) {
     return { title: "Avans hisob-fakturasini yarating", hint: "Shartnoma bo'yicha avans hali hisob qilinmagan.", button: "Hisob yaratish", modal: "contract-invoice-modal" };

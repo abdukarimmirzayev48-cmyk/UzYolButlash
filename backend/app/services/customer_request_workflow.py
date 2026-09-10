@@ -22,19 +22,28 @@ shartnoma imzolash va buyurtma yaratish -- shartnoma bo'limida davom
 etadi. Ilgari bu ikkisi ham talabnomaning holati edi, ya'ni bitta narsa
 ikki joyda yuritilardi.
 
-Har bir oldinga qadam o'z hujjatini talab qiladi: xodim talabnomani
-o'rganib, mijozga Didox orqali shartnoma namunasini yuboradi -- va uni
-biriktirmaguncha talabnoma ko'rib chiqishga o'tmaydi. Shartnoma
-tayyorlashga o'tish uchun esa mijozning xati kerak.
+Har bir oldinga qadam o'z hujjatini talab qiladi, va tartib hayotdagi
+tartib bilan bir xil:
+
+1. Talabnoma ma'lumotlari kiritiladi -- «Yangi».
+2. Tashkilotning rasmiy **xati** biriktiriladi -- shundan keyingina
+   talabnoma «Ko'rib chiqilmoqda» ga o'tadi. Sotuv bo'limining ishi shu
+   yerda tugaydi: keyingi qadam shartnoma bo'limida.
+3. Mas'ul xodim shartnoma namunasini tayyorlab, Didox orqali tashkilotga
+   yuboradi va o'sha **namunani** biriktiradi -- talabnoma «Shartnoma
+   tayyorlanmoqda» ga o'tadi.
+
+Ilgari bu ikkisi teskari edi: ko'rib chiqishga o'tish uchun shartnoma
+namunasi, shartnoma tayyorlashga o'tish uchun esa xat so'ralardi. Ya'ni
+tizim hali kelmagan xatdan oldin namunani talab qilardi, holbuki namuna
+aynan xat asosida tayyorlanadi. Ishlab chiqarishda buning izi ko'rinib
+turardi: to'rtta talabnoma «shartnoma tayyorlanmoqda» da faqat xat bilan
+turardi, bittasi esa namunasi bor holda «yangi» da qolib ketgan edi.
 
 «Muzokara» alohida holat edi. Amalda ko'rib chiqish va muzokara bir vaqtda
 ketadi -- operator qaysi biridaligini ajrata olmasdi va tugma tasodifan
 bosilardi, tarix esa ma'nosini yo'qotardi. Ikkalasi bitta holatga
 birlashtirildi.
-
-Shartnoma tayyorlashga o'tish uchun mijozning xati biriktirilgan bo'lishi
-shart: shartnoma aynan shu xat asosida tayyorlanadi, va uni keyin qidirib
-topib bo'lmasdi.
 
 Any open state can be rejected, and a rejected talabnoma can be reopened.
 Each step also has a way back to the one before it, because correcting a
@@ -107,13 +116,18 @@ def transition_kind(current: S, target: S) -> str | None:
 # chunki brauzer tugmani shu asosda o'chiradi va server ham shu asosda rad
 # etadi -- ikkisi hech qachon ajralib qolmaydi.
 REQUIRED_DOCUMENT: dict[S, D] = {
-    S.reviewing: D.contract_sample,
-    S.contract_preparation: D.letter,
+    S.reviewing: D.letter,
+    S.contract_preparation: D.contract_sample,
 }
 
+# Alohida konstanta: lug'at generatori aynan modul darajasidagi `MSG_*`
+# nomlarni oladi, lug'at ichidagi matnni emas.
+MSG_LETTER_REQUIRED = "Ko'rib chiqishga o'tish uchun tashkilotning rasmiy xati biriktirilishi shart."
+MSG_SAMPLE_REQUIRED = "Shartnoma tayyorlashga o'tish uchun Didox orqali yuborilgan shartnoma namunasi biriktirilishi shart."
+
 MSG_DOCUMENT_REQUIRED = {
-    D.contract_sample: "Ko'rib chiqishga o'tish uchun Didox orqali yuborilgan shartnoma namunasi biriktirilishi shart.",
-    D.letter: "Shartnoma tayyorlashga o'tish uchun mijozning xati biriktirilishi shart.",
+    D.letter: MSG_LETTER_REQUIRED,
+    D.contract_sample: MSG_SAMPLE_REQUIRED,
 }
 
 

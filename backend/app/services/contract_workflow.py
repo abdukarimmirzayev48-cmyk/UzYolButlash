@@ -9,7 +9,21 @@ Same approach as the talabnoma flow: the transitions live here, the API
 validates against them and reports them to the browser, so the buttons on
 screen and the rule on the server cannot drift apart.
 
-    draft -> signed -> active -> completed
+    draft -> under_discussion -> signed -> active -> completed
+
+Bosqichlar hayotdagi tartibga mos:
+
+* **Loyiha** -- shartnoma namunasi tayyorlanib, Didox orqali tashkilotga
+  yuborilgan.
+* **Muhokamada** -- mijoz shartnomani Uzex orqali namunaga muvofiq
+  qaytardi, biz uni tasdiqladik. Odatda bir-ikki kun davom etadi.
+  Ilgari bu oraliq umuman ko'rinmasdi: qaytib kelgan shartnoma
+  imzolanguncha «loyiha» bo'lib turardi, ya'ni ekranga qarab «bu
+  shartnoma qayerda» degan savolga javob bo'lmasdi.
+* **Imzolangan** -- imzolangan nusxa PDF holida biriktirilgan. Aynan
+  shu hujjat talab qilinadi: imzolangan deb belgilangan, lekin hech
+  qanday nusxasi yo'q shartnoma hujjat emas, faqat yozuv. Ishlab
+  chiqarishda 25 shartnomadan 9 tasidagina PDF bor edi.
 
 An active contract that passes its valid_until becomes `expired` on its own --
 the nightly sweep records it like any other change, with a reason. Extending it
@@ -20,6 +34,7 @@ reopened as a draft. Each step also has a way back, because correcting a
 mis-click is ordinary work -- but going back is deliberate and has to say why.
 """
 
+from backend.app.models.contract import ContractDocumentType as D
 from backend.app.models.contract import ContractStatus as S
 
 # Written on the one opening entry each existing contract got when history
@@ -30,7 +45,8 @@ MSG_HISTORY_BASELINE = "Tarix yuritish boshlangunga qadar mavjud holat."
 
 
 FORWARD: dict[S, tuple[S, ...]] = {
-    S.draft: (S.signed,),
+    S.draft: (S.under_discussion,),
+    S.under_discussion: (S.signed,),
     S.signed: (S.active,),
     S.active: (S.completed,),
     S.completed: (),
@@ -42,7 +58,8 @@ FORWARD: dict[S, tuple[S, ...]] = {
 
 BACKWARD: dict[S, tuple[S, ...]] = {
     S.draft: (),
-    S.signed: (S.draft,),
+    S.under_discussion: (S.draft,),
+    S.signed: (S.under_discussion,),
     S.active: (S.signed,),
     # Reopening a completed contract is a real correction, not an oddity: a
     # delivery that turns out to be short puts it back into active.
@@ -53,7 +70,7 @@ BACKWARD: dict[S, tuple[S, ...]] = {
     S.cancelled: (S.draft,),
 }
 
-CANCELLABLE = (S.draft, S.signed, S.active, S.expired)
+CANCELLABLE = (S.draft, S.under_discussion, S.signed, S.active, S.expired)
 
 
 def transitions_from(current: S) -> list[dict]:
@@ -72,3 +89,23 @@ def transition_kind(current: S, target: S) -> str | None:
         if move["status"] == target.value:
             return move["direction"]
     return None
+
+
+# Imzolangan deb belgilash uchun imzolangan nusxa biriktirilgan bo'lishi
+# shart. Qoida shu yerda, chunki brauzer tugmani shu asosda o'chiradi va
+# server ham shu asosda rad etadi -- ikkisi hech qachon ajralib qolmaydi.
+REQUIRED_DOCUMENT: dict[S, D] = {
+    S.signed: D.contract_pdf,
+}
+
+# Alohida konstanta: lug'at generatori aynan modul darajasidagi `MSG_*`
+# nomlarni oladi, lug'at ichidagi matnni emas.
+MSG_PDF_REQUIRED = "Imzolangan deb belgilash uchun shartnomaning imzolangan PDF nusxasi biriktirilishi shart."
+
+MSG_DOCUMENT_REQUIRED = {
+    D.contract_pdf: MSG_PDF_REQUIRED,
+}
+
+
+def required_document(target: S) -> D | None:
+    return REQUIRED_DOCUMENT.get(target)

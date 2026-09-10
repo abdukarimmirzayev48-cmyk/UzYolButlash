@@ -9,7 +9,15 @@ from backend.app.models.finance import CustomerInvoice, InvoiceStatus
 from backend.app.models.order import Order, OrderStatus
 
 
-PROTECTED_CONTRACT_STATUSES = {ContractStatus.cancelled}
+# Bu holatlarni hisoblab chiqarib bo'lmaydi -- ularni odam yoki tungi
+# tekshiruv ataylab qo'yadi. Ro'yxatdan tashqarida qolsa, quyidagi
+# hisob ularni jimgina bosib ketardi: mijozdan qaytgan shartnoma
+# «qoralama» ga, muddati tugagani esa yana «qoralama» ga tushardi.
+PROTECTED_CONTRACT_STATUSES = {
+    ContractStatus.cancelled,
+    ContractStatus.under_discussion,
+    ContractStatus.expired,
+}
 
 
 def _decimal(value: Decimal | None) -> Decimal:

@@ -898,9 +898,13 @@ async function renderContractsList() {
   // talabnomaning ishi tugagan, keyingi qadam -- shartnoma yaratish.
   const [data, waiting] = await Promise.all([
     api(`/api/contracts?${params.toString()}`),
-    api("/api/customer-requests?status=contract_preparation&page_size=50").catch(() => ({ items: [] })),
+    Promise.all([
+      api("/api/customer-requests?status=reviewing&page_size=50").catch(() => ({ items: [] })),
+      api("/api/customer-requests?status=contract_preparation&page_size=50").catch(() => ({ items: [] })),
+    ]),
   ]);
-  const waitingRequests = waiting.items || [];
+  // Xat kelganlar birinchi: ular bo'yicha ish hali boshlanmagan.
+  const waitingRequests = [...(waiting[0].items || []), ...(waiting[1].items || [])];
   const editable = canEdit("sotuv");
   const rows = data.items.map((contract) => `<tr>
     <td><button class="clist-number" data-nav="/contracts/${contract.id}">${fmt(contract.contract_number)}</button></td>
@@ -1170,9 +1174,36 @@ const CONTRACT_STATUS_DIALOGS = {
 
 const CONTRACT_BACK_LABEL = "Orqaga qaytarish";
 
+// Shartnoma qaysi bosqichda ekani va endi nima kutilayotgani. Ilgari
+// faqat tugmalar turardi: «loyiha» va «imzolangan» orasida nima
+// bo'lishini ekran aytmasdi.
+const CONTRACT_STATUS_HELP = {
+  draft: "Shartnoma namunasi tayyorlandi. Mijoz uni Uzex orqali qaytargach, muhokamaga o'tkazing.",
+  under_discussion: "Shartnoma mijozdan qaytdi va ko'rib chiqilyapti. Imzolangach PDF nusxasini biriktiring.",
+  signed: "Shartnoma imzolandi. Faollashtirilgandan keyin buyurtma va partiyalarga bo'linadi.",
+  active: "Shartnoma faol: buyurtma va partiyalar shu bo'yicha yuritiladi.",
+  completed: "Shartnoma yakunlangan.",
+  expired: "Amal qilish muddati tugagan. Uzaytirilsa, qayta faollashtiriladi.",
+  cancelled: "Shartnoma bekor qilingan.",
+};
+
+const CONTRACT_DOCUMENT_HELP = {
+  contract_pdf: "Imzolangan shartnomaning PDF nusxasini «Hujjatlar» bo'limiga yuklang.",
+};
+
 function contractTransitionsHtml(contract) {
   const moves = contract.available_transitions || [];
-  if (!moves.length) return `<div class="empty">Bu holatdan status o'zgartirilmaydi.</div>`;
+  const help = CONTRACT_STATUS_HELP[contract.status] || "";
+  // Server keyingi qadam qanday hujjat kutayotganini aytadi -- brauzer
+  // qoidani takrorlamaydi, faqat ko'rsatadi.
+  const needed = contract.required_document;
+  const blocked = Boolean(needed) && contract.required_document_ready === false;
+  const helpHtml = help ? `<p class="form-hint">${help}</p>` : "";
+  const blockHtml = blocked ? workflowWarningsPanel(
+    [CONTRACT_DOCUMENT_HELP[needed] || "Keyingi bosqichga o'tish uchun hujjat biriktiring."],
+    "Hujjat yetishmayapti",
+  ) : "";
+  if (!moves.length) return `${helpHtml}<div class="empty">Bu holatdan status o'zgartirilmaydi.</div>`;
   const order = { forward: 0, backward: 1, cancel: 2 };
   const buttons = [...moves]
     .sort((a, b) => order[a.direction] - order[b.direction])
@@ -1181,13 +1212,16 @@ function contractTransitionsHtml(contract) {
       const prefix = move.direction === "backward"
         ? `<span>${CONTRACT_BACK_LABEL}</span><span data-noloc>\u2190</span>`
         : "";
-      return `<button class="${cls}" type="button" data-contract-status="${esc(move.status)}" data-contract-direction="${esc(move.direction)}">${prefix}<span>${esc(move.label)}</span></button>`;
+      // Hujjatsiz oldinga o'tib bo'lmaydi: tugmani ochiq qoldirish
+      // «bosdim, ishlamadi» degan yo'lni ochib qo'yardi.
+      const off = blocked && move.direction === "forward" ? " disabled" : "";
+      return `<button class="${cls}" type="button"${off} data-contract-status="${esc(move.status)}" data-contract-direction="${esc(move.direction)}">${prefix}<span>${esc(move.label)}</span></button>`;
     })
     .join("");
   const hint = moves.some((m) => m.direction === "backward" || m.direction === "cancel")
     ? `<p class="form-hint">Orqaga qaytarish va bekor qilish uchun sabab yozish shart — u tarixda qoladi.</p>`
     : "";
-  return `${hint}<div class="actions">${buttons}</div>`;
+  return `${helpHtml}${blockHtml}<div class="actions">${buttons}</div>${hint}`;
 }
 
 function bindContractStatusActions(contract) {
@@ -2154,15 +2188,26 @@ function optionLabel(options, value) {
 // Shartnoma tayyorlashga o'tgan talabnomalar. Talabnomaning o'z ishi shu
 // yerda tugaydi -- keyingi qadam shartnoma yaratish, va u shartnomalar
 // bo'limida bajariladi, talabnomada emas.
+// Ikki xil kutish bir jadvalda: xati kelganiga namuna tayyorlash kerak,
+// namunasi ketganiga esa shartnoma yaratish. Ilgari faqat ikkinchisi
+// ko'rinardi, ya'ni «xat keldi» bosqichidagi talabnoma shartnoma
+// bo'limi uchun ko'rinmas edi va u yerda kutib qolardi.
 function waitingRequestsPanel(requests, editable) {
   if (!requests.length) return "";
-  const rows = requests.map((request) => `<div class="waiting-row">
+  const rows = requests.map((request) => {
+    const sampleStage = request.status === "reviewing";
+    const action = sampleStage
+      ? `<button class="btn" type="button" data-nav="/customer-requests/${request.id}">Namuna biriktirish</button>`
+      : `<button class="btn primary" type="button" data-nav="/contracts/new?client_id=${request.client_id || ""}&customer_request_id=${request.id}">Shartnoma yaratish</button>`;
+    return `<div class="waiting-row">
     <button class="waiting-number" type="button" data-nav="/customer-requests/${request.id}" data-noloc>${esc(request.request_number)}</button>
     <span class="waiting-company" data-noloc>${esc(request.company_name || "")}</span>
     <span class="waiting-product" data-noloc>${esc(request.product?.name || "")}</span>
     <span class="waiting-qty" data-noloc>${esc(fmtQty(request.total_quantity, request.unit))}</span>
-    ${editable ? `<button class="btn primary" type="button" data-nav="/contracts/new?client_id=${request.client_id || ""}&customer_request_id=${request.id}">Shartnoma yaratish</button>` : ""}
-  </div>`).join("");
+    <span class="waiting-stage">${sampleStage ? "Xat keldi" : "Namuna yuborildi"}</span>
+    ${editable ? action : ""}
+  </div>`;
+  }).join("");
   return `<section class="card waiting-requests">
     <div class="waiting-head">
       <h2>Shartnoma kutayotgan talabnomalar</h2>

@@ -938,6 +938,25 @@ def record_status_change(
     )
 
 
+def has_contract_document(contract, kind) -> bool:
+    return any(doc.document_type is kind for doc in contract.documents)
+
+
+def next_required_contract_document(contract):
+    """Keyingi oldinga qadam qanday hujjat talab qiladi va u bormi.
+
+    Brauzer tugmani shu asosda o'chiradi, server ham shu asosda rad
+    etadi -- ikkisi hech qachon ajralib qolmaydi.
+    """
+    for move in contract_workflow.transitions_from(contract.status):
+        if move["direction"] != "forward":
+            continue
+        kind = contract_workflow.required_document(ContractStatus(move["status"]))
+        if kind:
+            return kind, has_contract_document(contract, kind)
+    return None, True
+
+
 @router.post("/{contract_id}/status", response_model=ContractDetail, dependencies=[Depends(require_edit("sotuv"))])
 def change_contract_status(
     contract_id: int,
@@ -962,6 +981,13 @@ def change_contract_status(
                 "Sahifani yangilang."
             ),
         )
+    if kind == "forward":
+        needed = contract_workflow.required_document(target)
+        if needed and not has_contract_document(contract, needed):
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=contract_workflow.MSG_DOCUMENT_REQUIRED[needed],
+            )
     comment = (payload.comment or "").strip()
     if kind in {"backward", "cancel"} and not comment:
         raise HTTPException(
@@ -1219,6 +1245,7 @@ def create_contract(
 @router.get("/{contract_id}", response_model=ContractDetail)
 def get_contract_detail(contract_id: int, db: Session = Depends(get_db)):
     contract = load_contract_detail(db, contract_id)
+    required_kind, required_ready = next_required_contract_document(contract)
     return ContractDetail.model_validate(contract).model_copy(
         update={
             "summary": summary_for(db, contract),
@@ -1234,6 +1261,8 @@ def get_contract_detail(contract_id: int, db: Session = Depends(get_db)):
                 )
                 for move in contract_workflow.transitions_from(contract.status)
             ],
+            "required_document": required_kind.value if required_kind else None,
+            "required_document_ready": required_ready,
         }
     )
 

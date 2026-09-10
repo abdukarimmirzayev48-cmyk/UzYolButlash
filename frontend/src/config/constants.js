@@ -19,6 +19,8 @@ const documentTypes = [
 
 const contractStatuses = [
   ["draft", "Qoralama"],
+  // Mijoz shartnomani Uzex orqali qaytardi va u ko'rib chiqilyapti.
+  ["under_discussion", "Muhokamada"],
   ["signed", "Imzolangan"],
   ["active", "Faol"],
   ["completed", "Yakunlangan"],

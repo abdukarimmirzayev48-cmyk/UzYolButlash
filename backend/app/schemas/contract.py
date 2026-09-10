@@ -433,6 +433,7 @@ class ContractListItem(ContractRead):
 
 CONTRACT_STATUS_LABELS = {
     "draft": "Qoralama",
+    "under_discussion": "Muhokamada",
     "signed": "Imzolangan",
     "active": "Faol",
     "completed": "Yakunlangan",
@@ -479,6 +480,10 @@ class ContractDetail(ContractRead):
     # Which moves are legal from where this contract stands, so the buttons on
     # screen are exactly what the API will accept.
     available_transitions: list[ContractStatusTransition] = Field(default_factory=list)
+    # Keyingi oldinga qadam qanday hujjat talab qiladi va u biriktirilganmi.
+    # Brauzer tugmani shu asosda o'chiradi -- server bilan bir xil qoida.
+    required_document: ContractDocumentType | None = None
+    required_document_ready: bool = True
     summary: ContractSummary | None = None
 
 

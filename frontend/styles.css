@@ -3629,6 +3629,8 @@ td > small.muted > a {
 .status-badge.service,
 .status-badge.in_repair,
 .status-badge.waiting_parts,
+/* Shartnoma mijozdan qaytdi va ko'rib chiqilyapti -- kutish rangi. */
+.status-badge.under_discussion,
 .status-badge.diagnosis {
   background: #fdf3e3;
   color: #8a5b12;
@@ -9494,7 +9496,9 @@ body.map-modal-open {
 
 .waiting-row {
   display: grid;
-  grid-template-columns: 130px minmax(0, 2fr) minmax(0, 1fr) auto auto;
+  /* Raqam, tashkilot, mahsulot, miqdor, bosqich, amal. Bosqich ustuni
+     qo'shilganda tugma pastga tushib ketgan edi. */
+  grid-template-columns: 130px minmax(0, 2fr) minmax(0, 1fr) auto auto auto;
   gap: 14px;
   align-items: center;
   padding: 9px 0;
@@ -9856,5 +9860,18 @@ body.map-modal-open {
 
 .field-with-action > .btn {
   flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+/* Shartnoma kutayotgan talabnomalar: qaysi bosqichda ekani satrda
+   ko'rinib turishi kerak -- «xat keldi» va «namuna yuborildi» uchun
+   qilinadigan ish boshqa-boshqa. */
+.waiting-stage {
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: #eef2f7;
+  color: #48566b;
+  font-size: 12px;
+  font-weight: 600;
   white-space: nowrap;
 }
