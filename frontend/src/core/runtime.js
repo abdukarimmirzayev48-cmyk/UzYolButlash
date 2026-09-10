@@ -1694,9 +1694,11 @@ function clientForm(client = null) {
   const account = primaryOf(client?.bank_accounts);
   // Say so when there is more than one, and point at the page that manages
   // them all -- otherwise the form looks like the whole truth.
+  // Havola aynan o'sha bo'limga olib borishi kerak edi: `tab` bo'sh
+  // berilgani uchun u umumiy ilovaga tashlab, odam qidirishda qolardi.
   const extra = (items, label, tab) =>
     (items || []).length > 1
-      ? `<p class="form-hint">Bu mijozda ${items.length} ta ${label} bor. Bu yerda faqat birlamchisi tahrirlanadi — qolganlari <button type="button" class="link-btn" data-nav="/clients/${client.id}${tab}">mijoz kartochkasida</button>.</p>`
+      ? `<p class="form-hint">Bu mijozda ${items.length} ta ${label} bor. Bu yerda faqat birlamchisi tahrirlanadi — qolganlari <button type="button" class="link-btn" data-nav="/clients/${client.id}?tab=${tab}">mijoz kartochkasida</button>.</p>`
       : "";
   const title = client ? "Mijozni tahrirlash" : "Yangi mijoz";
   return `
@@ -1720,7 +1722,7 @@ function clientForm(client = null) {
           </div>
         `)}
         ${section("Birlamchi kontakt shaxs", `
-          ${extra(client?.contacts, "kontakt", "")}
+          ${extra(client?.contacts, "kontakt", "contacts")}
           <div class="grid">
             ${textField("contact_full_name", "F.I.Sh.", contact.full_name, "text", { maxlength: 255, autocomplete: "name" })}
             ${textField("contact_position", "Lavozimi", contact.position, "text", { maxlength: 120 })}
@@ -1731,7 +1733,7 @@ function clientForm(client = null) {
           </div>
         `)}
         ${section("Manzil", `
-          ${extra(client?.addresses, "manzil", "")}
+          ${extra(client?.addresses, "manzil", "addresses")}
           <div class="grid">
             ${selectField("address_type", "Manzil turi", addressTypes, address.address_type || "legal")}
             ${geoRegionField(address.region)}
@@ -1743,7 +1745,7 @@ function clientForm(client = null) {
           </div>
         `)}
         ${section("Bank hisobi", `
-          ${extra(client?.bank_accounts, "bank hisobi", "")}
+          ${extra(client?.bank_accounts, "bank hisobi", "bank")}
           <div class="grid">
             ${textField("bank_name", "Bank nomi", account.bank_name, "text", { maxlength: 160 })}
             ${textField("mfo", "MFO", account.mfo, "text", CLIENT_FIELD_RULES.mfo)}
@@ -1993,7 +1995,12 @@ function workflowHeader({ title, subtitle = "", backPath = "", actions = [], ful
     const attrs = action.modal ? `data-${esc(action.modal)}` : `data-nav="${esc(action.path || "#")}"`;
     return `<button class="btn ${action.primary ? "primary" : ""}" type="button" ${attrs}>${fmt(action.label)}</button>`;
   }).join("");
-  const editMenu = fullEditPath ? `<details class="action-menu"><summary>Amallar</summary><div><button type="button" data-nav="${esc(fullEditPath)}">To'liq tahrirlash</button></div></details>` : "";
+  // Ilgari bu yerda «Amallar» ochiladigan menyusi turardi va uning ichida
+  // doim bitta band bo'lardi -- «To'liq tahrirlash». Ya'ni kartochkani
+  // tahrirlashning yagona yo'li yorlig'i hech narsa aytmaydigan menyu
+  // ostida yashiringan edi. Natijasi ishlab chiqarishda ko'rinib turardi:
+  // 267 mijozning 264 tasida OKED ham, telefon ham, kontakt ham yo'q.
+  const editMenu = fullEditPath ? `<button class="btn" type="button" data-nav="${esc(fullEditPath)}">Tahrirlash</button>` : "";
   // Holat sarlavha yonida turadi: sahifani ochgan odam birinchi navbatda
   // shartnoma qaysi bosqichda ekanini ko'radi.
   const heading = badge

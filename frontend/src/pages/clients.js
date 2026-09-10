@@ -295,13 +295,21 @@ async function renderEditClient(id) {
   });
 }
 
+
 function detailHeader(client) {
   const address = client.addresses.find((item) => item.address_type === "legal") || client.addresses[0];
   const editable = canEdit("sotuv");
   return `
     ${workflowHeader({
       title: client.name,
-      subtitle: `STIR ${fmt(client.inn)} · Telefon ${fmt(client.phone)} · Hudud ${fmt(address?.region)}`,
+      // Yorliq va qiymat alohida tugunda bo'lishi kerak: butun jumla
+      // bitta matn bo'lganda lug'at uni topa olmasdi va «Hudud» kirill
+      // rejimida ham lotincha qolib ketardi.
+      subtitle: subtitleLine([
+        { label: "STIR", value: client.inn, raw: true },
+        { label: "Telefon", value: client.phone, raw: true },
+        { label: "Hudud", value: address?.region, raw: true },
+      ]),
       backPath: "/clients",
       fullEditPath: editable ? `/clients/${client.id}/edit` : "",
       actions: editable ? [
@@ -329,8 +337,46 @@ function tabs(active) {
   ], "tab");
 }
 
+// Kartochkaning birinchi ekrani tashkilotning faqat yarmini ko'rsatardi:
+// nomi, STIR, OKED, telefon. Kontakt, manzil va bank rekvizitlari
+// alohida ilovalarda turardi, shu sababli kontakt qo'shgan odam shu
+// yerga qaytib «hech narsa o'zgarmadi» deb o'ylardi. Endi uchalasining
+// birlamchisi shu yerda, har biri o'z bo'limiga havola bilan.
+function primaryOfList(items, fallbackFilter = null) {
+  const rows = items || [];
+  return rows.find((row) => row.is_primary)
+    || (fallbackFilter ? rows.find(fallbackFilter) : null)
+    || rows[0]
+    || null;
+}
+
+// Har bir yozuv to'liq jumla: lug'at ikki nuqtadan keyingi qismni
+// ma'lumot deb hisoblaydi va tegmaydi, ya'ni «OKED, Telefon» ro'yxati
+// kirill rejimida ham lotincha qolib ketardi.
+function generalMissing(client) {
+  const missing = [];
+  if (!client.oked) missing.push("OKED kiritilmagan.");
+  if (!client.phone) missing.push("Telefon kiritilmagan.");
+  if (!(client.contacts || []).length) missing.push("Kontakt shaxs kiritilmagan.");
+  if (!(client.addresses || []).length) missing.push("Manzil kiritilmagan.");
+  if (!(client.bank_accounts || []).length) missing.push("Bank rekvizitlari kiritilmagan.");
+  return missing;
+}
+
 function generalTab(client) {
-  return `${section("Umumiy ma'lumotlar", detailList([
+  const editable = canEdit("sotuv");
+  const contact = primaryOfList(client.contacts);
+  const address = primaryOfList(client.addresses, (row) => row.address_type === "legal");
+  const account = primaryOfList(client.bank_accounts);
+  const missing = generalMissing(client);
+  const gaps = workflowWarningsPanel(missing, "To'ldirilmagan maydonlar");
+  const editAction = editable
+    ? `<div class="actions"><button class="btn" type="button" data-nav="/clients/${client.id}/edit">Tahrirlash</button></div>`
+    : "";
+  const tabLink = (tab, label) => editable
+    ? `<div class="actions"><button class="btn" type="button" data-tab="${tab}">${label}</button></div>`
+    : "";
+  return `${gaps}${section("Umumiy ma'lumotlar", `${editAction}${detailList([
     ["Nomi", client.name],
     ["STIR", client.inn],
     ["OKED", client.oked],
@@ -339,7 +385,21 @@ function generalTab(client) {
     ["Izohlar", client.notes],
     ["Yaratilgan", fmtDate(client.created_at)],
     ["Yangilangan", fmtDate(client.updated_at)],
-  ]))}${registrySection(client)}`;
+  ])}`)}${section("Birlamchi kontakt", `${tabLink("contacts", (client.contacts || []).length ? "Kontaktlar" : "Kontakt qo'shish")}${contact ? detailList([
+    ["F.I.Sh.", fmtPersonName(contact.full_name)],
+    ["Lavozimi", contact.position],
+    ["Telefon", contact.phone],
+    ["Email", contact.email],
+  ]) : `<div class="empty">Kontakt shaxs kiritilmagan.</div>`}`)}${section("Yuridik manzil", `${tabLink("addresses", (client.addresses || []).length ? "Manzillar" : "Manzil qo'shish")}${address ? detailList([
+    ["Turi", optionLabel(addressTypes, address.address_type)],
+    ["Hudud", address.region],
+    ["Tuman", address.district],
+    ["Manzil", address.address],
+  ]) : `<div class="empty">Manzil kiritilmagan.</div>`}`)}${section("Bank rekvizitlari", `${tabLink("bank", (client.bank_accounts || []).length ? "Rekvizitlar" : "Bank hisobi qo'shish")}${account ? detailList([
+    ["Bank", account.bank_name],
+    ["MFO", account.mfo],
+    ["Hisob raqami", account.account_number],
+  ]) : `<div class="empty">Bank rekvizitlari kiritilmagan.</div>`}`)}${registrySection(client)}`;
 }
 
 // Reyestr alohida ma'lumotnoma edi va aynan shu tashkilotlarni ikkinchi
@@ -529,7 +589,7 @@ function childForm(kind, item = {}) {
   if (kind === "documents") {
     return {
       title: item.id ? "Hujjatni tahrirlash" : "Hujjat qo'shish",
-      body: `<div class="grid">${selectField("document_type", "Hujjat turi", documentTypes, item.document_type || "other")}${textField("title", "Hujjat nomi", item.title, "text", { required: true, maxlength: 255 })}${textField("file_url", "Fayl havolasi", item.file_url, "url", { maxlength: 500, placeholder: "https://..." })})}</div>`,
+      body: `<div class="grid">${selectField("document_type", "Hujjat turi", documentTypes, item.document_type || "other")}${textField("title", "Hujjat nomi", item.title, "text", { required: true, maxlength: 255 })}${textField("file_url", "Fayl havolasi", item.file_url, "url", { maxlength: 500, placeholder: "https://..." })}</div>`,
       payload: (form) => ({ document_type: field(form, "document_type"), title: field(form, "title"), file_url: field(form, "file_url") }),
     };
   }
@@ -542,6 +602,13 @@ function childForm(kind, item = {}) {
 
 async function openChildForm(client, kind, item = {}) {
   if (kind === "addresses") await loadGeoRegions();
+  // Birinchi kontakt yoki hisob har doim birlamchi bo'ladi: aks holda
+  // kartochka «birlamchi yo'q» holatida qolar va shartnoma bilan hisob
+  // uni topa olmasdi.
+  if (!item.id && item.is_primary === undefined) {
+    if (kind === "contacts") item = { ...item, is_primary: !(client.contacts || []).length };
+    if (kind === "bank") item = { ...item, is_primary: !(client.bank_accounts || []).length };
+  }
   const cfg = childForm(kind, item);
   const tab = kind === "bank" ? "bank" : kind;
   app.innerHTML = `
