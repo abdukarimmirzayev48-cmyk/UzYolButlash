@@ -66,6 +66,12 @@ async function render() {
       await renderProfitPage();
     } else if (location.pathname === "/cashflow") {
       await renderCashflowPage();
+    } else if (location.pathname === "/daily-ledgers/new") {
+      await renderNewDailyLedger();
+    } else if (/^\/daily-ledgers\/\d+$/.test(location.pathname)) {
+      await renderDailyLedgerDetail(Number(location.pathname.split("/")[2]));
+    } else if (location.pathname === "/daily-ledgers") {
+      await renderDailyLedgerList();
     } else if (location.pathname === "/receivables") {
       await renderReceivablesPage();
     } else if (location.pathname === "/payables") {

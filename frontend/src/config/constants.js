@@ -794,3 +794,43 @@ function sameProduct(nameA, unitA, nameB, unitB) {
   return normalizeProductName(nameA) === normalizeProductName(nameB)
     && normalizeUnit(unitA) === normalizeUnit(unitB);
 }
+
+// --- Kunlik provodka ---
+
+const ledgerStatuses = [
+  ["draft", "Ochiq"],
+  ["closed", "Yopilgan"],
+];
+
+const ledgerDirections = [
+  ["incoming", "Kirim"],
+  ["outgoing", "Chiqim"],
+];
+
+// Modda ro'yxati ataylab qisqa: buxgalter bir qarashda tanlay olishi
+// kerak. Mos kelmagani «Boshqa» ga tushadi va izohda tushuntiriladi.
+const ledgerIncomeCategories = [
+  ["customer_payment", "Mijoz to'lovi"],
+  ["advance", "Avans"],
+  ["loan_in", "Qarz olindi"],
+  ["other_income", "Boshqa kirim"],
+];
+
+const ledgerExpenseCategories = [
+  ["supplier_payment", "Ta'minotchiga to'lov"],
+  ["salary", "Ish haqi"],
+  ["tax", "Soliq"],
+  ["fuel", "Yoqilg'i"],
+  ["transport", "Transport"],
+  ["repair", "Ta'mirlash"],
+  ["utilities", "Ijara va kommunal"],
+  ["bank_fee", "Bank komissiyasi"],
+  ["loan_out", "Qarz qaytarildi"],
+  ["other_expense", "Boshqa chiqim"],
+];
+
+const ledgerCategories = [...ledgerIncomeCategories, ...ledgerExpenseCategories];
+
+function ledgerCategoriesFor(direction) {
+  return direction === "outgoing" ? ledgerExpenseCategories : ledgerIncomeCategories;
+}

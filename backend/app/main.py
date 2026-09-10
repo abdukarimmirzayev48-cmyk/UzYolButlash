@@ -19,6 +19,7 @@ from backend.app.api.geo import router as geo_router
 from backend.app.api.references import router as references_router
 from backend.app.api.customer_requests import public_router as customer_requests_public_router
 from backend.app.api.customer_requests import router as customer_requests_router
+from backend.app.api.daily_ledger import lines_router as daily_ledger_lines_router, router as daily_ledger_router
 from backend.app.api.dashboard import router as dashboard_router
 from backend.app.api.delivery import logistics_router, overview_router as delivery_overview_router, router as delivery_router
 from backend.app.api.finance import finance_router, invoice_router, payment_router
@@ -110,6 +111,8 @@ app.include_router(search_router, dependencies=authenticated)
 app.include_router(contracts_router, dependencies=authenticated)
 app.include_router(customer_requests_router, dependencies=authenticated)
 app.include_router(dashboard_router, dependencies=authenticated)
+app.include_router(daily_ledger_router, dependencies=authenticated)
+app.include_router(daily_ledger_lines_router, dependencies=authenticated)
 app.include_router(orders_router, dependencies=authenticated)
 app.include_router(delivery_router, dependencies=authenticated)
 app.include_router(delivery_overview_router, dependencies=authenticated)

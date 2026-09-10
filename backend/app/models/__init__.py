@@ -7,6 +7,14 @@ from backend.app.models.client import (
     ClientDocument,
     ClientNote,
 )
+from backend.app.models.daily_ledger import (
+    DailyLedger,
+    DailyLedgerLine,
+    DailyLedgerNote,
+    LedgerCategory,
+    LedgerDirection,
+    LedgerStatus,
+)
 from backend.app.models.geo import District, Region
 from backend.app.models.contract import (
     Contract,
@@ -163,4 +171,10 @@ __all__ = [
     "TaskHistory",
     "Notification",
     "User",
+    "DailyLedger",
+    "DailyLedgerLine",
+    "DailyLedgerNote",
+    "LedgerCategory",
+    "LedgerDirection",
+    "LedgerStatus",
 ]
