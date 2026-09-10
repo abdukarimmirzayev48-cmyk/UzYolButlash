@@ -528,14 +528,40 @@ def trip_check_for(logistics: Logistics | None) -> trip_completion_check.TripChe
     )
 
 
+def trip_acceptance_recorded(logistics: Logistics, batch: DeliveryBatch) -> bool:
+    """Aynan shu reys qabul qilinganmi.
+
+    Ilgari savol partiya darajasida so'ralardi: partiya bandlarida qabul
+    miqdori bo'lsa, tegilgan har qanday reys «Qabul qilindi» bo'lardi.
+    Bitta reysli partiyada bu to'g'ri edi -- partiyaning qabuli o'sha
+    yagona reysning qabuli.
+
+    O'n ikki reysli partiyada esa bu falokat: birinchi mashina qabul
+    qilingach, keyin transport biriktirilgan mashinalar yuklanmasdan
+    turib «qabul qilindi» bo'lib qolardi. Ya'ni yo'lga ham chiqmagan
+    reys yopiq ko'rinar, dispetcher esa uni qaytadan yubora olmasdi.
+    """
+    if logistics.accepted_quantity is not None:
+        return True
+    # Qabul reysga emas, faqat bandlarga yozilgan davrdagi yozuvlar.
+    # Ular har doim bitta reysli bo'lgan.
+    if len(batch.trips) > 1:
+        return False
+    return bool(batch.accepted_date) or any(item.accepted_quantity is not None for item in batch.items)
+
+
 def sync_logistics_status(logistics: Logistics, batch: DeliveryBatch, requested_status: LogisticsStatus | None = None) -> None:
-    if batch.status == BatchStatus.completed:
+    # Yakunlangan partiyada ham yo'lga chiqmagan reys yopilmaydi: hech
+    # qachon bo'lmagan reys «yakunlandi» bo'lib tarixga tushmasligi kerak.
+    if batch.status == BatchStatus.completed and logistics.status in {
+        LogisticsStatus.delivered, LogisticsStatus.accepted, LogisticsStatus.completed
+    }:
         logistics.status = LogisticsStatus.completed
         return
     if requested_status in {LogisticsStatus.issue, LogisticsStatus.cancelled, LogisticsStatus.unloading, LogisticsStatus.completed}:
         logistics.status = requested_status
         return
-    if batch.accepted_date or any(item.accepted_quantity is not None for item in batch.items):
+    if trip_acceptance_recorded(logistics, batch):
         logistics.status = LogisticsStatus.accepted
         return
     if logistics.actual_delivery_date:
@@ -1093,6 +1119,10 @@ MSG_TRIP_QUANTITY = "Reys miqdori 0 dan katta bo'lishi kerak."
 MSG_TRIP_OVER = "Reyslar miqdori partiya miqdoridan oshib ketadi"
 MSG_TRIP_STARTED = "Boshlangan reysni o'chirib bo'lmaydi"
 MSG_TRIP_NOT_FOUND = "Reys topilmadi."
+# Yo'lga chiqmagan reys partiya bilan birga yopilib ketadi va uning
+# miqdori buyurtmada ochiq qolmaydi -- ya'ni tonnalar jimgina yo'qoladi.
+MSG_TRIP_UNFINISHED = "Reys yo'lga chiqmagan"
+MSG_TRIPS_UNFINISHED = "Yakunlanmagan reyslar bor -- ularning miqdori yopilib ketadi"
 
 # Bazaga qaytgach o'lchanadigan raqamlar -- yakunlash oynasi shularni
 # so'raydi va har bir reysga alohida yozadi.
@@ -1504,13 +1534,22 @@ def complete_batch(batch_id: int, payload: DeliveryBatchCompletionConfirm, db: S
     # Reys raqami xabardan keyin qo'yiladi: tarjima lug'ati ikki nuqtagacha
     # bo'lgan qismni izlaydi, ya'ni oldiga qo'yilsa xabar lotin bo'yicha
     # qolib ketardi.
+    unfinished = []
     for other in batch.trips:
+        mark = other.logistics_number or other.id
+        if other.status not in {LogisticsStatus.delivered, LogisticsStatus.accepted,
+                                LogisticsStatus.completed, LogisticsStatus.cancelled}:
+            # Chiqmagan reysdan odometr ham, tarozi ham so'ralmaydi --
+            # ularning o'lchovi yo'q va bo'lishi ham mumkin emas.
+            unfinished.append(f"{MSG_TRIP_UNFINISHED}: {mark}")
+            continue
         if other.id == logistics.id:
             continue
         extra = trip_check_for(other)
-        mark = other.logistics_number or other.id
         trip.blocking.extend(f"{message}: {mark}" for message in extra.blocking)
         trip.soft.extend(f"{message}: {mark}" for message in extra.soft)
+    if unfinished and not payload.allow_unfinished_trips:
+        raise HTTPException(status_code=409, detail=f"{MSG_TRIPS_UNFINISHED}: {', '.join(unfinished)}")
     if trip.blocking:
         raise HTTPException(status_code=422, detail=trip.blocking[0])
     if trip.soft and not payload.allow_missing_trip_data:
@@ -1526,6 +1565,8 @@ def complete_batch(batch_id: int, payload: DeliveryBatchCompletionConfirm, db: S
     note_parts = [f"Yakunlash sanasi: {payload.completed_date.isoformat()}"]
     if trip.soft:
         note_parts.append(f"{trip_completion_check.MSG_TRIP_DATA_SKIPPED}: {', '.join(trip.soft)}")
+    if unfinished:
+        note_parts.append(f"{MSG_TRIPS_UNFINISHED}: {', '.join(unfinished)}")
     if logistics.measured_distance_km is not None:
         note_parts.append(f"Monitoring bo'yicha probeg: {logistics.measured_distance_km} km")
     elif distance_problem:

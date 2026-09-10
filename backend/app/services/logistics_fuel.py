@@ -48,6 +48,7 @@ MSG_NORM_MISSING = "Mashinaga yoqilg'i normasi kiritilmagan"
 MSG_MILEAGE_SPLIT_MISSING = "Yuklangan va bo'sh masofa kiritilmagan"
 MSG_GPS_MISMATCH = "Odometr va GPS masofasi bir-biriga mos emas"
 MSG_ODOMETER_BACKWARDS = "Qaytish odometri chiqish odometridan kichik"
+MSG_FUEL_NEGATIVE = "Qaytishdagi bak qoldig'i chiqishdagidan ko'p -- sarf hisoblanmadi"
 MSG_OVERRUN = "Rejadagi masofadan ortiq yurilgan"
 MSG_SENSOR_MISMATCH = "Bak qoldig'i datchik ko'rsatkichiga mos emas"
 MSG_SENSOR_DROP = "Turgan joyda bak keskin kamaygan"
@@ -146,6 +147,15 @@ def build_position(
     if position.before_liters is not None and position.after_liters is not None:
         added = position.added_liters or Decimal("0")
         position.actual_liters = position.before_liters + added - position.after_liters
+        # Manfiy sarf bo'lmaydi: qaytishdagi qoldiq chiqishdagidan
+        # ko'p bo'lsa, raqamlarning biri xato yozilgan (yoki yo'lda
+        # quyilgani kiritilmagan). Uni saqlab qo'yish yoqilg'i hisobini
+        # buzadi -- javob sxemasi ham manfiy qiymatni qabul qilmaydi va
+        # butun so'rov 500 bilan yiqilardi, holbuki partiya allaqachon
+        # yopilgan bo'lardi.
+        if position.actual_liters < 0:
+            position.warnings.append(MSG_FUEL_NEGATIVE)
+            position.actual_liters = None
     else:
         position.actual_liters = _dec(recorded_consumption)
 

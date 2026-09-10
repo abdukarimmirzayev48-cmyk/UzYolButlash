@@ -9778,3 +9778,64 @@ body.map-modal-open {
 .app-update-bar .btn {
   flex: 0 0 auto;
 }
+
+/* Reys bosqichlari: zanjir bir qarashda o'qilishi kerak -- qayerda
+   bo'lgan, hozir qayerda, oldinda nima bor. */
+.trip-stage-chain {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 16px 0;
+}
+
+.trip-stage-row {
+  display: grid;
+  grid-template-columns: 24px 1fr auto;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  color: #94a3b8;
+}
+
+.trip-stage-row strong {
+  font-weight: 600;
+}
+
+.trip-stage-row em {
+  font-style: normal;
+  font-size: 13px;
+  color: #64748b;
+}
+
+.trip-stage-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 1px solid #cbd5e1;
+  font-size: 12px;
+  line-height: 1;
+}
+
+.trip-stage-row.is-done {
+  color: #0f172a;
+}
+
+.trip-stage-row.is-done .trip-stage-mark {
+  border-color: #0f766e;
+  background: #0f766e;
+  color: #fff;
+}
+
+.trip-stage-row.is-current {
+  background: #ecfdf5;
+  color: #0f172a;
+}
+
+.trip-stage-row.is-current .trip-stage-mark {
+  border-color: #0f766e;
+  color: #0f766e;
+}

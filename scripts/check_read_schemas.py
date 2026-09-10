@@ -33,6 +33,7 @@ from backend.app.models.client import (  # noqa: E402
     ClientContact,
 )
 from backend.app.models.contract import Contract, ContractItem  # noqa: E402
+from backend.app.models.delivery import DeliveryBatch, Logistics  # noqa: E402
 from backend.app.schemas.client import (  # noqa: E402
     ClientAddressRead,
     ClientBankAccountRead,
@@ -40,6 +41,7 @@ from backend.app.schemas.client import (  # noqa: E402
     ClientRead,
 )
 from backend.app.schemas.contract import ContractItemRead, ContractRead  # noqa: E402
+from backend.app.schemas.delivery import DeliveryBatchRead, LogisticsRead  # noqa: E402
 
 # Only schemas the API validates straight from an ORM row belong here. The
 # talabnoma list item is assembled by hand from several sources, so validating
@@ -52,6 +54,11 @@ CHECKS = [
     ("bank hisobi", ClientBankAccount, ClientBankAccountRead),
     ("shartnoma", Contract, ContractRead),
     ("shartnoma elementi", ContractItem, ContractItemRead),
+    # Reysda yigirmadan ortiq raqamli maydon bor va ularning har biri
+    # o'lchovdan chiqadi. Manfiy chiqib qolgan bittasi butun partiya
+    # kartochkasini ochilmas qilib qo'yardi.
+    ("reys", Logistics, LogisticsRead),
+    ("partiya", DeliveryBatch, DeliveryBatchRead),
 ]
 
 

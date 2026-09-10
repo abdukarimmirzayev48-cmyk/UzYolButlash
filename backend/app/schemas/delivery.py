@@ -215,6 +215,21 @@ class LogisticsTransportSummary(BaseModel):
 
 
 class LogisticsRead(LogisticsBase):
+    """Reysni o'qish sxemasi.
+
+    `LogisticsBase` da yigirmadan ortiq maydonda `ge=0` cheklovi bor va
+    ular yozishda o'rinli. O'qishda esa aksincha: bazada allaqachon
+    manfiy raqam yotgan bo'lsa (masalan, qaytishdagi bak qoldig'i
+    chiqishdagidan ko'p yozilib, sarf manfiy chiqqan), butun so'rov 500
+    bilan yiqiladi. Ya'ni kartochka ochilmaydi -- xato raqamni tuzatib
+    bo'lmaydi ham.
+
+    Shuning uchun o'qishda cheklovlar olib tashlanadi: bazada nima
+    bo'lsa, o'shani qaytaramiz. Bu qoida `scripts/check_read_schemas.py`
+    da yozilgan va bir marta mijoz kartochkasida ham xuddi shunday
+    kuydirgan edi.
+    """
+
     model_config = ConfigDict(from_attributes=True)
 
     id: int
@@ -274,6 +289,15 @@ class DeliveryBatchNoteRead(DeliveryBatchNoteCreate):
     id: int
     delivery_batch_id: int
     created_at: datetime
+
+
+def _drop_read_constraints(model: type[BaseModel]) -> None:
+    for field_info in model.model_fields.values():
+        field_info.metadata = []
+    model.model_rebuild(force=True)
+
+
+_drop_read_constraints(LogisticsRead)
 
 
 class LogisticsDocumentBase(BaseModel):
@@ -492,6 +516,10 @@ class DeliveryBatchCompletionConfirm(BaseModel):
     allow_missing_documents: bool = False
     allow_quantity_difference: bool = False
     allow_missing_trip_data: bool = False
+    # Yo'lga chiqmagan reys -- alohida tasdiq. Reys raqamlarining
+    # yetishmasligidan boshqa narsa: u yerda o'lchov yo'q, bu yerda esa
+    # tonna yopilib ketadi.
+    allow_unfinished_trips: bool = False
 
 
 class DeliveryBatchSummary(BaseModel):

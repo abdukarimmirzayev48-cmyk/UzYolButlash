@@ -1425,6 +1425,9 @@ function supplierDeliveryNote(batch) {
 // sig'maydi -- shuning uchun partiyada bir nechta reys bo'ladi va har
 // birining o'z mashinasi, miqdori, probegi va yoqilg'i hisobi bor.
 const MSG_TRIPS_OVER = "Reyslar miqdori partiya miqdoridan oshgan";
+// Yo'lga chiqmagan reys partiya bilan birga yopilib ketadi va uning
+// miqdori buyurtmada ochiq qolmaydi -- ya'ni tonnalar jimgina yo'qoladi.
+const MSG_TRIPS_UNFINISHED = "Yakunlanmagan reyslar bor -- ularning miqdori yopilib ketadi";
 
 // Har bir reysning o'z keyingi qadami bor: bittasi hali mashina
 // kutayotgan bo'lsa, ikkinchisi allaqachon yo'lda bo'lishi mumkin.
@@ -1502,26 +1505,163 @@ async function reopenBatch(batch) {
   }
 }
 
-function tripStageButtons(trip, weHaul) {
+// `compact` -- jadval satri uchun: faqat keyingi qadam ko'rsatiladi.
+// Qolgan amallar bosqichlar oynasida turadi, chunki o'n ikki reysli
+// jadvalda har satrda beshta havola bo'lsa, hech biri o'qilmaydi.
+function tripStageButtons(trip, weHaul, cls = "link-btn", compact = false) {
   const buttons = [];
+  const next = (attr, label, primary = false) =>
+    buttons.push(`<button class="${primary && cls !== "link-btn" ? `${cls} primary` : cls}" type="button" ${attr}="${trip.id}">${label}</button>`);
   if (weHaul && ["not_assigned", "carrier_assigned"].includes(trip.status)) {
-    buttons.push(`<button class="link-btn" type="button" data-transport-assignment="${trip.id}">Transport</button>`);
+    next("data-transport-assignment", "Transport", true);
   }
   if (["carrier_assigned", "vehicle_assigned", "loading"].includes(trip.status)) {
-    buttons.push(`<button class="link-btn" type="button" data-loading-confirmation="${trip.id}">Yuklandi</button>`);
+    next("data-loading-confirmation", "Yuklandi", true);
   }
   if (["loaded", "in_transit", "arrived", "unloading"].includes(trip.status)) {
-    buttons.push(`<button class="link-btn" type="button" data-delivery-confirmation="${trip.id}">Yetkazildi</button>`);
+    next("data-delivery-confirmation", "Yetkazildi", true);
+  }
+  // Qabul partiya darajasida kiritiladi, lekin reysdan ham chaqirilishi
+  // kerak: aks holda zanjir shu yerda uzilib qoladi va odam qayerga
+  // borishni bilmaydi.
+  if (trip.status === "delivered") {
+    next("data-acceptance-confirmation", "Qabul", true);
   }
   if (weHaul && !["not_assigned", "carrier_assigned"].includes(trip.status)) {
-    buttons.push(`<button class="link-btn" type="button" data-transport-assignment="${trip.id}">Transport</button>`);
+    next("data-transport-assignment", "Transport");
   }
   // Xato bo'lsa tuzatish kerak: bosqich orqaga qaytariladi va o'sha
   // bosqichda kiritilgan raqamlar tozalanadi.
   if (!["not_assigned", "completed"].includes(trip.status)) {
-    buttons.push(`<button class="link-btn" type="button" data-revert-trip="${trip.id}">Orqaga</button>`);
+    next("data-revert-trip", "Orqaga");
   }
-  return buttons.join("");
+  return (compact ? buttons.slice(0, 1) : buttons).join("");
+}
+
+// Reys yo'li: qaysi bosqichdan qaysi bosqichga o'tadi va har birida
+// nima yoziladi. Jadval satridagi uchta kichik havola o'n ikki reysli
+// partiyada o'qib bo'lmaydigan holga keldi -- «bu mashina qayerda va
+// keyingi qadam nima» degan savolga javob yo'q edi. Shu ro'yxat aynan
+// shu savolga javob beradi.
+const TRIP_STAGE_CHAIN = [
+  { key: "assigned", label: "Transport biriktirildi", statuses: ["carrier_assigned", "vehicle_assigned"] },
+  { key: "loaded", label: "Yuklandi", statuses: ["loading", "loaded"] },
+  { key: "in_transit", label: "Yo'lda", statuses: ["in_transit", "arrived", "unloading"] },
+  { key: "delivered", label: "Yetkazildi", statuses: ["delivered"] },
+  { key: "accepted", label: "Qabul qilindi", statuses: ["accepted"] },
+  { key: "completed", label: "Yakunlandi", statuses: ["completed"] },
+];
+
+// Bosqichning qanchalik oldinga ketgani -- backenddagi TRIP_RANK bilan
+// bir xil tartib. Ikkovi bir joyda turmaydi, shuning uchun o'zgarsa
+// ikkalasi ham o'zgartiriladi.
+const TRIP_STAGE_RANK = {
+  not_assigned: 0, carrier_search: 0, cancelled: 0, issue: 0,
+  carrier_assigned: 1, vehicle_assigned: 1,
+  loading: 2, loaded: 3,
+  in_transit: 4, arrived: 5, unloading: 5,
+  delivered: 6, accepted: 7, completed: 8,
+};
+
+function tripStageRank(status) {
+  return TRIP_STAGE_RANK[status] ?? 0;
+}
+
+// Har bir bosqichda qanday raqam yozilgani. Bo'sh bo'lsa satr shunchaki
+// kelajakda turadi -- «nima yetishmayapti» degan savol shu yerda hal
+// bo'ladi.
+function tripStageFacts(stage, trip, unit) {
+  if (stage.key === "assigned") {
+    return [trip.vehicle_number, trip.driver_name].filter(Boolean).join(" · ");
+  }
+  if (stage.key === "loaded") {
+    return [
+      trip.actual_pickup_date ? fmtDayOnly(trip.actual_pickup_date) : "",
+      trip.loaded_quantity != null ? fmtQty(trip.loaded_quantity, unit) : "",
+      trip.odometer_start_km != null ? `${trip.odometer_start_km} km` : "",
+    ].filter(Boolean).join(" · ");
+  }
+  if (stage.key === "delivered") {
+    return trip.actual_delivery_date ? fmtDayOnly(trip.actual_delivery_date) : "";
+  }
+  if (stage.key === "accepted") {
+    return trip.accepted_quantity != null ? fmtQty(trip.accepted_quantity, unit) : "";
+  }
+  if (stage.key === "completed") {
+    return trip.odometer_end_km != null ? `${trip.odometer_end_km} km` : "";
+  }
+  return "";
+}
+
+function tripStageModal(batch, trip) {
+  const unit = batch.items?.[0]?.unit;
+  const weHaul = isCompanyManaged(batch);
+  const rank = tripStageRank(trip.status);
+  const gaps = tripDataGaps(trip);
+  const rows = TRIP_STAGE_CHAIN.map((stage) => {
+    const stageRank = tripStageRank(stage.statuses[stage.statuses.length - 1]);
+    const done = rank >= stageRank;
+    const current = stage.statuses.includes(trip.status);
+    const facts = tripStageFacts(stage, trip, unit);
+    const mark = done ? "✓" : current ? "•" : "";
+    return `<div class="trip-stage-row ${done ? "is-done" : ""} ${current ? "is-current" : ""}">
+      <span class="trip-stage-mark" data-noloc>${mark}</span>
+      <strong>${stage.label}</strong>
+      <em data-noloc>${facts ? esc(facts) : ""}</em>
+    </div>`;
+  }).join("");
+  return `<div class="modal-backdrop" data-modal-close>
+    <section class="modal-panel" role="dialog" aria-modal="true" aria-labelledby="trip-stage-title">
+      <div class="modal-header">
+        <h2 id="trip-stage-title"><span>Reys bosqichlari</span><span data-noloc> — ${esc(trip.logistics_number || trip.id)}</span></h2>
+        <button class="modal-close" type="button" data-modal-close aria-label="Yopish">×</button>
+      </div>
+      <div class="modal-body">
+        ${gaps.blocking.length ? workflowWarningsPanel(gaps.blocking, "Yakunlashga to'sqinlik qiladi") : ""}
+        <div class="modal-summary">${detailList([
+          ["Holati", statusLabel(trip.status)],
+          ["Transport", trip.vehicle_number],
+          ["Haydovchi", trip.driver_name],
+          ["Reja miqdor", trip.planned_quantity != null ? fmtQty(trip.planned_quantity, unit) : null],
+          ["Yuklangan", trip.loaded_quantity != null ? fmtQty(trip.loaded_quantity, unit) : null],
+          ["Qabul qilingan", trip.accepted_quantity != null ? fmtQty(trip.accepted_quantity, unit) : null],
+        ])}</div>
+        <div class="trip-stage-chain">${rows}</div>
+        ${gaps.soft.length ? workflowWarningsPanel(gaps.soft, "Hali kiritilmagan") : ""}
+      </div>
+      <div class="modal-footer">
+        <button class="btn" type="button" data-modal-close>Yopish</button>
+        <div class="ops-row-actions">${tripStageButtons(trip, weHaul, "btn")}</div>
+      </div>
+    </section>
+  </div>`;
+}
+
+function openTripStageModal(batch, tripId) {
+  const trip = tripOf(batch, tripId);
+  if (!trip.id) return showToast("Reys topilmadi.", true);
+  document.querySelector(".modal-backdrop")?.remove();
+  document.body.insertAdjacentHTML("beforeend", tripStageModal(batch, trip));
+  const backdrop = document.querySelector(".modal-backdrop");
+  localizeDom(backdrop);
+  const close = () => backdrop?.remove();
+  backdrop?.addEventListener("click", (event) => {
+    if (event.target.matches("[data-modal-close]")) close();
+  });
+  // Bosqich tugmalari o'z oynasini ochadi, shuning uchun bu oyna yopiladi.
+  backdrop?.querySelectorAll("[data-transport-assignment], [data-loading-confirmation], [data-delivery-confirmation], [data-revert-trip], [data-acceptance-confirmation]").forEach((button) => {
+    button.addEventListener("click", () => {
+      close();
+      if (button.dataset.transportAssignment !== undefined) {
+        return openTransportAssignmentModal(batch, button.dataset.transportAssignment || null)
+          .catch((error) => showToast(error.message, true));
+      }
+      if (button.dataset.loadingConfirmation !== undefined) return openLoadingConfirmationModal(batch, button.dataset.loadingConfirmation);
+      if (button.dataset.deliveryConfirmation !== undefined) return openDeliveryConfirmationModal(batch, button.dataset.deliveryConfirmation);
+      if (button.dataset.revertTrip !== undefined) return revertTripStage(batch, button.dataset.revertTrip);
+      return openAcceptanceModal(batch);
+    });
+  });
 }
 
 // Bosqich tasdiqlari endi aniq reysga tegishli: partiyada bir nechta
@@ -1556,10 +1696,10 @@ function batchTripsSection(batch, editable) {
       <td>${trip.loaded_quantity != null ? fmtQty(trip.loaded_quantity, unit) : dash}</td>
       <td>${trip.accepted_quantity != null ? fmtQty(trip.accepted_quantity, unit) : dash}</td>
       <td class="${numberValue(trip.loaded_quantity) - numberValue(trip.accepted_quantity) > 0 && trip.accepted_quantity != null ? "ops-warning" : ""}">${trip.accepted_quantity != null ? fmtQty(numberValue(trip.loaded_quantity) - numberValue(trip.accepted_quantity), unit) : dash}</td>
-      <td data-noloc>${trip.transport_id ? esc(trip.vehicle_number || "") : ""}${trip.transport_id ? "" : statusChip({ label: "Biriktirilmagan", tone: "warning" })}</td>
+      <td>${trip.transport_id ? `<span data-noloc>${esc(trip.vehicle_number || "")}</span>` : statusChip({ label: "Biriktirilmagan", tone: "warning" })}</td>
       <td data-noloc>${fmt(trip.driver_name)}</td>
-      <td>${statusBadge(trip.status)}</td>
-      ${editable ? `<td><div class="ops-row-actions">${tripStageButtons(trip, weHaul)}<button class="link-btn" data-nav="/logistics/${trip.id}">Ochish</button>${trips.length > 1 && ["not_assigned", "carrier_assigned", "vehicle_assigned"].includes(trip.status) ? `<button class="link-btn" type="button" data-delete-trip="${trip.id}">O'chirish</button>` : ""}</div></td>` : ""}
+      <td><button class="link-btn" type="button" data-trip-stages="${trip.id}">${statusBadge(trip.status)}</button></td>
+      ${editable ? `<td><div class="ops-row-actions">${tripStageButtons(trip, weHaul, "link-btn", true)}<button class="link-btn" type="button" data-trip-stages="${trip.id}">Bosqichlar</button><button class="link-btn" data-nav="/logistics/${trip.id}">Ochish</button>${trips.length > 1 && ["not_assigned", "carrier_assigned", "vehicle_assigned"].includes(trip.status) ? `<button class="link-btn" type="button" data-delete-trip="${trip.id}">O'chirish</button>` : ""}</div></td>` : ""}
     </tr>`,
     "Reyslar hali ochilmagan."
   )}`);
@@ -2230,6 +2370,16 @@ function completionTrips(batch) {
   return batch.logistics?.id ? [batch.logistics] : [];
 }
 
+// Yo'lga chiqib qaytgan reysdan odometr va bak qoldig'i so'raladi.
+// Umuman chiqmaganidan esa so'ralmaydi -- uning o'lchovi yo'q va
+// bo'lishi ham mumkin emas. Ilgari oyna ulardan ham talab qilar va
+// partiyani yopishga qo'ymasdi.
+const TRIP_FINISHED_STATUSES = ["delivered", "accepted", "completed"];
+
+function tripRan(trip = {}) {
+  return TRIP_FINISHED_STATUSES.includes(trip.status);
+}
+
 // Formadagi hozirgi qiymatlarni reys bo'yicha yig'adi. Tekshiruv aynan
 // shular bilan yuritiladi: odometr oynaning o'zida kiritiladi, ya'ni
 // bazadagi bo'sh qiymatga qarab hukm qilinsa, oyna o'zi so'ragan raqam
@@ -2270,7 +2420,7 @@ function completionValidation(batch, finance = {}, entered = {}) {
   // nuqtagacha bo'lgan qismni izlaydi.
   const trips = completionTrips(batch);
   const trip = { blocking: [], soft: [] };
-  trips.forEach((row) => {
+  trips.filter(tripRan).forEach((row) => {
     const gaps = tripDataGaps({ ...row, ...(entered[row.id] || {}) });
     const mark = trips.length > 1 ? `: ${row.logistics_number || row.id}` : "";
     gaps.blocking.forEach((message) => trip.blocking.push(`${message}${mark}`));
@@ -2278,13 +2428,19 @@ function completionValidation(batch, finance = {}, entered = {}) {
   });
   trip.blocking.forEach((message) => blockers.push(message));
   trip.soft.forEach((message) => warnings.push(message));
+  const openTrips = trips.filter((row) => !tripRan(row) && row.status !== "cancelled");
+  if (openTrips.length) {
+    const unit = batch.items?.[0]?.unit;
+    const left = openTrips.reduce((sum, row) => sum + numberValue(row.planned_quantity), 0);
+    warnings.push(`${MSG_TRIPS_UNFINISHED}: ${fmtQty(left, unit)}`);
+  }
   return { blockers, warnings, docStatus, trip };
 }
 
 // Qaytishdagi o'lchovlar har bir mashinada alohida. Bitta reysli
 // partiyada sarlavha ham bitta bo'ladi -- ortiqcha raqam ko'rsatilmaydi.
 function completionMeasurementFields(batch) {
-  const trips = completionTrips(batch).filter((trip) => trip.transport_id);
+  const trips = completionTrips(batch).filter((trip) => trip.transport_id && tripRan(trip));
   const many = trips.length > 1;
   return trips.map((trip) => {
     const plate = trip.vehicle_number ? ` · ${esc(trip.vehicle_number)}` : "";
@@ -2386,11 +2542,13 @@ async function openCompletionConfirmationModal(batch) {
     const missingDocs = validation.warnings.some((warning) => warning.includes("hujjat"));
     const quantityDiff = validation.warnings.some((warning) => warning.includes("farq"));
     const tripGaps = (validation.trip?.soft || []).length > 0;
+    const unfinished = validation.warnings.some((warning) => warning.startsWith(MSG_TRIPS_UNFINISHED));
     if (!field(form, "completed_date")) return showToast("Yakunlash sanasi majburiy.", true);
     if (validation.trip?.blocking?.length) return showToast(validation.trip.blocking[0], true);
     if (missingDocs && !confirmMsg("Hujjatlar to'liq emas. Baribir yakunlashni xohlaysizmi?")) return;
     if (quantityDiff && !confirmMsg("Yuklangan va qabul qilingan miqdor farq qiladi. Baribir yakunlashni xohlaysizmi?")) return;
     if (tripGaps && !confirmMsg("Reys raqamlari to'liq emas. Yakunlangandan keyin ularni tiklab bo'lmaydi. Baribir yakunlansinmi?")) return;
+    if (unfinished && !confirmMsg("Yo'lga chiqmagan reyslar bor. Partiya yopilsa, ularning miqdori buyurtmada ochiq qolmaydi. Baribir yakunlansinmi?")) return;
     try {
       await api(`/api/delivery-batches/${batch.id}/complete`, {
         method: "POST",
@@ -2400,6 +2558,7 @@ async function openCompletionConfirmationModal(batch) {
           allow_missing_documents: missingDocs,
           allow_quantity_difference: quantityDiff,
           allow_missing_trip_data: tripGaps,
+          allow_unfinished_trips: unfinished,
           trips: completionTrips(batch)
             .map((trip) => ({ logistics_id: trip.id, ...(entered[trip.id] || {}) }))
             .filter((row) => Object.keys(row).length > 1),
@@ -2432,6 +2591,13 @@ async function markBatchInTransit(batch) {
 
 function bindBatchDetailActions(batch) {
   const editable = canEdit("yetkazib_berish");
+
+  // Bosqichlar oynasi faqat ko'rsatadi, shuning uchun tahrirlash
+  // huquqidan oldin bog'lanadi -- kuzatuvchi ham reys qayerdaligini
+  // ko'ra olishi kerak.
+  document.querySelectorAll("[data-trip-stages]").forEach((button) => {
+    button.addEventListener("click", () => openTripStageModal(batch, button.dataset.tripStages));
+  });
 
   // Some workflow-progression buttons (e.g. the "next action" panel) are rendered
   // from a shared helper outside this file, so gate them here by disabling instead
