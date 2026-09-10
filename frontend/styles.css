@@ -9839,3 +9839,22 @@ body.map-modal-open {
   border-color: #0f766e;
   color: #0f766e;
 }
+
+/* Ro'yxat va uning yonidagi «yangisini qo'shish» tugmasi. Tugma
+   maydonning pastki chetiga tekislanadi -- yorliq balandligi qo'shilgani
+   uchun oddiy flex uni yuqoriga surib yuborardi. */
+.field-with-action {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+.field-with-action > label {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.field-with-action > .btn {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}

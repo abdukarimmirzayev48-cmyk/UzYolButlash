@@ -94,14 +94,19 @@ async function _renderCategoriesTab() {
       const addBtn = document.createElement("button");
       addBtn.className = "btn primary";
       addBtn.textContent = "Kategoriya qo'shish";
-      addBtn.addEventListener("click", () => _showCategoryModal());
+      addBtn.addEventListener("click", () => _showCategoryModal({}));
       cmdLeft.prepend(addBtn);
     }
   }
 
   document.querySelectorAll("[data-category-edit]").forEach((btn) => {
     btn.addEventListener("click", () =>
-      _showCategoryModal(Number(btn.dataset.categoryEdit), btn.dataset.categoryName, btn.dataset.categoryNotes, btn.dataset.categoryMethod)
+      _showCategoryModal({
+        id: Number(btn.dataset.categoryEdit),
+        name: btn.dataset.categoryName,
+        notes: btn.dataset.categoryNotes,
+        method: btn.dataset.categoryMethod,
+      })
     );
   });
 
@@ -119,7 +124,10 @@ async function _renderCategoriesTab() {
   });
 }
 
-function _showCategoryModal(id = null, name = "", notes = "", method = "") {
+// `onSaved` -- turkum boshqa forma ichidan yaratilganda. Berilsa,
+// kategoriyalar ro'yxati qayta chizilmaydi: chaqirgan forma o'z joyida
+// qoladi va yangi turkumni o'zi tanlaydi.
+function _showCategoryModal({ id = null, name = "", notes = "", method = "", onSaved = null } = {}) {
   document.querySelector("#category-modal-backdrop")?.remove();
 
   const backdrop = document.createElement("div");
@@ -161,14 +169,16 @@ function _showCategoryModal(id = null, name = "", notes = "", method = "") {
     const payload = { name: field(form, "name"), notes: field(form, "notes"), default_delivery_method: field(form, "default_delivery_method") };
     if (!payload.name) { showToast("Kategoriya nomi kiritilishi shart.", true); return; }
     try {
+      let saved;
       if (id) {
-        await api(`/api/product-categories/${id}`, { method: "PATCH", body: JSON.stringify(payload) });
+        saved = await api(`/api/product-categories/${id}`, { method: "PATCH", body: JSON.stringify(payload) });
         showToast("Kategoriya yangilandi.");
       } else {
-        await api("/api/product-categories", { method: "POST", body: JSON.stringify(payload) });
+        saved = await api("/api/product-categories", { method: "POST", body: JSON.stringify(payload) });
         showToast("Kategoriya yaratildi.");
       }
       close();
+      if (onSaved) return onSaved(saved);
       await _renderCategoriesTab();
     } catch (error) {
       showToast(error.message, true);
@@ -177,6 +187,28 @@ function _showCategoryModal(id = null, name = "", notes = "", method = "") {
 }
 
 // ---- Product form (create / edit) ----
+
+// Turkumni forma ichida ochish. Ilgari u faqat tayyor ro'yxatdan
+// tanlanardi: ro'yxatda yo'q turkum uchun formani tashlab,
+// «Kategoriyalar» bo'limiga borib, yaratib, qaytib kelib hamma
+// maydonni boshidan yozish kerak edi. Bitta ham turkum bo'lmasa esa
+// forma umuman ochilmasdi -- «avval kategoriya yarating» degan tugilib
+// qolgan ekran chiqardi.
+function _bindCategoryAdd(form) {
+  form.querySelector("[data-add-category]")?.addEventListener("click", () => {
+    _showCategoryModal({
+      onSaved: (category) => {
+        const select = form.elements.category_id;
+        if (!select) return;
+        const option = document.createElement("option");
+        option.value = String(category.id);
+        option.textContent = category.name;
+        select.appendChild(option);
+        select.value = String(category.id);
+      },
+    });
+  });
+}
 
 function _productForm(categories, product = null) {
   const isNew = !product;
@@ -194,13 +226,16 @@ function _productForm(categories, product = null) {
       <form id="product-form">
         ${section("Mahsulot ma'lumotlari", `
           <div class="grid">
-            ${selectField(
-              "category_id",
-              "Kategoriya",
-              categories.map((c) => [String(c.id), c.name]),
-              product ? String(product.category_id) : (categories[0] ? String(categories[0].id) : ""),
-              { required: true }
-            )}
+            <div class="field-with-action">
+              ${selectField(
+                "category_id",
+                "Kategoriya",
+                [["", "Kategoriyani tanlang"], ...categories.map((c) => [String(c.id), c.name])],
+                product ? String(product.category_id) : (categories[0] ? String(categories[0].id) : ""),
+                { required: true }
+              )}
+              <button type="button" class="btn" data-add-category>Yangi kategoriya</button>
+            </div>
             ${textField("name", "Mahsulot turi / nomi", product?.name ?? "", "text", { required: true })}
             ${textField("unit", "O'lchov birligi (t, kg, m³ va h.k.)", product?.unit ?? "", "text", { required: true })}
             ${textArea("notes", "Izoh", product?.notes ?? "")}
@@ -218,25 +253,8 @@ function _productForm(categories, product = null) {
 async function renderNewProduct() {
   app.innerHTML = `<div class="page"><div class="empty">Yuklanmoqda...</div></div>`;
   const categories = await api("/api/product-categories");
-  if (!categories.length) {
-    app.innerHTML = `
-      <div class="page">
-        <div class="page-header">
-          <div class="page-title"><h1>Yangi mahsulot</h1></div>
-          <div class="actions"><button class="btn" data-nav="/products">Orqaga</button></div>
-        </div>
-        <div class="empty">
-          Avval kamida bitta kategoriya yarating.
-          <br><br>
-          <button class="btn primary" data-nav="/products?tab=categories">Kategoriyalar</button>
-        </div>
-      </div>
-    `;
-    document.querySelectorAll("[data-nav]").forEach((b) => b.addEventListener("click", () => navigate(b.dataset.nav)));
-    return;
-  }
-
   app.innerHTML = _productForm(categories);
+  _bindCategoryAdd(document.querySelector("#product-form"));
   document.querySelector("#product-form").addEventListener("submit", async (e) => {
     e.preventDefault();
     const form = e.currentTarget;
@@ -246,6 +264,7 @@ async function renderNewProduct() {
       unit: field(form, "unit"),
       notes: field(form, "notes"),
     };
+    if (!payload.category_id) { showToast("Kategoriyani tanlang yoki yangisini yarating.", true); return; }
     if (!payload.name) { showToast("Mahsulot nomi kiritilishi shart.", true); return; }
     if (!payload.unit) { showToast("O'lchov birligi kiritilishi shart.", true); return; }
     try {
@@ -265,6 +284,7 @@ async function renderEditProduct(id) {
     api("/api/product-categories"),
   ]);
   app.innerHTML = _productForm(categories, product);
+  _bindCategoryAdd(document.querySelector("#product-form"));
   document.querySelector("#product-form").addEventListener("submit", async (e) => {
     e.preventDefault();
     const form = e.currentTarget;
@@ -274,6 +294,7 @@ async function renderEditProduct(id) {
       unit: field(form, "unit"),
       notes: field(form, "notes"),
     };
+    if (!payload.category_id) { showToast("Kategoriyani tanlang yoki yangisini yarating.", true); return; }
     if (!payload.name) { showToast("Mahsulot nomi kiritilishi shart.", true); return; }
     if (!payload.unit) { showToast("O'lchov birligi kiritilishi shart.", true); return; }
     try {
