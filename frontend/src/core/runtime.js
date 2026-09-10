@@ -830,6 +830,35 @@ function requestFinished() {
   if (pendingRequests === 0) document.dispatchEvent(new CustomEvent("bitum:idle"));
 }
 
+// Deploydan keyin ochiq qolgan sahifa eski kod bilan ishlashda davom
+// etadi -- SPA `index.html` ni qaytadan olmaydi, ya'ni `?v=` belgilari
+// yangilangani bilan brauzerdagi fayllar eskiligicha qoladi. Tashqaridan
+// bu ko'rinmaydi: tugma bosiladi, hech narsa bo'lmaydi, chunki tuzatish
+// brauzerga yetib kelmagan.
+//
+// Backend har bir javobda `index.html` ning barmoq izini yuboradi. U
+// sahifa yuklangan paytdagidan farq qilsa -- kod eskirgan.
+let bootAppVersion = null;
+let reloadNoticeShown = false;
+
+function checkAppVersion(response) {
+  const version = response.headers.get("X-App-Version");
+  if (!version) return;
+  if (!bootAppVersion) {
+    bootAppVersion = version;
+    return;
+  }
+  if (version === bootAppVersion || reloadNoticeShown) return;
+  reloadNoticeShown = true;
+  const bar = document.createElement("div");
+  bar.className = "app-update-bar";
+  bar.innerHTML = `<span>Tizim yangilandi. Sahifani yangilang -- ochiq oynalar eski kod bilan ishlayapti.</span>
+    <button class="btn primary" type="button">Yangilash</button>`;
+  bar.querySelector("button").addEventListener("click", () => location.reload());
+  document.body.appendChild(bar);
+  localizeDom(bar);
+}
+
 async function api(path, options = {}) {
   requestStarted();
   let response;
@@ -841,6 +870,7 @@ async function api(path, options = {}) {
   } finally {
     requestFinished();
   }
+  checkAppVersion(response);
   if (response.status === 204) return null;
   const body = await response.json().catch(() => ({}));
   if (!response.ok) {
@@ -859,6 +889,7 @@ async function apiForm(path, formData, options = {}) {
   } finally {
     requestFinished();
   }
+  checkAppVersion(response);
   const body = await response.json().catch(() => ({}));
   if (!response.ok) {
     handleAuthResponse(path, response);

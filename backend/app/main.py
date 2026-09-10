@@ -1,3 +1,4 @@
+import hashlib
 import logging
 
 from fastapi import Depends, FastAPI, HTTPException, status
@@ -51,7 +52,32 @@ from backend.app.services.notifications import (
 from backend.app.services.telegram_bot import start_bot, stop_bot
 
 
+# Ochiq turgan sahifa deploydan keyin ham eski JS bilan ishlashda davom
+# etadi: SPA `index.html` ni qaytadan olmaydi, ya'ni `?v=` belgilari
+# yangilangani bilan brauzerdagi kod eskiligicha qoladi. Odam esa buni
+# bilmaydi -- tugmalar joyida, lekin yangi tuzatishlar ishlamaydi va eski
+# so'rovlar yangi backendga uriladi.
+#
+# Shu sababli `index.html` ning o'zi qisqa barmoq izi bo'lib har bir
+# javobga qo'shiladi. Sahifa yuklangandagi qiymatdan farq qilsa, ekranda
+# «yangilang» degan yozuv chiqadi.
+def _app_version() -> str:
+    try:
+        return hashlib.sha256((FRONTEND_DIR / "index.html").read_bytes()).hexdigest()[:12]
+    except OSError:
+        return "dev"
+
+
+APP_VERSION = _app_version()
+
 app = FastAPI(title="UzYolButlash ERP", version="0.1.0")
+
+
+@app.middleware("http")
+async def add_app_version_header(request, call_next):
+    response = await call_next(request)
+    response.headers["X-App-Version"] = APP_VERSION
+    return response
 app.add_middleware(
     CORSMiddleware,
     allow_origins=CORS_ORIGINS,
