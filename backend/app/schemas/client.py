@@ -205,6 +205,21 @@ class ClientBankAccountUpdate(ClientIdentifiersMixin):
     comment: str | None = None
 
 
+class ClientBankAccountWrite(ClientBankAccountBase):
+    """Formadan kelgan hisob raqami satri.
+
+    Tashkilotda odatda ikki-uchta hisob bo'ladi: g'azna hisobi va bir
+    yoki ikkita tijorat banki hisobi. Kartochka formasi esa bittasini
+    so'rardi -- qolganlarini qo'shish uchun alohida ilovaga borish
+    kerak edi va buni hech kim qilmasdi: ishlab chiqarishda 267
+    tashkilotning birortasida ham ikkinchi hisob yo'q.
+
+    `id` mavjud satrni ko'rsatadi; u bo'lmasa yangi hisob ochiladi.
+    """
+
+    id: int | None = None
+
+
 class ClientBankAccountRead(ClientBankAccountBase):
     model_config = ConfigDict(from_attributes=True)
 
@@ -275,6 +290,9 @@ class ClientCreate(ClientBase, ClientIdentifiersMixin):
     first_contact: ClientContactCreate | None = None
     address: ClientAddressCreate | None = None
     bank_account: ClientBankAccountCreate | None = None
+    # To'liq ro'yxat. Berilsa, yuqoridagi yakka maydon o'rniga
+    # shu ishlatiladi -- yakkasi eski chaqiruvlar uchun qoldirilgan.
+    bank_accounts: list[ClientBankAccountWrite] | None = None
 
 
 class ClientUpdate(ClientIdentifiersMixin):
@@ -291,6 +309,10 @@ class ClientUpdate(ClientIdentifiersMixin):
     first_contact: ClientContactUpdate | None = None
     address: ClientAddressUpdate | None = None
     bank_account: ClientBankAccountUpdate | None = None
+    # Berilsa, tashkilotning hisoblari aynan shu ro'yxatga
+    # tenglashtiriladi: `id` li satr yangilanadi, `id` siz satr
+    # ochiladi, ro'yxatda yo'q satr o'chiriladi.
+    bank_accounts: list[ClientBankAccountWrite] | None = None
 
 
 class ClientRead(ClientBase):

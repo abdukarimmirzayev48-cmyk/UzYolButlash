@@ -9884,3 +9884,27 @@ body.map-modal-open {
   font-weight: 600;
   white-space: nowrap;
 }
+
+/* Tashkilotning hisob raqamlari: har biri o'z satri, ostida «asosiy»
+   tanlovi va o'chirish. Satrlar bir-biridan ajralib turishi kerak --
+   uchtasi yonma-yon turganda qaysi MFO qaysi raqamga tegishli ekani
+   ko'rinmay qolardi. */
+.bank-row {
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  margin-bottom: 12px;
+  background: #fbfcfd;
+}
+
+.bank-row-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 4px;
+}
+
+.bank-row-foot .check-row {
+  margin: 0;
+}

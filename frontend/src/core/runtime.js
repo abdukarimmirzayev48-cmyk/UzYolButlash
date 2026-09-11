@@ -1581,11 +1581,16 @@ const CLIENT_FIELD_RULES = {
     title: "MFO 5 ta raqamdan iborat bo'lishi kerak.",
   },
   account_number: {
-    pattern: "[0-9]{20}",
-    maxlength: 20,
+    // Tijorat banki hisobi 20 raqam, g'azna hisobi esa uzunroq --
+    // ishlab chiqarishda 27 raqamli g'azna hisobi bor va uni bu
+    // forma qabul qilmasdi. Aynan shu 27 raqamli raqam bir vaqtlar
+    // mijoz kartochkasini ochilmas qilib qo'ygan edi
+    // (`scripts/check_read_schemas.py` shundan yozilgan).
+    pattern: "[0-9]{20,28}",
+    maxlength: 28,
     inputmode: "numeric",
     placeholder: "20208000000000000001",
-    title: "Hisob raqami 20 ta raqamdan iborat bo'lishi kerak.",
+    title: "Hisob raqami 20 ta raqam; g'azna hisobi uzunroq bo'lishi mumkin.",
   },
   latitude: { min: -90, max: 90, inputmode: "decimal", placeholder: "41.311081", title: "Kenglik -90 va 90 orasida bo'lishi kerak." },
   longitude: { min: -180, max: 180, inputmode: "decimal", placeholder: "69.240562", title: "Uzunlik -180 va 180 orasida bo'lishi kerak." },
@@ -1688,10 +1693,91 @@ function bindGeoFields(root = document) {
   });
 }
 
+// Tashkilotda odatda ikki-uchta hisob bo'ladi -- g'azna hisobi va
+// tijorat banki hisobi. Forma bittasini so'rardi, qolganlari uchun
+// alohida ilovaga borish kerak edi: ishlab chiqarishda 267 tashkilotning
+// birortasida ham ikkinchi hisob yo'q, ya'ni bu yo'lni hech kim topmagan.
+function bankAccountRow(account = {}, index = 0) {
+  return `<div class="bank-row" data-bank-row>
+    <input type="hidden" name="bank_id_${index}" value="${esc(account.id ?? "")}" />
+    <div class="grid">
+      ${textField(`bank_name_${index}`, "Bank nomi", account.bank_name, "text", { maxlength: 160 })}
+      ${textField(`bank_mfo_${index}`, "MFO", account.mfo, "text", CLIENT_FIELD_RULES.mfo)}
+      ${textField(`bank_number_${index}`, "Hisob raqami", account.account_number, "text", CLIENT_FIELD_RULES.account_number)}
+      ${textArea(`bank_comment_${index}`, "Izoh", account.comment, { maxlength: 1000 })}
+    </div>
+    <div class="bank-row-foot">
+      <label class="check-row"><input type="radio" name="bank_primary" value="${index}" ${account.is_primary || index === 0 ? "checked" : ""} /> <span>Asosiy hisob</span></label>
+      <button type="button" class="link-btn danger" data-remove-bank>O'chirish</button>
+    </div>
+  </div>`;
+}
+
+function bankAccountRows(accounts) {
+  const rows = (accounts || []).length ? accounts : [{}];
+  return rows.map((account, index) => bankAccountRow(account, index)).join("");
+}
+
+// Satr qo'shilganda va o'chirilganda indekslar qayta raqamlanadi:
+// nomlar `bank_name_0`, `bank_name_1` ... tartibida bo'lishi kerak,
+// aks holda o'rtadagi satr o'chirilsa payload teshik bo'lib qolardi.
+function reindexBankRows(container) {
+  [...container.querySelectorAll("[data-bank-row]")].forEach((row, index) => {
+    row.querySelectorAll("[name]").forEach((input) => {
+      if (input.name === "bank_primary") {
+        input.value = String(index);
+        return;
+      }
+      input.name = input.name.replace(/_\d+$/, `_${index}`);
+    });
+  });
+}
+
+function bindBankAccountRows(form) {
+  const container = form?.querySelector("#bank-accounts");
+  if (!container) return;
+  form.querySelector("[data-add-bank]")?.addEventListener("click", () => {
+    container.insertAdjacentHTML("beforeend", bankAccountRow({}, container.querySelectorAll("[data-bank-row]").length));
+    reindexBankRows(container);
+    localizeDom(container);
+  });
+  container.addEventListener("click", (event) => {
+    if (!event.target.matches("[data-remove-bank]")) return;
+    const rows = container.querySelectorAll("[data-bank-row]");
+    // Oxirgi satr o'chirilmaydi, faqat tozalanadi: bo'sh forma odamni
+    // «hisob qo'shish» tugmasini qidirishga majbur qilardi.
+    if (rows.length === 1) {
+      rows[0].querySelectorAll("input[type=text], textarea").forEach((input) => { input.value = ""; });
+      return;
+    }
+    event.target.closest("[data-bank-row]").remove();
+    reindexBankRows(container);
+  });
+}
+
+function collectBankAccounts(form) {
+  const container = form.querySelector("#bank-accounts");
+  if (!container) return null;
+  const primary = form.querySelector("[name=bank_primary]:checked")?.value;
+  return [...container.querySelectorAll("[data-bank-row]")].map((row, index) => {
+    const value = (name) => (row.querySelector(`[name="${name}_${index}"]`)?.value || "").trim();
+    const id = row.querySelector(`[name="bank_id_${index}"]`)?.value;
+    return {
+      id: id ? Number(id) : null,
+      bank_name: value("bank_name"),
+      mfo: value("bank_mfo") || null,
+      account_number: value("bank_number") || null,
+      comment: value("bank_comment") || null,
+      is_primary: String(index) === primary,
+    };
+  // Bo'sh satr saqlanmaydi: forma har doim kamida bitta satr ko'rsatadi,
+  // lekin unga tegilmasligi mumkin.
+  }).filter((row) => row.bank_name);
+}
+
 function clientForm(client = null) {
   const contact = primaryOf(client?.contacts);
   const address = primaryOf(client?.addresses);
-  const account = primaryOf(client?.bank_accounts);
   // Say so when there is more than one, and point at the page that manages
   // them all -- otherwise the form looks like the whole truth.
   // Havola aynan o'sha bo'limga olib borishi kerak edi: `tab` bo'sh
@@ -1744,15 +1830,10 @@ function clientForm(client = null) {
             ${textArea("address_comment", "Izoh", address.comment, { maxlength: 1000 })}
           </div>
         `)}
-        ${section("Bank hisobi", `
-          ${extra(client?.bank_accounts, "bank hisobi", "bank")}
-          <div class="grid">
-            ${textField("bank_name", "Bank nomi", account.bank_name, "text", { maxlength: 160 })}
-            ${textField("mfo", "MFO", account.mfo, "text", CLIENT_FIELD_RULES.mfo)}
-            ${textField("account_number", "Hisob raqami", account.account_number, "text", CLIENT_FIELD_RULES.account_number)}
-            ${checkField("bank_is_primary", "Asosiy hisob", account.is_primary ?? true)}
-            ${textArea("bank_comment", "Izoh", account.comment, { maxlength: 1000 })}
-          </div>
+        ${section("Bank hisoblari", `
+          <div id="bank-accounts">${bankAccountRows(client?.bank_accounts)}</div>
+          <div class="actions"><button type="button" class="btn" data-add-bank>Hisob raqami qo'shish</button></div>
+          <p class="form-hint">Tashkilotda bir nechta hisob bo'lishi mumkin: g'azna hisobi va tijorat banki hisobi. Hisob-fakturaga asosiy deb belgilangani olinadi.</p>
         `)}
         <div class="form-footer">
           <button type="button" class="btn" data-nav="${client ? `/clients/${client.id}` : "/clients"}">Bekor qilish</button>
@@ -1797,15 +1878,8 @@ function createPayload(form) {
       comment: field(form, "address_comment"),
     };
   }
-  if (field(form, "bank_name")) {
-    payload.bank_account = {
-      bank_name: field(form, "bank_name"),
-      mfo: field(form, "mfo"),
-      account_number: field(form, "account_number"),
-      is_primary: field(form, "bank_is_primary"),
-      comment: field(form, "bank_comment"),
-    };
-  }
+  const accounts = collectBankAccounts(form);
+  if (accounts) payload.bank_accounts = accounts;
   return payload;
 }
 

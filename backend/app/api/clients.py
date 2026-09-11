@@ -398,7 +398,7 @@ def ensure_inn_available(db: Session, inn: str | None, exclude_client_id: int | 
 @router.post("", response_model=ClientDetail, status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_edit("sotuv"))])
 def create_client(payload: ClientCreate, db: Session = Depends(get_db)):
     ensure_inn_available(db, payload.inn)
-    data = payload.model_dump(exclude={"first_contact", "address", "bank_account"})
+    data = payload.model_dump(exclude={"first_contact", "address", "bank_account", "bank_accounts"})
     client = Client(**data)
     db.add(client)
     db.flush()
@@ -410,7 +410,9 @@ def create_client(payload: ClientCreate, db: Session = Depends(get_db)):
             apply_primary_rules(db, ClientContact, client.id, contact.id)
     if payload.address:
         db.add(ClientAddress(client_id=client.id, **payload.address.model_dump()))
-    if payload.bank_account:
+    if payload.bank_accounts is not None:
+        sync_bank_accounts(db, client, payload.bank_accounts)
+    elif payload.bank_account:
         account = ClientBankAccount(client_id=client.id, **payload.bank_account.model_dump())
         db.add(account)
         db.flush()
@@ -461,6 +463,54 @@ def primary_or_first(items: list) -> Any | None:
     return next((item for item in items if getattr(item, "is_primary", False)), items[0] if items else None)
 
 
+MSG_BANK_NAME_REQUIRED = "Bank nomi kiritilmagan hisob raqami saqlanmaydi."
+
+
+def sync_bank_accounts(db: Session, client: Client, rows: list) -> None:
+    """Tashkilot hisoblarini formadagi ro'yxatga tenglashtiradi.
+
+    Tashkilotda odatda ikki-uchta hisob bo'ladi -- g'azna hisobi va
+    tijorat banki hisobi. Ilgari forma bittasini so'rardi, qolganlari
+    uchun alohida ilovaga borish kerak edi: ishlab chiqarishda 267
+    tashkilotning birortasida ham ikkinchi hisob yo'q, ya'ni bu yo'lni
+    hech kim topmagan.
+
+    Ro'yxatda yo'q satr o'chiriladi. Hisob raqamiga boshqa jadval
+    bog'lanmagan, shuning uchun bu xavfsiz.
+    """
+    existing = {account.id: account for account in client.bank_accounts}
+    kept: set[int] = set()
+    primary_id: int | None = None
+    for row in rows:
+        values = row.model_dump(exclude={"id"})
+        if not (values.get("bank_name") or "").strip():
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=MSG_BANK_NAME_REQUIRED)
+        account = existing.get(row.id) if row.id else None
+        if account is None:
+            account = ClientBankAccount(client_id=client.id)
+            db.add(account)
+        update_model(account, values)
+        db.flush()
+        kept.add(account.id)
+        if values.get("is_primary"):
+            primary_id = account.id
+    for account_id, account in existing.items():
+        if account_id not in kept:
+            db.delete(account)
+    db.flush()
+    # Birlamchisi ko'rsatilmagan bo'lsa, birinchi satr birlamchi bo'ladi:
+    # hisob-fakturaga rekvizit aynan shundan olinadi va «birlamchisi yo'q»
+    # holati uni topa olmaydigan qilib qo'yardi.
+    if primary_id is None and kept:
+        primary_id = min(kept)
+    if primary_id:
+        # `apply_primary_rules` faqat qolganlarini tozalaydi -- tanlangani
+        # birlamchi ekanini shu yerda aytish kerak. Aks holda sukut
+        # bo'yicha birlamchisi yo'q holat qolib ketardi.
+        db.get(ClientBankAccount, primary_id).is_primary = True
+        apply_primary_rules(db, ClientBankAccount, client.id, primary_id)
+
+
 def apply_child(db: Session, client: Client, model: Any, items: list, data: dict | None, required_field: str) -> None:
     """Update the primary child record, or create it if there is none.
 
@@ -493,12 +543,16 @@ def update_client(client_id: int, payload: ClientUpdate, db: Session = Depends(g
     contact = data.pop("first_contact", None)
     address = data.pop("address", None)
     bank_account = data.pop("bank_account", None)
+    data.pop("bank_accounts", None)
     if "inn" in data:
         ensure_inn_available(db, data["inn"], exclude_client_id=client_id)
     update_model(client, data)
     apply_child(db, client, ClientContact, client.contacts, contact, "full_name")
     apply_child(db, client, ClientAddress, client.addresses, address, "address_type")
-    apply_child(db, client, ClientBankAccount, client.bank_accounts, bank_account, "bank_name")
+    if payload.bank_accounts is not None:
+        sync_bank_accounts(db, client, payload.bank_accounts)
+    else:
+        apply_child(db, client, ClientBankAccount, client.bank_accounts, bank_account, "bank_name")
     # One commit for the whole form.
     db.commit()
     db.refresh(client)

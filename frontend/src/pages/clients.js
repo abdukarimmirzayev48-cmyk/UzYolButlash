@@ -253,6 +253,7 @@ async function renderNewClient() {
   await loadGeoRegions();
   app.innerHTML = clientForm();
   bindGeoFields(app);
+  bindBankAccountRows(document.querySelector("#client-form"));
   document.querySelector("#client-form").addEventListener("submit", async (event) => {
     event.preventDefault();
     const form = event.currentTarget;
@@ -275,6 +276,7 @@ async function renderEditClient(id) {
   const [client] = await Promise.all([api(`/api/clients/${id}`), loadGeoRegions()]);
   app.innerHTML = clientForm(client);
   bindGeoFields(app);
+  bindBankAccountRows(document.querySelector("#client-form"));
   document.querySelector("#client-form").addEventListener("submit", async (event) => {
     event.preventDefault();
     const form = event.currentTarget;
