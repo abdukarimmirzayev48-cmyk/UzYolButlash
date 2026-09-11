@@ -232,8 +232,9 @@ function requestTransitionsHtml(request, { blocked = false } = {}) {
       return `<button class="${cls}" type="button" data-request-status="${esc(move.status)}" data-request-direction="${esc(move.direction)}" ${off ? "disabled" : ""}>${prefix}<span>${esc(move.label)}</span></button>`;
     })
     .join("");
+  const auto = REQUEST_AUTO_HELP[request.status];
   const hint = moves.length
-    ? `<p class="form-hint">Har bir bosqich hujjat va izoh so'raydi — ikkalasi ham status tarixida qoladi.</p>`
+    ? `${auto ? `<p class="form-hint">${auto}</p>` : ""}<p class="form-hint">Har bir bosqich hujjat va izoh so'raydi — ikkalasi ham status tarixida qoladi.</p>`
     : "";
   return `<div class="actions">${buttons}</div>${hint}`;
 }
@@ -712,10 +713,19 @@ function requestDashboardBlocks(board) {
 
 const REQUEST_STATUS_HELP = {
   new: "Tashkilotning rasmiy xatini biriktiring -- talabnoma shundan keyin ko'rib chiqishga o'tadi.",
-  reviewing: "Xat qabul qilindi. Shartnoma namunasini tayyorlab, Didox orqali tashkilotga yuboring va namunani biriktiring.",
-  contract_preparation: "Namuna mijozda. Shartnoma imzolangach, imzolangan nusxani biriktiring -- talabnoma shu bilan yopiladi.",
+  reviewing: "Xat qabul qilindi. Shartnoma yaratilganda talabnoma o'zi keyingi bosqichga o'tadi.",
+  contract_preparation: "Shartnoma tayyorlanmoqda. U imzolangan deb belgilangach, talabnoma o'zi yopiladi.",
   contract_signed: "Talabnoma yopildi. Keyingi ish buyurtma va partiyalar bo'limida.",
   rejected: "Talabnoma rad etilgan.",
+};
+
+// Oxirgi ikki bosqich shartnomadan keladi. Tugmalar qolgan -- tizimdan
+// tashqarida yuritilgan shartnoma uchun qo'lda o'tkazish kerak bo'ladi --
+// lekin odam odatdagi yo'l qaysiligini bilishi kerak, aks holda har
+// safar qo'lda belgilash odat bo'lib qoladi.
+const REQUEST_AUTO_HELP = {
+  reviewing: "Odatdagi yo'l: shartnomani yarating -- bosqich o'zi o'zgaradi. Quyidagi tugma faqat tizimdan tashqaridagi shartnoma uchun.",
+  contract_preparation: "Odatdagi yo'l: shartnomani imzolangan deb belgilang -- bosqich o'zi o'zgaradi. Quyidagi tugma faqat tizimdan tashqaridagi shartnoma uchun.",
 };
 
 // Talabnoma qaysi bosqichda ekani -- ketma-ketlik ko'rinishida. Ilgari

@@ -862,6 +862,7 @@ def create_contract_from_parsed(
     db.add(contract)
     db.flush()
     record_status_change(db, contract, None, contract.status, "Shartnoma PDF orqali yaratildi.", user)
+    start_request_preparation(db, contract, user)
     for item_payload in payload.items:
         if not item_payload.quantity or item_payload.quantity <= 0:
             raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Miqdor 0 dan katta bo‘lishi kerak.")
@@ -980,6 +981,51 @@ def contract_request_link(db: Session, contract) -> dict | None:
     }
 
 
+def move_request(db: Session, request, target, comment: str, user: User) -> None:
+    """Talabnomani oldinga suradi va tarixga yozadi.
+
+    Faqat oldinga: qo'lda yopilgan yoki rad etilgan talabnomaga
+    tegilmaydi. Yozuvsiz o'zgartirish -- holat o'zidan-o'zi o'zgargandek
+    ko'rinishi demak, shuning uchun tarix yozuvi majburiy qismi.
+    """
+    old_status = request.status
+    request.status = target
+    db.add(CustomerRequestStatusHistory(
+        request_id=request.id,
+        old_status=old_status,
+        new_status=target,
+        changed_by=getattr(user, "username", None),
+        comment=comment,
+    ))
+
+
+def start_request_preparation(db: Session, contract, user: User) -> None:
+    """Shartnoma yaratilsa, talabnoma «Shartnoma tayyorlanmoqda» ga o'tadi.
+
+    Shartnomani yaratishning o'zi -- tayyorlash ishining boshlanishi.
+    Xodimdan buni ikkinchi marta talabnomada belgilashni so'rash ortiqcha
+    qadam edi va u tabiiy ravishda unutilardi: ishlab chiqarishda
+    talabnomalar «ko'rib chiqilmoqda» da qolib ketardi, shartnomasi esa
+    allaqachon yaratilgan bo'lardi.
+
+    Shu sababli bu yo'lda namuna hujjati talab qilinmaydi: shartnomaning
+    o'zi undan kuchliroq dalil. Qo'lda o'tkazishda (tizimdan tashqarida
+    yuritilgan shartnoma uchun) namuna sharti o'z kuchida qoladi.
+    """
+    if not contract.customer_request_id:
+        return
+    request = db.get(CustomerRequest, contract.customer_request_id)
+    if not request or request.status not in {CustomerRequestStatus.new, CustomerRequestStatus.reviewing}:
+        return
+    move_request(
+        db, request, CustomerRequestStatus.contract_preparation,
+        # Raqam izohga kiradi: tarixga qarab qaysi shartnoma surganini
+        # bilish kerak.
+        f"{customer_request_workflow.MSG_PREPARATION_FROM_CONTRACT} {contract.contract_number}",
+        user,
+    )
+
+
 def close_request_when_signed(db: Session, contract, target: ContractStatus, user: User) -> None:
     """Shartnoma imzolansa, undan chiqqan talabnoma ham yopiladi.
 
@@ -998,19 +1044,13 @@ def close_request_when_signed(db: Session, contract, target: ContractStatus, use
     request = db.get(CustomerRequest, contract.customer_request_id)
     if not request or request.status is not CustomerRequestStatus.contract_preparation:
         return
-    old_status = request.status
-    request.status = CustomerRequestStatus.contract_signed
     if not request.contract_signed_at:
         request.contract_signed_at = datetime.now()
-    db.add(CustomerRequestStatusHistory(
-        request_id=request.id,
-        old_status=old_status,
-        new_status=request.status,
-        changed_by=getattr(user, "username", None),
-        # Raqam izohga kiradi: tarixga qarab qaysi shartnoma yopganini
-        # bilish kerak.
-        comment=f"{customer_request_workflow.MSG_SIGNED_FROM_CONTRACT} {contract.contract_number}",
-    ))
+    move_request(
+        db, request, CustomerRequestStatus.contract_signed,
+        f"{customer_request_workflow.MSG_SIGNED_FROM_CONTRACT} {contract.contract_number}",
+        user,
+    )
 
 
 def has_contract_document(contract, kind) -> bool:
@@ -1300,6 +1340,7 @@ def create_contract(
     db.add(contract)
     db.flush()
     record_status_change(db, contract, None, contract.status, "Shartnoma yaratildi.", user)
+    start_request_preparation(db, contract, user)
     for item_payload in payload.items:
         item = ContractItem(contract_id=contract.id, **item_payload.model_dump())
         apply_product_fields(db, item)
@@ -1346,7 +1387,12 @@ def get_contract_detail(contract_id: int, db: Session = Depends(get_db)):
 
 
 @router.patch("/{contract_id}", response_model=ContractDetail, dependencies=[Depends(require_edit("sotuv"))])
-def update_contract(contract_id: int, payload: ContractUpdate, db: Session = Depends(get_db)):
+def update_contract(
+    contract_id: int,
+    payload: ContractUpdate,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
     contract = load_contract_detail(db, contract_id)
     data = payload.model_dump(exclude_unset=True, exclude={"items", "payment_terms", "transport_terms"})
     if "client_id" in data:
@@ -1354,6 +1400,11 @@ def update_contract(contract_id: int, payload: ContractUpdate, db: Session = Dep
     if data.get("contract_number"):
         ensure_contract_number_free(db, data["contract_number"], exclude_id=contract.id)
     update_model(contract, data)
+    # Mavjud shartnomani talabnomaga bog'lash ham tayyorlashning
+    # boshlanishi: bog'langan zahoti talabnoma o'sha bosqichga o'tadi.
+    if "customer_request_id" in data and data["customer_request_id"]:
+        db.flush()
+        start_request_preparation(db, contract, user)
     if payload.items is not None:
         if not payload.items:
             raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Shartnomada kamida bitta mahsulot bo'lishi kerak.")

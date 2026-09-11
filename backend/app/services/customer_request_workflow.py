@@ -141,6 +141,8 @@ MSG_FORWARD_COMMENT = "Bosqichni o'zgartirish uchun izoh yozing."
 # Shartnoma imzolanganda talabnoma o'zi yopiladi -- tarixda shu yozuv
 # qoladi, ya'ni holat o'zidan-o'zi o'zgargandek ko'rinmaydi.
 MSG_SIGNED_FROM_CONTRACT = "Bog'langan shartnoma imzolandi."
+# Shartnoma yaratilganda talabnoma o'zi tayyorlash bosqichiga o'tadi.
+MSG_PREPARATION_FROM_CONTRACT = "Shartnoma yaratildi."
 
 MSG_DOCUMENT_REQUIRED = {
     D.letter: MSG_LETTER_REQUIRED,
