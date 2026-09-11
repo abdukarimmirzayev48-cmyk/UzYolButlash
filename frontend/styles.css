@@ -9429,12 +9429,21 @@ body.map-modal-open {
 
 .request-doc-row {
   display: grid;
-  grid-template-columns: 130px minmax(0, 1fr) auto auto;
+  /* Turi, nomi, yuklangan vaqti, amallar. Amallar bitta katakda --
+     ochish, yuklab olish va o'chirish yonma-yon turadi. */
+  grid-template-columns: 160px minmax(0, 1fr) auto auto;
   gap: 12px;
   align-items: center;
   padding: 8px 0;
   border-bottom: 1px solid var(--line);
   font-size: 14px;
+}
+
+.request-doc-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  white-space: nowrap;
 }
 
 .request-doc-type {

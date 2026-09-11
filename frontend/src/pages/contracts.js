@@ -1684,17 +1684,48 @@ function contractTransportTab(contract, logisticsRows = []) {
   `);
 }
 
+// Talabnoma bosqichida yuklangan hujjatlar: tashkilotning xati, Didox
+// orqali yuborilgan namuna, imzolangan nusxa. Ular talabnoma
+// kartochkasida yotardi va shartnomadan ko'rinmasdi -- kundalik ish esa
+// shartnomada ketadi, ya'ni «xat qani» degan savolga javob berish uchun
+// talabnomani ro'yxatdan qidirib topish kerak bo'lardi.
+function contractRequestDocumentsSection(contract) {
+  const link = contract.customer_request;
+  if (!link) return "";
+  const rows = (link.documents || []).map((doc) => `<tr>
+    <td>${fmt(optionLabel(REQUEST_DOCUMENT_TYPES, doc.document_type))}</td>
+    <td data-noloc>${esc(doc.title || "")}</td>
+    <td data-noloc>${fmtDate(doc.uploaded_at)}${doc.uploaded_by ? ` · ${esc(doc.uploaded_by)}` : ""}</td>
+    <td><div class="table-actions">
+      ${doc.file_url
+        ? `<a class="link-btn" target="_blank" rel="noopener" href="${esc(doc.file_url)}">Ochish</a><a class="link-btn" href="${esc(doc.file_url)}" download>Yuklab olish</a>`
+        : `<button class="link-btn" disabled>Ochish</button>`}
+    </div></td>
+  </tr>`).join("");
+  return section("Talabnoma hujjatlari", `
+    <div class="actions"><button class="btn" type="button" data-nav="/customer-requests/${link.id}"><span>Talabnomani ochish</span><span data-noloc> — ${esc(link.request_number)}</span></button></div>
+    <p class="helper-text">Bu hujjatlar talabnoma bosqichida yuklangan va shartnomaning asosi hisoblanadi. Ularni tahrirlash talabnoma kartochkasida.</p>
+    ${rows
+      ? `<div class="table-scroll"><table class="ops-table"><thead><tr><th>Turi</th><th>Nomi</th><th>Yuklangan</th><th>Amallar</th></tr></thead><tbody>${rows}</tbody></table></div>`
+      : `<div class="empty">Talabnomada hujjat yo'q.</div>`}
+  `);
+}
+
 function contractDocumentsTab(contract) {
   const editable = canEdit("sotuv");
   // Manba fayl va parser ma'lumotlari hujjatlar bilan bir joyda: ular ham
   // shartnoma qayerdan kelgani haqida.
   return section("Manba", detailList([
     ["ERP mijoz", contract.client?.name],
-    ["Talabnoma ID", contract.customer_request_id],
+    // Ilgari bu yerda yalang'och son turardi -- «Talabnoma ID: 11» hech
+    // kimga hech narsa aytmaydi. Raqami ko'rsatiladi, ochish tugmasi
+    // esa quyidagi hujjatlar bo'limida.
+    ["Talabnoma", contract.customer_request?.request_number],
+    ["Talabnoma holati", contract.customer_request?.status_label],
     ["Parser versiyasi", contract.parser_version],
     ["Aniqlik darajasi", parseConfidenceLabel(contract)],
     ["PDF fayl", contract.original_filename],
-  ])) + section("Hujjatlar", `
+  ])) + contractRequestDocumentsSection(contract) + section("Hujjatlar", `
     ${editable ? `<div class="actions"><button class="btn primary" data-contract-child="documents">Hujjat qo'shish</button></div>` : ""}
     ${tableOrEmpty(contract.documents, ["Hujjat nomi", "Turi", "Yuklangan sana", "Yuklagan", "Amallar"], (item) => `
       <tr>

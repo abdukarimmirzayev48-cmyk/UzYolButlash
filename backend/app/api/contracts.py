@@ -92,6 +92,7 @@ from backend.app.services import (
     customer_request_workflow,
     notifications,
 )
+from backend.app.schemas.customer_request import REQUEST_STATUS_LABELS
 from backend.app.services.auth import get_current_user, require_edit
 from backend.app.services.contract_pdf_parser import PARSER_VERSION, parse_contract_pdf
 from backend.app.services.product_summary import product_summary
@@ -943,6 +944,42 @@ def record_status_change(
     )
 
 
+def contract_request_link(db: Session, contract) -> dict | None:
+    """Shartnoma chiqqan talabnoma: raqami, holati va hujjatlari.
+
+    `customer_request_id` yalang'och son bo'lib turardi -- bosib
+    bo'lmaydigan, hujjatlarini ko'rsatmaydigan. Talabnoma bosqichida
+    yuklangan xat va namuna esa keyin aynan shartnoma ustida ishlayotgan
+    odamga kerak bo'ladi.
+    """
+    if not contract.customer_request_id:
+        return None
+    request = db.scalars(
+        select(CustomerRequest)
+        .where(CustomerRequest.id == contract.customer_request_id)
+        .options(selectinload(CustomerRequest.documents))
+    ).first()
+    if not request:
+        return None
+    return {
+        "id": request.id,
+        "request_number": request.request_number,
+        "status": request.status.value,
+        "status_label": REQUEST_STATUS_LABELS.get(request.status, request.status.value),
+        "documents": [
+            {
+                "id": doc.id,
+                "document_type": doc.document_type.value,
+                "title": doc.title,
+                "file_url": doc.file_url,
+                "uploaded_by": doc.uploaded_by,
+                "uploaded_at": doc.uploaded_at,
+            }
+            for doc in request.documents
+        ],
+    }
+
+
 def close_request_when_signed(db: Session, contract, target: ContractStatus, user: User) -> None:
     """Shartnoma imzolansa, undan chiqqan talabnoma ham yopiladi.
 
@@ -1285,6 +1322,7 @@ def create_contract(
 def get_contract_detail(contract_id: int, db: Session = Depends(get_db)):
     contract = load_contract_detail(db, contract_id)
     required_kind, required_ready = next_required_contract_document(contract)
+    request_link = contract_request_link(db, contract)
     return ContractDetail.model_validate(contract).model_copy(
         update={
             "summary": summary_for(db, contract),
@@ -1302,6 +1340,7 @@ def get_contract_detail(contract_id: int, db: Session = Depends(get_db)):
             ],
             "required_document": required_kind.value if required_kind else None,
             "required_document_ready": required_ready,
+            "customer_request": request_link,
         }
     )
 

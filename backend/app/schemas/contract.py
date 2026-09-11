@@ -442,6 +442,36 @@ CONTRACT_STATUS_LABELS = {
 }
 
 
+class ContractRequestDocument(BaseModel):
+    """Talabnoma bosqichida yuklangan hujjat.
+
+    Tashkilotning xati, Didox orqali yuborilgan namuna va imzolangan
+    nusxa -- ular talabnoma kartochkasida yotardi va shartnomadan
+    ko'rinmasdi. Kundalik ish esa shartnomada ketadi: «xat qani» degan
+    savolga javob berish uchun talabnomani ro'yxatdan qidirib topish
+    kerak bo'lardi.
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    document_type: str
+    title: str
+    file_url: str | None = None
+    uploaded_by: str | None = None
+    uploaded_at: datetime
+
+
+class ContractRequestLink(BaseModel):
+    """Shartnoma qaysi talabnomadan chiqqani -- raqami va hujjatlari bilan."""
+
+    id: int
+    request_number: str
+    status: str
+    status_label: str
+    documents: list[ContractRequestDocument] = Field(default_factory=list)
+
+
 class ContractStatusTransition(BaseModel):
     status: str
     label: str
@@ -484,6 +514,9 @@ class ContractDetail(ContractRead):
     # Brauzer tugmani shu asosda o'chiradi -- server bilan bir xil qoida.
     required_document: ContractDocumentType | None = None
     required_document_ready: bool = True
+    # Talabnoma bosqichidagi hujjatlar shu yerdan ko'rinadi: ular
+    # shartnomaning asosi va ular bilan ish shartnomada davom etadi.
+    customer_request: ContractRequestLink | None = None
     summary: ContractSummary | None = None
 
 

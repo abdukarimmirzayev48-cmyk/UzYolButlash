@@ -801,7 +801,10 @@ function requestDocumentsBlock(request, { required = false, needed = null } = {}
     <span class="request-doc-type">${fmt(optionLabel(REQUEST_DOCUMENT_TYPES, doc.document_type))}</span>
     <span class="request-doc-name">${doc.file_url ? `<a href="${esc(doc.file_url)}" target="_blank" rel="noopener" data-noloc>${esc(doc.title)}</a>` : `<span data-noloc>${esc(doc.title)}</span>`}</span>
     <span class="request-doc-meta" data-noloc>${fmtDate(doc.uploaded_at)}${doc.uploaded_by ? ` · ${esc(doc.uploaded_by)}` : ""}</span>
-    ${editable ? `<button class="link-btn danger" type="button" data-delete-request-doc="${doc.id}">O'chirish</button>` : ""}
+    <span class="request-doc-actions">
+      ${doc.file_url ? `<a class="link-btn" target="_blank" rel="noopener" href="${esc(doc.file_url)}">Ochish</a><a class="link-btn" href="${esc(doc.file_url)}" download>Yuklab olish</a>` : ""}
+      ${editable ? `<button class="link-btn danger" type="button" data-delete-request-doc="${doc.id}">O'chirish</button>` : ""}
+    </span>
   </div>`).join("");
 
   return `<div class="request-docs ${required ? "is-required" : ""}">
