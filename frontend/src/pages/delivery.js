@@ -775,7 +775,7 @@ function batchWizardPlanPanel(state) {
   <h3 class="modal-subtitle">Yuklash nuqtasi</h3>
   <div class="grid">${deliveryPointPicker("Yuklash nuqtasi", state.loadingPointId, points, { name: "loading_point_id", required: true })}</div>
   <h3 class="modal-subtitle">Yetkazish nuqtasi</h3>
-  <div class="grid">${deliveryPointPicker("Yetkazish nuqtasi", state.deliveryPointId, points, { required: true, clientId: state.order?.client_id })}</div>
+  <div class="grid">${deliveryPointPicker("Yetkazish nuqtasi", state.deliveryPointId, points, { required: true, clientId: state.order?.client_id, method: state.deliveryMethod })}</div>
   <p class="form-hint">Manzil nuqta kartochkasidan olinadi: viloyat, tuman, aniq manzil, mas'ul va telefoni.</p>
   <div class="grid">
     ${textField("planned_distance_km", "Reja masofa (km)", state.plannedDistanceKm || "", "number")}

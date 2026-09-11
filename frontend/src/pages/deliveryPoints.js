@@ -746,15 +746,42 @@ async function deliveryPointList(selectedId = null, clientId = null, method = nu
   return items;
 }
 
+// Kod ikki maydonda: `station_code` -- temiryo'l kodi, `code` -- umumiy.
+// Ishlab chiqarishda 221 stansiyaning 220 tasida ikkalasi ham bir xil,
+// bittasida esa faqat `code` bor -- shuning uchun ikkalasiga ham qaraladi.
+function pointCode(item) {
+  return item.station_code || item.code || "";
+}
+
 function pointOptionLabel(item, clientId) {
   // Mijoz bilan bog'liqlik nuqtaning o'zida turadi: ABZ yoki stansiya
   // mijozga biriktirilgan bo'lsa, uni ro'yxatda ajratib ko'rsatamiz.
   // Manzil mijoz kartochkasidan olinmaydi -- u yuridik manzil.
   const own = clientId && Number(item.client_id) === Number(clientId) ? "★ " : "";
-  return `${own}${item.name}${item.full_address ? ` — ${item.full_address}` : ""}`;
+  // Temiryo'l stansiyasini kodi bo'yicha izlashadi -- vagon hujjatida
+  // aynan kod yoziladi. Kod yorliqda bo'lmagani uchun kombo qidiruvi
+  // (u faqat ko'rinadigan matnni izlaydi) uni topa olmasdi: 221
+  // stansiyaning hammasida kod bor, lekin ro'yxatda ko'rinmasdi.
+  const code = pointCode(item) ? ` · ${pointCode(item)}` : "";
+  return `${own}${item.name}${code}${item.full_address ? ` — ${item.full_address}` : ""}`;
 }
 
-function deliveryPointPicker(label, selectedId, items, { required = false, name = "delivery_point_id", clientId = null } = {}) {
+// Usul ro'yxatni qisqartiradi: tuz vagonda keladi, ya'ni stansiyaga
+// yetkaziladi; bitum bitumovozda ketadi, ya'ni ABZ ga. Bu to'g'ri
+// filtr, lekin ekranda u ko'rinmasdi -- odam stansiya kodini terib,
+// hech narsa topmas va «qidiruv ishlamaydi» deb o'ylardi.
+const POINT_METHOD_HINTS = {
+  auto: "Ro'yxatda faqat ABZ, ombor va obyekt nuqtalari -- yetkazish usuli «Avto». Temiryo'l stansiyasi kerak bo'lsa, usulni «Temiryo'l» ga o'zgartiring.",
+  railway: "Ro'yxatda faqat temiryo'l stansiyalari -- yetkazish usuli «Temiryo'l». ABZ kerak bo'lsa, usulni «Avto» ga o'zgartiring.",
+};
+
+function pointMethodHint(method) {
+  const key = typeof method === "string" ? method : method?.value || "";
+  const text = POINT_METHOD_HINTS[key];
+  return text ? `<p class="form-hint">${text}</p>` : "";
+}
+
+function deliveryPointPicker(label, selectedId, items, { required = false, name = "delivery_point_id", clientId = null, method = null } = {}) {
   const key = `pp${++deliveryPickerSeq}`;
   // Mijozga biriktirilgan nuqtalar ro'yxat boshida turadi.
   const rows = clientId
@@ -772,9 +799,10 @@ function deliveryPointPicker(label, selectedId, items, { required = false, name 
       <select data-point-district>${option("", "Barchasi", true)}</select>
     </label>
     <label class="form-field"><span class="field-label-text">${esc(label)}${required ? ' <span class="required-mark">*</span>' : ""}</span>
-      ${selectSearch(name, "Nuqta nomi yoki manzili bo'yicha qidiring")}
+      ${selectSearch(name, "Nomi, kodi yoki manzili bo'yicha qidiring")}
       <select name="${esc(name)}" data-selected="${esc(selectedId ?? "")}" ${required ? "required" : ""}><option value="">Tanlanmagan</option></select>
     </label>
+    ${pointMethodHint(method)}
   </div>`;
 }
 
@@ -838,7 +866,7 @@ function bindOnePointPicker(root, holder) {
     const rows = visible();
     const current = rows.some((item) => item.id === Number(keepId)) ? Number(keepId) : "";
     pointSelect.innerHTML = `<option value="">Tanlanmagan</option>${rows
-      .map((item) => `<option value="${item.id}" ${item.id === current ? "selected" : ""}>${esc(pointOptionLabel(item, clientId))}</option>`)
+      .map((item) => `<option value="${item.id}" data-search="${esc(pointCode(item))}" ${item.id === current ? "selected" : ""}>${esc(pointOptionLabel(item, clientId))}</option>`)
       .join("")}`;
     pointSelect.value = current ? String(current) : "";
     // Birinchi marta kombo qurilади, keyingilarida esa faqat xabar

@@ -476,7 +476,10 @@ function comboOptionRows(select) {
     index,
     value: option.value,
     label: option.textContent.trim(),
-    haystack: option.textContent.toLowerCase(),
+    // `data-search` -- ko'rinmaydigan, lekin qidiriladigan matn. Stansiya
+    // kodi, STIR yoki davlat raqami yorliqni uzaytirmasdan topilishi
+    // kerak bo'lgan hollar uchun.
+    haystack: `${option.textContent} ${option.dataset.search || ""}`.toLowerCase(),
     group: option.parentElement.tagName === "OPTGROUP" ? option.parentElement.label : null,
   }));
 }

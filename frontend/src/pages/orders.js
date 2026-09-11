@@ -720,7 +720,7 @@ function orderWizardBody(state) {
   if (state.step === 1) return section("Shartnoma tanlash", `${selectField("contract_id", "Shartnoma", [["", "Shartnomani tanlang"]], "", { required: true }).replace("</select>", `${state.contractOptions || ""}</select>`)}${orderWizardContractSummary(state)}`);
   // Mahsulot manzildan oldin: nima jo'natilayotgani qayerga jo'natish
   // mumkinligini belgilaydi -- tuzga stansiya, bitumga ABZ.
-  if (state.step === 2) return section("Mahsulot va miqdor", `${orderRequiredDateField(state)}${orderWizardProductsTable(state)}<div class="grid">${deliveryPointPicker("Yetkazish nuqtasi", state.deliveryPointId, state.deliveryPointOptions || [], { clientId: state.contract?.client_id })}</div><p class="form-hint">Shartnomadagi nuqta oldindan qo'yiladi; boshqa joyga jo'natilsa shu yerda o'zgartiriladi. Bu manzil yetkazish partiyasi va haydovchi yo'l varaqasiga o'tadi.</p>`);
+  if (state.step === 2) return section("Mahsulot va miqdor", `${orderRequiredDateField(state)}${orderWizardProductsTable(state)}<div class="grid">${deliveryPointPicker("Yetkazish nuqtasi", state.deliveryPointId, state.deliveryPointOptions || [], { clientId: state.contract?.client_id, method: state.deliveryMethod })}</div><p class="form-hint">Shartnomadagi nuqta oldindan qo'yiladi; boshqa joyga jo'natilsa shu yerda o'zgartiriladi. Bu manzil yetkazish partiyasi va haydovchi yo'l varaqasiga o'tadi.</p>`);
   if (state.step === 3) return section("Manba va yetkazib berish modeli", orderWizardSourcePanel(state));
   if (state.step === 4) return section("Zaxiradan ajratish", orderWizardStockPanel(state));
   return section("Tekshirish va yaratish", orderWizardConfirmPanel(state));
