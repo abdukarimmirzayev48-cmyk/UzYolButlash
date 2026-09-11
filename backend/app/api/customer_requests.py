@@ -569,6 +569,14 @@ def update_customer_request_status(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="Rad etish sababi majburiy." if kind == "reject" else "Orqaga qaytarish sababi majburiy.",
         )
+    # Oldinga qadam ham izoh so'raydi: hujjat nima biriktirilganini
+    # aytadi, izoh esa nima uchun shu qadam qo'yilganini. Ikkalasisiz
+    # tarix «kim, qachon» dan nariga o'tmasdi.
+    if kind == "forward" and not (payload.comment or "").strip():
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=customer_request_workflow.MSG_FORWARD_COMMENT,
+        )
     old_status = request.status
     request.status = payload.status
     if payload.status == CustomerRequestStatus.reviewing and not request.reviewed_at:

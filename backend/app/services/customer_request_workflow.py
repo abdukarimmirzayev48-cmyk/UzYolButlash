@@ -15,15 +15,14 @@ offering something the API then refuses.
 
 The flow:
 
-    new -> reviewing -> contract_preparation
+    new -> reviewing -> contract_preparation -> contract_signed
 
-Talabnoma «shartnoma tayyorlanmoqda» da tugaydi: undan keyingi ish --
-shartnoma imzolash va buyurtma yaratish -- shartnoma bo'limida davom
-etadi. Ilgari bu ikkisi ham talabnomaning holati edi, ya'ni bitta narsa
-ikki joyda yuritilardi.
+Har bir oldinga qadam ikki narsani talab qiladi: **hujjat va izoh**.
+Hujjat -- qadamning asosi, izoh -- nima uchun qilingani. Ikkalasisiz
+tarix «kim, qachon» dan nariga o'tmasdi: bosqich o'zgargani ko'rinardi,
+lekin qanday asosda bo'lgani yo'q edi.
 
-Har bir oldinga qadam o'z hujjatini talab qiladi, va tartib hayotdagi
-tartib bilan bir xil:
+Tartib hayotdagi tartib bilan bir xil:
 
 1. Talabnoma ma'lumotlari kiritiladi -- «Yangi».
 2. Tashkilotning rasmiy **xati** biriktiriladi -- shundan keyingina
@@ -32,6 +31,14 @@ tartib bilan bir xil:
 3. Mas'ul xodim shartnoma namunasini tayyorlab, Didox orqali tashkilotga
    yuboradi va o'sha **namunani** biriktiradi -- talabnoma «Shartnoma
    tayyorlanmoqda» ga o'tadi.
+4. Shartnoma imzolangach, **imzolangan nusxa** biriktiriladi va
+   talabnoma «Shartnoma imzolandi» da yopiladi.
+
+To'rtinchi qadam ikki yo'l bilan qo'yiladi: xodim qo'lda, yoki
+talabnomaga bog'langan shartnoma imzolanganda tizim o'zi. Ikkinchisi
+muhim -- aks holda bitta voqea ikki joyda alohida yuritilar va ular
+bir-biridan ajralib qolardi: shartnoma imzolangan bo'lsa ham, talabnoma
+«tayyorlanmoqda» da qotib qolardi.
 
 Ilgari bu ikkisi teskari edi: ko'rib chiqishga o'tish uchun shartnoma
 namunasi, shartnoma tayyorlashga o'tish uchun esa xat so'ralardi. Ya'ni
@@ -58,7 +65,8 @@ from backend.app.models.customer_request import CustomerRequestStatus as S
 FORWARD: dict[S, tuple[S, ...]] = {
     S.new: (S.reviewing,),
     S.reviewing: (S.contract_preparation,),
-    S.contract_preparation: (),
+    S.contract_preparation: (S.contract_signed,),
+    S.contract_signed: (),
     S.rejected: (),
 }
 
@@ -68,6 +76,7 @@ BACKWARD: dict[S, tuple[S, ...]] = {
     S.new: (),
     S.reviewing: (S.new,),
     S.contract_preparation: (S.reviewing,),
+    S.contract_signed: (S.contract_preparation,),
     S.rejected: (S.new,),
 }
 
@@ -93,7 +102,9 @@ def transitions_from(current: S) -> list[dict]:
         # it through `can_convert_to_order` instead.
         if target in STATUS_ENDPOINT_EXCLUDED:
             continue
-        moves.append({"status": target.value, "direction": "forward", "requires_comment": False})
+        # Oldinga qadam ham izoh so'raydi: hujjat nima biriktirilganini
+        # aytadi, izoh esa nima uchun shu qadam qo'yilganini.
+        moves.append({"status": target.value, "direction": "forward", "requires_comment": True})
     for target in BACKWARD.get(current, ()):
         moves.append({"status": target.value, "direction": "backward", "requires_comment": True})
     if current in REJECTABLE:
@@ -118,16 +129,23 @@ def transition_kind(current: S, target: S) -> str | None:
 REQUIRED_DOCUMENT: dict[S, D] = {
     S.reviewing: D.letter,
     S.contract_preparation: D.contract_sample,
+    S.contract_signed: D.signed_contract,
 }
 
 # Alohida konstanta: lug'at generatori aynan modul darajasidagi `MSG_*`
 # nomlarni oladi, lug'at ichidagi matnni emas.
 MSG_LETTER_REQUIRED = "Ko'rib chiqishga o'tish uchun tashkilotning rasmiy xati biriktirilishi shart."
 MSG_SAMPLE_REQUIRED = "Shartnoma tayyorlashga o'tish uchun Didox orqali yuborilgan shartnoma namunasi biriktirilishi shart."
+MSG_SIGNED_REQUIRED = "Talabnomani yopish uchun imzolangan shartnoma nusxasi biriktirilishi shart."
+MSG_FORWARD_COMMENT = "Bosqichni o'zgartirish uchun izoh yozing."
+# Shartnoma imzolanganda talabnoma o'zi yopiladi -- tarixda shu yozuv
+# qoladi, ya'ni holat o'zidan-o'zi o'zgargandek ko'rinmaydi.
+MSG_SIGNED_FROM_CONTRACT = "Bog'langan shartnoma imzolandi."
 
 MSG_DOCUMENT_REQUIRED = {
     D.letter: MSG_LETTER_REQUIRED,
     D.contract_sample: MSG_SAMPLE_REQUIRED,
+    D.signed_contract: MSG_SIGNED_REQUIRED,
 }
 
 

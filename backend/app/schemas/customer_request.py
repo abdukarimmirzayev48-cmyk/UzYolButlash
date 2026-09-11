@@ -23,6 +23,7 @@ REQUEST_STATUS_LABELS = {
     CustomerRequestStatus.new: "Yangi",
     CustomerRequestStatus.reviewing: "Ko'rib chiqilmoqda",
     CustomerRequestStatus.contract_preparation: "Shartnoma tayyorlanmoqda",
+    CustomerRequestStatus.contract_signed: "Shartnoma imzolandi",
     CustomerRequestStatus.rejected: "Rad etildi",
 }
 

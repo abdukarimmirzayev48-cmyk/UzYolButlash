@@ -27,11 +27,13 @@ class CustomerRequestStatus(str, Enum):
     # va operator qaysi biridaligini ajrata olmasdi -- natijada tugma
     # tasodifan bosilardi va tarix ma'nosini yo'qotardi.
     reviewing = "reviewing"
-    # Talabnoma shu yerda tugaydi: keyingi ish shartnoma bo'limida davom
-    # etadi. Ilgari bu yerda «shartnoma imzolandi» va «buyurtmaga
-    # o'tkazildi» ham bor edi, lekin ular talabnomaning emas,
-    # shartnomaning hayoti -- va ikkinchisi umuman ishlamasdi.
     contract_preparation = "contract_preparation"
+    # Talabnoma shu yerda tugaydi. Bu holat ikki yo'l bilan qo'yiladi:
+    # xodim imzolangan nusxani biriktirib qo'lda, yoki talabnomaga
+    # bog'langan shartnoma imzolanganda tizim o'zi. Ikkinchisi muhim --
+    # aks holda bitta voqea ikki joyda alohida yuritilar va ular
+    # bir-biridan ajralib qolardi.
+    contract_signed = "contract_signed"
     rejected = "rejected"
 
 
@@ -143,6 +145,8 @@ class CustomerRequestDocumentType(str, Enum):
     letter = "letter"
     # Didox orqali mijozga yuborilgan shartnoma namunasi.
     contract_sample = "contract_sample"
+    # Imzolangan shartnomaning nusxasi -- talabnomani yopish asosi.
+    signed_contract = "signed_contract"
     specification = "specification"
     other = "other"
 

@@ -32,7 +32,11 @@ MSG_STALE_REQUESTS = "Javobsiz turgan talabnomalar bor"
 MSG_NO_DATA = "Tanlangan davrda talabnoma yo'q"
 
 # Yakuniy holatlar: ular ustida ish tugagan.
-CONVERTED_STATUSES = ("contract_signed", "converted_to_order")
+# «Shartnomaga aylangan» -- talabnoma «shartnoma imzolandi» ga
+# yetgani. `converted_to_order` bu yerda o'lik qoldiq edi: bunday holat
+# olib tashlangan, `contract_signed` esa hali qaytarilmagan edi, ya'ni
+# hisoblagich har doim nol ko'rsatardi.
+CONVERTED_STATUSES = ("contract_signed",)
 CLOSED_STATUSES = CONVERTED_STATUSES + ("rejected",)
 
 

@@ -2,6 +2,7 @@ const customerRequestStatuses = [
   ["new", "Yangi"],
   ["reviewing", "Ko'rib chiqilmoqda"],
   ["contract_preparation", "Shartnoma tayyorlanmoqda"],
+  ["contract_signed", "Shartnoma imzolandi"],
   ["rejected", "Rad etildi"],
 ];
 
@@ -172,12 +173,15 @@ const REQUEST_REJECT_LABEL = "Rad etish";
 const REQUEST_STATUS_DIALOGS = {
   forward: {
     title: "Keyingi bosqichga o'tkazish",
-    intro: "Talabnoma quyidagi holatga o'tadi. Izoh ixtiyoriy, lekin u status tarixida qoladi.",
+    // Izoh endi majburiy: hujjat nima biriktirilganini aytadi, izoh esa
+    // nima uchun shu qadam qo'yilganini. Ikkalasisiz tarix «kim, qachon»
+    // dan nariga o'tmasdi.
+    intro: "Talabnoma quyidagi holatga o'tadi. Izoh majburiy — u status tarixida qoladi.",
     confirmLabel: "O'tkazish",
     tone: "primary",
     commentLabel: "Izoh",
     placeholder: "Nima qilindi? Keyingi bosqichga nima uchun o'tilyapti?",
-    required: false,
+    required: true,
   },
   backward: {
     title: "Oldingi bosqichga qaytarish",
@@ -228,8 +232,8 @@ function requestTransitionsHtml(request, { blocked = false } = {}) {
       return `<button class="${cls}" type="button" data-request-status="${esc(move.status)}" data-request-direction="${esc(move.direction)}" ${off ? "disabled" : ""}>${prefix}<span>${esc(move.label)}</span></button>`;
     })
     .join("");
-  const hint = moves.some((move) => move.direction === "backward")
-    ? `<p class="form-hint">Orqaga qaytarish uchun sabab yozish shart — u status tarixida qoladi.</p>`
+  const hint = moves.length
+    ? `<p class="form-hint">Har bir bosqich hujjat va izoh so'raydi — ikkalasi ham status tarixida qoladi.</p>`
     : "";
   return `<div class="actions">${buttons}</div>${hint}`;
 }
@@ -709,14 +713,15 @@ function requestDashboardBlocks(board) {
 const REQUEST_STATUS_HELP = {
   new: "Tashkilotning rasmiy xatini biriktiring -- talabnoma shundan keyin ko'rib chiqishga o'tadi.",
   reviewing: "Xat qabul qilindi. Shartnoma namunasini tayyorlab, Didox orqali tashkilotga yuboring va namunani biriktiring.",
-  contract_preparation: "Namuna mijozda. Talabnomaning ishi tugadi -- keyingi qadam shartnomalar bo'limida.",
+  contract_preparation: "Namuna mijozda. Shartnoma imzolangach, imzolangan nusxani biriktiring -- talabnoma shu bilan yopiladi.",
+  contract_signed: "Talabnoma yopildi. Keyingi ish buyurtma va partiyalar bo'limida.",
   rejected: "Talabnoma rad etilgan.",
 };
 
 // Talabnoma qaysi bosqichda ekani -- ketma-ketlik ko'rinishida. Ilgari
 // faqat joriy status nishoni turardi: undan oldin nima bo'lgani va keyin
 // nima kutilayotgani ko'rinmasdi.
-const REQUEST_STATUS_FLOW = ["new", "reviewing", "contract_preparation"];
+const REQUEST_STATUS_FLOW = ["new", "reviewing", "contract_preparation", "contract_signed"];
 
 function requestStatusFlow(request) {
   const titles = REQUEST_STATUS_FLOW.map((key) => optionLabel(customerRequestStatuses, key));
@@ -774,6 +779,7 @@ function requestStatusCard(request) {
 const REQUEST_DOCUMENT_TYPES = [
   ["letter", "Tashkilot xati"],
   ["contract_sample", "Shartnoma namunasi (Didox)"],
+  ["signed_contract", "Imzolangan shartnoma"],
   ["specification", "Spetsifikatsiya"],
   ["other", "Boshqa"],
 ];
@@ -785,6 +791,7 @@ const REQUEST_DOCUMENT_TYPES = [
 const REQUEST_DOCUMENT_HELP = {
   letter: "Ko'rib chiqishga o'tish uchun tashkilotning rasmiy xatini biriktiring.",
   contract_sample: "Didox orqali yuborilgan shartnoma namunasini biriktiring.",
+  signed_contract: "Imzolangan shartnomaning nusxasini biriktiring.",
 };
 
 function requestDocumentsBlock(request, { required = false, needed = null } = {}) {

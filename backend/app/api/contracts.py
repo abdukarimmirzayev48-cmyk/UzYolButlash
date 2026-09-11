@@ -30,7 +30,11 @@ from backend.app.models.contract import (
     ContractStatusHistory,
     ContractTransportTerms,
 )
-from backend.app.models.customer_request import CustomerRequest
+from backend.app.models.customer_request import (
+    CustomerRequest,
+    CustomerRequestStatus,
+    CustomerRequestStatusHistory,
+)
 from backend.app.models.delivery import BatchStatus, DeliveryBatch, DeliveryBatchItem, Logistics
 from backend.app.models.order import Order, OrderStatus, OrderItem
 from backend.app.models.product import Product
@@ -85,6 +89,7 @@ from backend.app.services import (
     contract_delivery_plan,
     contract_payment_schedule,
     contract_workflow,
+    customer_request_workflow,
     notifications,
 )
 from backend.app.services.auth import get_current_user, require_edit
@@ -938,6 +943,39 @@ def record_status_change(
     )
 
 
+def close_request_when_signed(db: Session, contract, target: ContractStatus, user: User) -> None:
+    """Shartnoma imzolansa, undan chiqqan talabnoma ham yopiladi.
+
+    Talabnoma va shartnoma bitta ishning ikki qismi: shartnoma
+    imzolangani talabnomaning ham yakuni. Ikkalasini alohida yuritish --
+    ya'ni xodimdan bir voqeani ikki joyda belgilashni so'rash -- hech
+    qachon ishlamaydi: ishlab chiqarishda talabnomalar «shartnoma
+    tayyorlanmoqda» da qotib qolardi, holbuki shartnomasi allaqachon
+    imzolangan bo'lardi.
+
+    Faqat oldinga: qo'lda yopilgan yoki rad etilgan talabnomaga
+    tegilmaydi.
+    """
+    if target is not ContractStatus.signed or not contract.customer_request_id:
+        return
+    request = db.get(CustomerRequest, contract.customer_request_id)
+    if not request or request.status is not CustomerRequestStatus.contract_preparation:
+        return
+    old_status = request.status
+    request.status = CustomerRequestStatus.contract_signed
+    if not request.contract_signed_at:
+        request.contract_signed_at = datetime.now()
+    db.add(CustomerRequestStatusHistory(
+        request_id=request.id,
+        old_status=old_status,
+        new_status=request.status,
+        changed_by=getattr(user, "username", None),
+        # Raqam izohga kiradi: tarixga qarab qaysi shartnoma yopganini
+        # bilish kerak.
+        comment=f"{customer_request_workflow.MSG_SIGNED_FROM_CONTRACT} {contract.contract_number}",
+    ))
+
+
 def has_contract_document(contract, kind) -> bool:
     return any(doc.document_type is kind for doc in contract.documents)
 
@@ -997,6 +1035,7 @@ def change_contract_status(
     old_status = contract.status
     contract.status = target
     record_status_change(db, contract, old_status, target, comment or None, user)
+    close_request_when_signed(db, contract, target, user)
     db.commit()
     return get_contract_detail(contract.id, db)
 
