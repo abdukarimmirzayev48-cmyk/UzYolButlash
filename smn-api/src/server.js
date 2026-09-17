@@ -168,6 +168,7 @@ app.get('/api/reports/:id', wrap(async (req, res) => {
     report: reportById(req.params.id),
     from: params['start-date'],
     to: params['end-date'],
+    title: table.title,
     headers: table.headers,
     rowCount: table.rows.length,
     rows: table.rows,

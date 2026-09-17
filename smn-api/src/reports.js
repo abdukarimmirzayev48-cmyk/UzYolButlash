@@ -89,27 +89,43 @@ export function reportById(id) {
  */
 export function parseReportTable(html) {
   const text = String(html || '');
-  const tables = [...text.matchAll(/<table[^>]*>([\s\S]*?)<\/table>/gi)].map((m) => m[1]);
-  if (!tables.length) return { headers: [], rows: [] };
 
-  // Eng ko'p qatorli jadval -- hisobotning o'zi. Sahifada sarlavha va
-  // tugmalar uchun ham kichik jadvallar bo'ladi.
-  const body = tables.reduce((best, t) => {
-    const n = (t.match(/<tr[\s>]/gi) || []).length;
-    return n > best.n ? { t, n } : best;
-  }, { t: '', n: 0 }).t;
-
-  const rows = [...body.matchAll(/<tr[^>]*>([\s\S]*?)<\/tr>/gi)].map((m) =>
+  // Jadvallar ichma-ich joylashgan (JasperReports shunday chiqaradi),
+  // shuning uchun «jadvalni topib, ichidan qatorlarni olish» ishlamaydi:
+  // nojadal regex birinchi `</table>` da to'xtaydi va tashqi o'ram ichidagi
+  // haqiqiy ma'lumot yo'qoladi. Buning o'rniga butun hujjatdagi `<tr>`
+  // larni olamiz -- ular ichma-ich joylashmaydi.
+  const all = [...text.matchAll(/<tr[^>]*>([\s\S]*?)<\/tr>/gi)].map((m) =>
     [...m[1].matchAll(/<t[hd][^>]*>([\s\S]*?)<\/t[hd]>/gi)].map((c) => cellText(c[1])),
-  ).filter((cells) => cells.length);
+  );
 
-  if (!rows.length) return { headers: [], rows: [] };
-  // Birinchi qator sarlavha bo'lsa, uni ajratamiz: unda raqam bo'lmaydi.
-  const first = rows[0];
-  const looksLikeHeader = first.every((c) => !/^-?[\d\s.,]+$/.test(c) || c === '');
-  return looksLikeHeader
-    ? { headers: first, rows: rows.slice(1) }
-    : { headers: [], rows };
+  // Jasper qatorlar orasiga 1px rasmli «oraliq» qatorlar qo'yadi: ularda
+  // matn umuman bo'lmaydi. Bitta katakli sarlavha qatorlari ham
+  // ma'lumot emas.
+  const rows = all.filter((cells) => cells.length > 1 && cells.some((c) => c !== ''));
+  if (!rows.length) return { headers: [], rows: [], title: firstText(all) };
+
+  // Eng keng qator -- jadvalning asl kengligi. Undan tor qatorlar
+  // sarlavha yoki yig'indi bo'lagi bo'ladi.
+  const width = rows.reduce((max, r) => Math.max(max, r.length), 0);
+  const body = rows.filter((r) => r.length >= Math.max(2, Math.floor(width * 0.6)));
+
+  // Sarlavha -- raqamsiz birinchi qator.
+  const headerAt = body.findIndex((r) => r.filter(Boolean).length > 1 && r.every((c) => !/\d/.test(c)));
+  const headers = headerAt >= 0 ? body[headerAt] : [];
+  const data = headerAt >= 0 ? body.slice(headerAt + 1) : body;
+
+  return { headers, rows: data.filter((r) => r.some((c) => c !== '')), title: firstText(all) };
+}
+
+// Hisobot sarlavhasi -- birinchi ma'noli matn. Ekranda «bu qaysi hisobot»
+// degan savolga javob bo'ladi.
+function firstText(rows) {
+  for (const cells of rows) {
+    const t = cells.find((c) => c && c.length > 8);
+    if (t) return t;
+  }
+  return '';
 }
 
 function cellText(raw) {
