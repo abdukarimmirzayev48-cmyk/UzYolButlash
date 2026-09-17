@@ -30,5 +30,10 @@ export const ENDPOINTS = {
   liveList: '/map/monitoring-object-list-json.htm',
   fullTracks: '/map/object-full-tracks.htm',
   tracksTable: '/map/tracking-object-tracks-table.htm',
+  // Hisobotlar. Parametr nomi `id` -- `reportId` emas: u bilan sayt xato
+  // bermasdan butun bosh sahifani qaytaradi.
+  reportParam: '/report/param.htm',
+  reportView: '/report/view.htm',
+  reportSensors: '/report/sensors.htm',
   timeout: '/access-timeout.htm',
 };

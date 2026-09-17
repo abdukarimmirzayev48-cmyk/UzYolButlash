@@ -3,6 +3,7 @@ import { config, ENDPOINTS } from './config.js';
 import { smn } from './smnClient.js';
 import { normalizeList, normalizeVehicle } from './normalize.js';
 import { parseTrack } from './kml.js';
+import { REPORT_TYPES, reportById, parseReportTable } from './reports.js';
 import { toSmnDate } from './dates.js';
 
 const app = express();
@@ -102,6 +103,73 @@ app.get('/api/vehicles/:id/track', wrap(async (req, res) => {
     distanceKm: parsed.meta.distanceKm,
     pointCount: parsed.meta.pointCount,
     points: parsed.points,
+  });
+}));
+
+// ── Hisobotlar ──────────────────────────────────────────────────────
+//
+// SMN hisobotni tayyor HTML (yoki xls/pdf) sifatida beradi -- JSON varianti
+// yo'q. Shuning uchun `type=html` da jadvalni o'zimiz o'qib, toza qatorlar
+// qaytaramiz: ERP uni o'z uslubida ko'rsatadi va raqamlarni yig'indiga
+// qo'shadi. `type=xls|pdf` da fayl o'zgartirilmasdan uzatiladi.
+
+// Bizning boshqaruv parametrlarimiz -- ular SMN ga uzatilmaydi.
+const OWN_PARAMS = new Set(['from', 'to', 'type', 'cid', 'api_key', 'salt']);
+
+app.get('/api/reports', wrap(async (req, res) => {
+  const all = req.query.all === 'true';
+  res.json({ reports: all ? REPORT_TYPES : REPORT_TYPES.filter((r) => r.useful) });
+}));
+
+// Hisobot qanday maydonlarni so'raydi -- forma tarkibi.
+app.get('/api/reports/:id/params', wrap(async (req, res) => {
+  const smnRes = await smn.authedGet(ENDPOINTS.reportParam, {
+    params: { id: req.params.id, cid: req.query.cid ?? 0 },
+    responseType: 'text',
+  });
+  const html = String(smnRes.data || '');
+  const fields = [...html.matchAll(/<(?:input|select)[^>]*name=["']([^"']+)["']/gi)].map((m) => m[1]);
+  res.json({
+    id: Number(req.params.id),
+    report: reportById(req.params.id),
+    fields: [...new Set(fields)],
+    length: html.length,
+  });
+}));
+
+// Hisobotni ishga tushirish.
+// GET /api/reports/55?from=2026-09-10&to=2026-09-16&object-id=2308
+app.get('/api/reports/:id', wrap(async (req, res) => {
+  const type = String(req.query.type || 'html').toLowerCase();
+  const params = {
+    id: req.params.id,
+    type,
+    'start-date': toSmnDate(req.query.from || startOfToday(), false),
+    'end-date': toSmnDate(req.query.to || Date.now(), true),
+  };
+  // Qolgan barcha parametrlar shundayligicha uzatiladi: har bir hisobot
+  // o'z maydonlarini so'raydi va ularni bu yerda takrorlash -- qoidani
+  // ikki joyda saqlash demak.
+  for (const [key, value] of Object.entries(req.query)) {
+    if (!OWN_PARAMS.has(key)) params[key] = value;
+  }
+
+  const smnRes = await smn.authedGet(ENDPOINTS.reportView, { params, responseType: 'text' });
+  const payload = smnRes.data;
+
+  if (type !== 'html') {
+    res.type(type === 'pdf' ? 'application/pdf' : 'application/vnd.ms-excel').send(payload);
+    return;
+  }
+  const table = parseReportTable(payload);
+  res.json({
+    id: Number(req.params.id),
+    report: reportById(req.params.id),
+    from: params['start-date'],
+    to: params['end-date'],
+    headers: table.headers,
+    rowCount: table.rows.length,
+    rows: table.rows,
   });
 }));
 
