@@ -171,7 +171,11 @@ async function renderDeliveryOverview() {
   const params = new URLSearchParams(location.search);
   const query = new URLSearchParams();
   ["date_from", "date_to", "client_id", "route"].forEach((key) => { if (params.get(key)) query.set(key, params.get(key)); });
-  const data = await api(`/api/delivery/overview?${query.toString()}`);
+  const [data, gps] = await Promise.all([
+    api(`/api/delivery/overview?${query.toString()}`),
+    // Faqat tanlovlar ro'yxati: hisobotning o'zi so'ralganda olinadi.
+    api("/api/delivery/gps-reports").catch(() => ({ reports: [], transports: [] })),
+  ]);
   const n = data.now;
   const r = data.result;
 
@@ -210,11 +214,93 @@ async function renderDeliveryOverview() {
           </tr>`, "Mijozlar bo'yicha ma'lumot yo'q."), "/delivery-batches")}
       </div>
 
+      ${gpsReportSection(gps)}
+
       ${overviewQuickActions()}
     </div>
   `;
 
   bindOpsSearch("delivery-filter-form", "/delivery", ["client_id", "route", "date_from", "date_to"]);
+  bindGpsReport();
+}
+
+// GPS hisobotlari -- monitoring saytidagi «Отчеты» bo'limi shu yerda.
+//
+// Hisobot sahifa ochilganda olinmaydi: SMN uni har safar qaytadan quradi
+// va bir haftalik kesim ham o'nlab soniya olishi mumkin. Shuning uchun
+// avval tanlov, keyin tugma.
+// Yorliqlar shu yerda: til tizimi matnni brauzer fayllaridan yig'adi.
+// Backend faqat qaysi hisobotlar yoqilganini aytadi.
+const GPS_REPORT_LABELS = {
+  58: "Kunlik probeg",
+  6: "Reyslar va to'xtashlar",
+  9: "Tezlikni oshirish",
+  10: "Mashina hodisalari",
+};
+
+function gpsReportSection(gps) {
+  const reports = (gps.reports || []).filter((id) => GPS_REPORT_LABELS[id]);
+  const transports = gps.transports || [];
+  if (!reports.length || !transports.length) {
+    return section("GPS hisobotlari", `<div class="empty">Monitoringga ulangan mashina yo'q.</div>`);
+  }
+  const today = todayIso();
+  const weekAgo = new Date(Date.now() - 6 * 86400000).toISOString().slice(0, 10);
+  return section("GPS hisobotlari", `
+    <form id="gps-report-form" class="grid">
+      ${selectField("report_id", "Hisobot", reports.map((id) => [String(id), GPS_REPORT_LABELS[id]]), String(reports[0]), { required: true })}
+      ${selectField("transport_id", "Mashina", transports.map((t) => [String(t.id), t.vehicle_number + (t.driver_name ? " — " + t.driver_name : "")]), String(transports[0].id), { required: true })}
+      ${textField("date_from", "Sanadan", weekAgo, "date", { required: true })}
+      ${textField("date_to", "Sanagacha", today, "date", { required: true })}
+    </form>
+    <div class="actions"><button class="btn primary" type="button" data-gps-run>Hisobotni olish</button></div>
+    <p class="form-hint">Hisobot monitoring saytidan olinadi va bir necha soniya vaqt oladi. Yoqilg'i hisobotlari hozircha ro'yxatda yo'q: mashinalarimizda bak datchigi SMN tomonida kalibrlanmagan va ular bo'sh qaytaradi.</p>
+    <div id="gps-report-result"></div>
+  `);
+}
+
+function gpsReportTable(data) {
+  const rows = data.rows || [];
+  if (!rows.length) {
+    return `<div class="empty">Bu davr uchun monitoringda yozuv yo'q.</div>`;
+  }
+  const headers = (data.headers || []).filter((h) => h !== "");
+  const width = rows.reduce((max, row) => Math.max(max, row.length), 0);
+  const head = headers.length === width ? headers : Array.from({ length: width }, () => "");
+  return `${data.title ? `<p class="form-hint" data-noloc>${esc(data.title)}</p>` : ""}
+    <div class="table-scroll"><table class="ops-table">
+      <thead><tr>${head.map((h) => `<th data-noloc>${esc(h)}</th>`).join("")}</tr></thead>
+      <tbody>${rows.map((row) => `<tr>${Array.from({ length: width }, (_, i) => `<td data-noloc>${esc(row[i] ?? "")}</td>`).join("")}</tr>`).join("")}</tbody>
+    </table></div>
+    <p class="form-hint"><span>Jami qator</span><span data-noloc>: ${rows.length}</span></p>`;
+}
+
+function bindGpsReport() {
+  const button = document.querySelector("[data-gps-run]");
+  const form = document.querySelector("#gps-report-form");
+  const holder = document.querySelector("#gps-report-result");
+  if (!button || !form || !holder) return;
+  button.addEventListener("click", async () => {
+    const query = new URLSearchParams({
+      report_id: field(form, "report_id"),
+      transport_id: field(form, "transport_id"),
+      date_from: field(form, "date_from"),
+      date_to: field(form, "date_to"),
+    });
+    button.disabled = true;
+    holder.innerHTML = `<div class="empty">Monitoringdan olinmoqda...</div>`;
+    localizeDom(holder);
+    try {
+      const data = await api(`/api/delivery/gps-report?${query.toString()}`);
+      holder.innerHTML = gpsReportTable(data);
+      localizeDom(holder);
+    } catch (error) {
+      holder.innerHTML = "";
+      showToast(error.message, true);
+    } finally {
+      button.disabled = false;
+    }
+  });
 }
 
 const DETAIL_ICON_PATHS = {

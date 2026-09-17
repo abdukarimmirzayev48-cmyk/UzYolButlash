@@ -23,6 +23,15 @@ REQUEST_TIMEOUT = 12
 # Marshrut so'rovi og'ir: bitta mashinaning bir kuni 4-5 ming nuqta.
 TRACK_TIMEOUT = 60
 
+# Hisobotni SMN har safar qaytadan quradi -- bir haftalik kesim ham
+# o'nlab soniya olishi mumkin, park bo'yicha esa undan ko'p.
+REPORT_TIMEOUT = 240
+
+# Saytdagi shartnoma raqami. Bu hisobot formasidagi yashirin maydon:
+# usiz SMN hisobot o'rniga hisobot turlari ro'yxatini qaytaradi va
+# xato ham bermaydi -- javob 200 bo'ladi.
+REPORT_CONTRACT_ID = 23
+
 MSG_NOT_CONFIGURED = "SMN monitoringi ulanmagan"
 MSG_UNREACHABLE = "SMN monitoringiga ulanib bo'lmadi"
 MSG_NOT_LINKED = "Bu mashina SMN monitoringiga biriktirilmagan"
@@ -42,6 +51,41 @@ class SmnResult:
 
 def is_configured() -> bool:
     return bool(SMN_API_URL)
+
+
+def _report_moment(value: date, end_of_day: bool) -> str:
+    """SMN hisobot formasi kutadigan sana: `dd.MM.yyyy HH:mm`.
+
+    Maydonda `maxlength=16` turadi, ya'ni soniya joylashmaydi -- uzunroq
+    qiymat jimgina kesiladi.
+    """
+    return f"{value.strftime('%d.%m.%Y')} {'23:59' if end_of_day else '00:00'}"
+
+
+def reports(include_all: bool = False) -> SmnResult:
+    """Hisobotlar katalogi. Sukut bo'yicha faqat bizga mos turlar."""
+    return _get("/api/reports", {"all": "true"} if include_all else None)
+
+
+def report(report_id: int, start: date, end: date, object_id: int | None = None) -> SmnResult:
+    """Bitta hisobotni ishga tushiradi va o'qilgan jadvalni qaytaradi.
+
+    Parametrlar to'plami saytning o'z formasidan olingan. `reportId` va
+    `id` ikkalasi ham yuboriladi -- sayt shunday qiladi.
+    """
+    params: dict[str, Any] = {
+        "reportId": report_id,
+        "value-contract-id": REPORT_CONTRACT_ID,
+        "contracts-ids": "",
+        "reportSelect2": 1,
+        "from": start.isoformat(),
+        "to": end.isoformat(),
+        "datestart": _report_moment(start, False),
+        "dateend": _report_moment(end, True),
+    }
+    if object_id:
+        params["param-objectid"] = object_id
+    return _get(f"/api/reports/{report_id}", params, timeout=REPORT_TIMEOUT)
 
 
 def _get(path: str, params: dict | None = None, timeout: int = REQUEST_TIMEOUT) -> SmnResult:

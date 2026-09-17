@@ -131,6 +131,83 @@ def delivery_overview(
     data = delivery_stats.build_overview(batches, transports, date_from=date_from, date_to=date_to)
     data["filter_options"] = options
     return data
+# GPS hisobotlari -- qaysilarida haqiqatan ma'lumot bor.
+#
+# SMN katalogida 22 tur bor, lekin ularning hammasi bizning shartnomamiz
+# uchun ishlamaydi: yoqilg'i oilasi (quyish/sliv, norma bo'yicha sarf,
+# grafik, kunlik sarf) bo'sh javob qaytaradi -- mashinalarimizda bak
+# datchigi SMN tomonida kalibrlanmagan. Jonli oqimda bak litri keladi,
+# hisobot uchun kerak bo'lgan tarirovka esa yo'q.
+#
+# Shuning uchun ro'yxatda faqat tekshirilgan, ma'lumot beradiganlari
+# turadi. Yoqilg'i hisobotlari sozlangach, shu yerga qo'shiladi.
+# Faqat raqamlar: yorliq brauzerda turadi. Til tizimi matnni `.js` va
+# `.html` dan yig'adi, Python lug'atidagi qiymatlarni emas -- shu yerda
+# yozilgan yorliq kirill rejimida lotincha qolib ketardi.
+GPS_REPORTS = (58, 6, 9, 10)
+
+MSG_GPS_REPORT_UNKNOWN = "Bunday GPS hisoboti yo'q."
+MSG_GPS_TRANSPORT_REQUIRED = "Hisobot uchun mashinani tanlang."
+MSG_GPS_NOT_LINKED = "Bu mashina SMN monitoringiga biriktirilmagan."
+
+
+@overview_router.get("/gps-reports")
+def list_gps_reports(db: Session = Depends(get_db)):
+    """Hisobot turlari va monitoringga ulangan mashinalar."""
+    transports = db.scalars(
+        select(Transport).where(Transport.smn_object_id.isnot(None)).order_by(Transport.vehicle_number)
+    ).all()
+    return {
+        "reports": list(GPS_REPORTS),
+        "transports": [
+            {
+                "id": t.id,
+                "vehicle_number": t.vehicle_number,
+                "driver_name": t.driver_name,
+                "smn_object_id": t.smn_object_id,
+            }
+            for t in transports
+        ],
+    }
+
+
+@overview_router.get("/gps-report")
+def get_gps_report(
+    report_id: int,
+    transport_id: int,
+    date_from: date,
+    date_to: date,
+    db: Session = Depends(get_db),
+):
+    """Bitta mashina bo'yicha GPS hisobotini oladi.
+
+    Sahifa ochilganda emas, so'ralganda chaqiriladi: SMN hisobotni har
+    safar qaytadan quradi va bu o'nlab soniya olishi mumkin.
+    """
+    if report_id not in GPS_REPORTS:
+        raise HTTPException(status_code=422, detail=MSG_GPS_REPORT_UNKNOWN)
+    transport = db.get(Transport, transport_id)
+    if not transport:
+        raise HTTPException(status_code=422, detail=MSG_GPS_TRANSPORT_REQUIRED)
+    if not transport.smn_object_id:
+        raise HTTPException(status_code=422, detail=MSG_GPS_NOT_LINKED)
+
+    result = smn.report(report_id, date_from, date_to, object_id=transport.smn_object_id)
+    if not result.ok:
+        raise HTTPException(status_code=502, detail=result.error)
+    data = result.data or {}
+    return {
+        "report_id": report_id,
+        "transport": {"id": transport.id, "vehicle_number": transport.vehicle_number, "driver_name": transport.driver_name},
+        "date_from": date_from,
+        "date_to": date_to,
+        "title": data.get("title"),
+        "headers": data.get("headers") or [],
+        "rows": data.get("rows") or [],
+        "row_count": data.get("rowCount") or 0,
+    }
+
+
 UPLOAD_DIR = UPLOADS_DIR / "delivery-batches"
 QTY = Decimal("0.001")
 MANUAL_LOGISTICS_STATUSES = {
