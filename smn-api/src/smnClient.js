@@ -118,11 +118,18 @@ class SmnClient {
     return false;
   }
 
-  _isSessionDead(res) {
+  _isSessionDead(res, expectHtml = false) {
     const ct = String(res.headers?.['content-type'] || '');
     const url = String(res.request?.res?.responseUrl || '');
     if (res.status === 401 || res.status === 403) return true;
     if (url.includes('login.htm') || url.includes(ENDPOINTS.timeout)) return true;
+    if (expectHtml) {
+      // Hisobotlar HTML qaytaradi -- bu yerda HTML normal holat. Sessiya
+      // o'lganini faqat login formasining o'zi bildiradi: SMN bunday
+      // paytda 200 bilan login sahifasini beradi, redirect qilmasdan.
+      const html = typeof res.data === 'string' ? res.data : '';
+      return /name=["']?j_username/i.test(html) || html.includes('j_security_login');
+    }
     // JSON kutgan joyda HTML kelsa — sessiya o'lgan
     if (ct.includes('text/html')) return true;
     if (res.data && typeof res.data === 'object' && res.data.error) return true;
@@ -133,7 +140,7 @@ class SmnClient {
    * Autentifikatsiyani ta'minlab GET so'rov yuboradi.
    * Sessiya o'lgan bo'lsa bir marta qayta login qilib retry qiladi.
    */
-  async authedGet(path, { params = {}, responseType } = {}) {
+  async authedGet(path, { params = {}, responseType, expectHtml = false } = {}) {
     if (!this.loggedIn) await this.login();
 
     const doReq = () => this.http.get(path, {
@@ -144,11 +151,11 @@ class SmnClient {
     });
 
     let res = await doReq();
-    if (this._isSessionDead(res)) {
+    if (this._isSessionDead(res, expectHtml)) {
       this.loggedIn = false;
       await this.login();
       res = await doReq();
-      if (this._isSessionDead(res)) {
+      if (this._isSessionDead(res, expectHtml)) {
         throw Object.assign(new Error('Sessiya tiklanmadi'), { code: 'SESSION_LOST' });
       }
     }

@@ -126,6 +126,7 @@ app.get('/api/reports/:id/params', wrap(async (req, res) => {
   const smnRes = await smn.authedGet(ENDPOINTS.reportParam, {
     params: { id: req.params.id, cid: req.query.cid ?? 0 },
     responseType: 'text',
+    expectHtml: true,
   });
   const html = String(smnRes.data || '');
   const fields = [...html.matchAll(/<(?:input|select)[^>]*name=["']([^"']+)["']/gi)].map((m) => m[1]);
@@ -154,7 +155,7 @@ app.get('/api/reports/:id', wrap(async (req, res) => {
     if (!OWN_PARAMS.has(key)) params[key] = value;
   }
 
-  const smnRes = await smn.authedGet(ENDPOINTS.reportView, { params, responseType: 'text' });
+  const smnRes = await smn.authedGet(ENDPOINTS.reportView, { params, responseType: 'text', expectHtml: true });
   const payload = smnRes.data;
 
   if (type !== 'html') {
