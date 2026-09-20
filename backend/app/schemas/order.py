@@ -170,6 +170,23 @@ class OrderCreate(OrderBase):
     initial_note: OrderNoteCreate | None = None
 
 
+class OrderSupplierAssign(BaseModel):
+    """Buyurtmaga ta'minotchini qo'lda biriktirish.
+
+    Ro'yxatdagi ta'minotchi `supplier_id` bilan keladi. Chet el yetkazib
+    beruvchisi ko'pincha ta'minotchilar ma'lumotnomasida bo'lmaydi, shuning
+    uchun faqat nom ham qabul qilinadi -- aks holda import buyurtmasida
+    ta'minotchini umuman ko'rsatib bo'lmasdi.
+    """
+
+    supplier_id: int | None = None
+    supplier_name: str | None = Field(default=None, max_length=255)
+    supplier_notes: str | None = None
+    # Shartnoma yoki to'lov bilan tasdiqlangan bo'lsa -- «tasdiqlangan»,
+    # aks holda «tanlangan».
+    confirmed: bool = False
+
+
 class OrderUpdate(BaseModel):
     delivery_point_id: int | None = None
     contract_id: int | None = None

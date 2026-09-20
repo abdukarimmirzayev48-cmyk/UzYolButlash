@@ -15,7 +15,8 @@ from backend.app.models.client import Client
 from backend.app.models.contract import Contract, ContractItem, TransportPaymentType
 from backend.app.models.delivery import BatchStatus, DeliveryBatch, DeliveryBatchItem
 from backend.app.models.finance import CustomerInvoice, InvoiceStatus
-from backend.app.models.supplier import SupplierAddress
+from backend.app.models.inventory import StockAllocation
+from backend.app.models.supplier import Supplier, SupplierAddress
 from backend.app.models.user import User
 from backend.app.models.order import (
     FulfillmentType,
@@ -50,6 +51,7 @@ from backend.app.schemas.order import (
     OrderNoteRead,
     OrderNoteUpdate,
     OrderSummary,
+    OrderSupplierAssign,
     OrderUpdate,
     SupplierOptionCreate,
     SupplierOptionRead,
@@ -885,6 +887,66 @@ def select_supplier_option(db: Session, order: Order, option: OrderSupplierOptio
     order.supplier_id = option.supplier_id
     order.supplier_name = option.supplier_name
     order.supplier_status = SupplierStatus.confirmed if confirmed else SupplierStatus.selected
+
+
+# ---- Ta'minotchini qo'lda biriktirish --------------------------------------
+#
+# Mol odatda zaxira partiyasidan ketadi va ta'minotchi o'sha partiyadan
+# o'qiladi. Lekin import buyurtmasida yoki mol hali kelmaganda zaxira
+# ajratmasi bo'lmaydi -- shunday buyurtma «Ta'minotchi tanlanmagan» bo'lib
+# qolardi va uni keyin ko'rsatishning yo'li yo'q edi: PATCH so'rovi bu
+# maydonlarni ataylab tashlab yuboradi.
+
+MSG_SUPPLIER_FROM_STOCK = "Ta'minotchi zaxira partiyasidan olingan, uni qo'lda o'zgartirib bo'lmaydi. Avval zaxira ajratmasini bekor qiling."
+
+MSG_SUPPLIER_REQUIRED = "Ta'minotchini ro'yxatdan tanlang yoki nomini yozing."
+
+MSG_SUPPLIER_NOT_FOUND = "Ta'minotchi topilmadi."
+
+
+@router.post("/{order_id}/supplier", response_model=OrderDetail, dependencies=[Depends(require_edit("sotuv"))])
+def assign_order_supplier(
+    order_id: int,
+    payload: OrderSupplierAssign,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    order = load_order_detail(db, order_id)
+    allocated = db.scalar(
+        select(func.count()).select_from(StockAllocation).where(StockAllocation.order_id == order.id)
+    )
+    if allocated:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=MSG_SUPPLIER_FROM_STOCK)
+
+    supplier_name = (payload.supplier_name or "").strip()
+    if payload.supplier_id is not None:
+        supplier = db.get(Supplier, payload.supplier_id)
+        if supplier is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=MSG_SUPPLIER_NOT_FOUND)
+        # Ro'yxatdan tanlangan bo'lsa nom ham o'sha kartochkadan olinadi:
+        # qo'lda yozilgani kartochkadagidan farq qilib ketardi.
+        supplier_name = supplier.name
+    elif not supplier_name:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=MSG_SUPPLIER_REQUIRED)
+
+    previous = order.supplier_name
+    order.supplier_id = payload.supplier_id
+    order.supplier_name = supplier_name
+    order.supplier_status = SupplierStatus.confirmed if payload.confirmed else SupplierStatus.selected
+    if payload.supplier_notes is not None:
+        order.supplier_notes = payload.supplier_notes.strip() or None
+
+    # Ta'minotchi kim va qachon biriktirgani tarixda qoladi -- keyinchalik
+    # «nega bu firma» degan savolga javob shu yerdan topiladi.
+    note = (
+        f"Ta'minotchi o'zgartirildi: {previous} -> {supplier_name}"
+        if previous and previous != supplier_name
+        else f"Ta'minotchi biriktirildi: {supplier_name}"
+    )
+    db.add(OrderNote(order_id=order.id, note=note, created_by=getattr(user, "username", None)))
+    sync_order_status(order, db=db)
+    db.commit()
+    return get_order_detail(order.id, db)
 
 
 @router.post("/{order_id}/supplier-options", response_model=SupplierOptionRead, status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_edit("sotuv"))])

@@ -594,7 +594,8 @@ function orderWizardStockPanel(state) {
       ? `<p><span>Bu mahsulotning partiyalari bor, lekin ularda mavjud miqdor qolmagan.</span></p>`
       : `<p><span>Bu mahsulot bo'yicha ochilgan zaxira partiyasi yo'q.</span></p>`;
     return `${intro}<div class="empty compact"><strong>Ajratish uchun zaxira yo'q</strong>${reason}
-      <p><span>Buyurtmani hozir ham yaratsa bo'ladi. Mol kelishi uchun birja ticketi ochiladi, ticket qabul qilingach zaxira paydo bo'ladi va buyurtmaga o'shanda ajratiladi.</span></p></div>`;
+      <p><span>Buyurtmani hozir ham yaratsa bo'ladi. Mol kelishi uchun birja ticketi ochiladi, ticket qabul qilingach zaxira paydo bo'ladi va buyurtmaga o'shanda ajratiladi.</span></p>
+      <p><span>Ta'minotchi ma'lum bo'lsa, uni buyurtma kartochkasidagi «Ta'minotchi biriktirish» tugmasi orqali ko'rsatish mumkin.</span></p></div>`;
   }
 
   const shortfall = needed - available;
@@ -959,6 +960,9 @@ function orderHeader(order, related = {}) {
       actions: [
         editable ? { label: "Istisno status", modal: "order-status" } : null,
         canEdit("taminot") ? { label: "Zaxiradan ajratish", modal: "order-stock" } : null,
+        // Zaxira ajratmasi bo'lsa ta'minotchi o'sha partiyadan o'qiladi va
+        // qo'lda ko'rsatish faqat chalkashtirardi.
+        editable && !hasStockAllocation ? { label: order.supplier_name ? "Ta'minotchini o'zgartirish" : "Ta'minotchi biriktirish", modal: "order-supplier-assign" } : null,
         canEdit("yetkazib_berish") ? { label: "Partiya yaratish", modal: "order-batch", primary: supplierReady } : null,
         canEdit("moliya") ? { label: "Hisob yaratish", modal: "order-invoice" } : null,
         editable ? { label: "Hujjat yuklash", modal: "order-document" } : null,
@@ -976,6 +980,7 @@ function orderActionModule(modal) {
   const map = {
     "order-batch": "yetkazib_berish",
     "order-stock": "taminot",
+    "order-supplier-assign": "sotuv",
     "order-supplier-offer": "sotuv",
     "order-supplier-select": "sotuv",
     "order-invoice": "moliya",
@@ -1288,16 +1293,88 @@ function orderSupplierTab(order, related = {}) {
     // partiyaga to'lanadi, buyurtmaga esa olingan ulushi tegishli.
     const allocationCost = (allocation) => numberValue(allocation.allocated_quantity) * numberValue((lotsById.get(allocation.stock_lot_id) || {}).unit_cost);
     const stockCost = allocations.reduce((sum, allocation) => sum + allocationCost(allocation), 0);
-    return section("Zaxiradan ajratish", `
+    return orderSupplierSection(order, allocations, editable) + section("Zaxiradan ajratish", `
       ${detailList([["Manba", optionLabel(sourceTypes, order.source_type)], ["Zaxira holati", allocations.length ? "Zaxiradan ajratilgan" : "Zaxira ajratilmagan"], ["Ta'minotchi", order.supplier_name], ["Zaxira tannarxi (QQSsiz)", fmtMoney(stockCost)]])}
       ${canEdit("taminot") ? `<div class="actions"><button class="btn primary" type="button" data-order-stock>Zaxiradan ajratish</button></div>` : ""}
       ${tableOrEmpty(allocations, ["Mahsulot", "Ta'minotchi", "Ticket", "Joylashuv", "Ajratilgan miqdor", "Birlik xarid narxi", "Tannarx", "Status"], (allocation) => {
         const lot = lotsById.get(allocation.stock_lot_id) || {};
         return `<tr><td>${fmt(lot.product_name)}</td><td>${fmt(lot.supplier_name)}</td><td>${fmt(lot.ticket_number)}</td><td>${fmt(lot.location_name)}</td><td>${fmtQty(allocation.allocated_quantity, lot.unit)}</td><td>${fmtMoney(lot.unit_cost)}</td><td>${fmtMoney(allocationCost(allocation))}</td><td>${fmt(optionLabel(stockAllocationStatuses, allocation.status))}</td></tr>`;
       }, "Bu buyurtma uchun zaxira ajratilmagan.")}
-      <p class="helper-text">Ta'minotchi zaxira partiyasidan keladi, alohida tanlash talab qilinmaydi. Tannarx foyda hisobiga shu yerdan tushadi.</p>
+      ${allocations.length ? `<p class="helper-text">Ta'minotchi zaxira partiyasidan keladi, alohida tanlash talab qilinmaydi. Tannarx foyda hisobiga shu yerdan tushadi.</p>` : ""}
     `) + ((order.supplier_options || []).length ? orderSupplierOffersSection(order, editable) : "");
   }
+}
+
+// Ta'minotchi odatda zaxira partiyasidan o'qiladi. Import buyurtmasida yoki
+// mol hali kelmaganda ajratma bo'lmaydi -- o'shanda ta'minotchi qo'lda
+// ko'rsatiladi. Ilgari bunday buyurtma «Ta'minotchi tanlanmagan» bo'lib
+// qolardi: kartochkada ham, tahrirlash shaklida ham uni ko'rsatadigan joy
+// yo'q edi.
+function orderSupplierSection(order, allocations, editable) {
+  const fromStock = Boolean(allocations.length);
+  const hint = fromStock
+    ? `<p class="helper-text">Ta'minotchi zaxira partiyasidan olinadi. O'zgartirish uchun avval zaxira ajratmasini bekor qiling.</p>`
+    : `<p class="helper-text">Mol zaxiradan olinmasa -- masalan import qilinsa -- ta'minotchi shu yerda ko'rsatiladi.</p>`;
+  return section("Ta'minotchi", `
+    ${detailList([
+      ["Ta'minotchi", order.supplier_name],
+      ["Holati", optionLabel(supplierStatuses, order.supplier_status)],
+      ["Izoh", order.supplier_notes],
+    ])}
+    ${editable && !fromStock ? `<div class="actions"><button class="btn primary" type="button" data-order-supplier-assign>${order.supplier_name ? "Ta'minotchini o'zgartirish" : "Ta'minotchi biriktirish"}</button></div>` : ""}
+    ${hint}
+  `);
+}
+
+async function openOrderSupplierAssignModal(order) {
+  const suppliers = (await api("/api/suppliers?page_size=100")).items || [];
+  const selectedId = order.supplier_id ? String(order.supplier_id) : "";
+  // Ro'yxatda yo'q ta'minotchi: nomi avvaldan yozilgan bo'lsa, o'sha nom
+  // maydonda turadi va saqlashda yo'qolmaydi.
+  const freeName = order.supplier_name && !order.supplier_id ? order.supplier_name : "";
+  showOrderModal(`<div class="modal-backdrop" data-modal-close>
+    <section class="modal-panel" role="dialog" aria-modal="true">
+      <div class="modal-header"><h2>Ta'minotchini biriktirish</h2><button class="modal-close" type="button" data-modal-close aria-label="Yopish">&times;</button></div>
+      <form id="order-supplier-assign-form">
+        <div class="modal-body"><div class="modal-summary">${orderSummaryForModal(order)}</div>
+          <div class="grid">
+            <label class="form-field"><span class="field-label-text">Ta'minotchi</span>
+              <select name="supplier_select"><option value="">Ro'yxatdan tanlang</option>${suppliers.map((supplier) => `<option value="${supplier.id}" ${selectedId === String(supplier.id) ? "selected" : ""}>${esc(supplier.name)}${supplier.inn ? ` - ${esc(supplier.inn)}` : ""}</option>`).join("")}</select>
+            </label>
+            ${textField("supplier_name", "Ro'yxatda yo'q bo'lsa, nomini yozing", freeName)}
+            ${textArea("supplier_notes", "Izoh", order.supplier_notes || "")}
+          </div>
+          ${checkField("confirmed", "Ta'minotchi tasdiqlangan", order.supplier_status === "confirmed")}
+          <p class="form-hint">Tasdiqlangan deb belgilash shartnoma yoki to'lov bilan kelishilgan ta'minotchi uchun. Aks holda «tanlangan» bo'lib turadi.</p>
+        </div>
+        <div class="modal-footer"><button class="btn" type="button" data-modal-close>Bekor qilish</button><button class="btn primary" type="submit">Saqlash</button></div>
+      </form>
+    </section>
+  </div>`, (close) => {
+    const form = document.querySelector("#order-supplier-assign-form");
+    form?.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const supplierId = form.elements.supplier_select.value;
+      const typedName = field(form, "supplier_name");
+      if (!supplierId && !typedName) return showToast("Ta'minotchini ro'yxatdan tanlang yoki nomini yozing.", true);
+      try {
+        await api(`/api/orders/${order.id}/supplier`, {
+          method: "POST",
+          body: JSON.stringify({
+            supplier_id: supplierId ? Number(supplierId) : null,
+            supplier_name: supplierId ? null : typedName,
+            supplier_notes: field(form, "supplier_notes"),
+            confirmed: form.elements.confirmed.checked,
+          }),
+        });
+        showToast("Ta'minotchi biriktirildi.");
+        close();
+        renderOrderDetail(order.id);
+      } catch (error) {
+        showToast(error.message, true);
+      }
+    });
+  });
 }
 
 // Ta'minotchi takliflari xaridlar bo'limi bilan birga ma'nosini yo'qotdi,
@@ -1909,6 +1986,7 @@ async function renderOrderDetail(id) {
   document.querySelectorAll("[data-order-status]").forEach((button) => button.addEventListener("click", () => openOrderStatusModal(order)));
   document.querySelectorAll("[data-order-supplier-offer]").forEach((button) => button.addEventListener("click", () => openOrderSupplierOfferModal(order).catch((error) => showToast(error.message, true))));
   document.querySelectorAll("[data-order-supplier-select]").forEach((button) => button.addEventListener("click", () => openOrderSupplierSelectModal(order)));
+  document.querySelectorAll("[data-order-supplier-assign]").forEach((button) => button.addEventListener("click", () => openOrderSupplierAssignModal(order).catch((error) => showToast(error.message, true))));
   document.querySelectorAll("[data-order-stock]").forEach((button) => button.addEventListener("click", () => openOrderStockAllocationModal(order).catch((error) => showToast(error.message, true))));
   document.querySelectorAll("[data-order-batch]").forEach((button) => button.addEventListener("click", () => navigate(`/delivery-batches/new?order_id=${order.id}`)));
   document.querySelectorAll("[data-order-invoice]").forEach((button) => button.addEventListener("click", () => openOrderInvoiceModal(order, related).catch((error) => showToast(error.message, true))));
