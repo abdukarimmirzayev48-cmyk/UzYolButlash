@@ -54,6 +54,8 @@ async function render() {
       await renderUsersList();
     } else if (location.pathname === "/attendance") {
       await renderAttendanceList();
+    } else if (/^\/employees\/\d+\/obyektivka$/.test(location.pathname)) {
+      await renderEmployeeProfile(Number(location.pathname.split("/")[2]));
     } else if (location.pathname === "/employees") {
       await renderEmployeesList();
     } else if (location.pathname === "/departments") {

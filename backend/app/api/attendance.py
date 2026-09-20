@@ -5,13 +5,26 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import date as date_cls, datetime, time as time_cls
 from decimal import Decimal
 
+from pathlib import Path
+from uuid import uuid4
+
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Response, UploadFile, status
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from backend.app.core.config import TELEGRAM_BOT_USERNAME
+from backend.app.core.paths import UPLOADS_DIR
 from backend.app.db.session import get_db
-from backend.app.models.attendance import LEAVE_STATUSES, AttendanceRecord, AttendanceStatus, Department, Employee, HikvisionSyncLog
+from backend.app.models.attendance import (
+    LEAVE_STATUSES,
+    AttendanceRecord,
+    AttendanceStatus,
+    Department,
+    Employee,
+    EmployeeCareerEntry,
+    EmployeeProfile,
+    HikvisionSyncLog,
+)
 from backend.app.models.task import TaskAssignee
 from backend.app.schemas.attendance import (
     AttendanceAnalysisEntry,
@@ -27,7 +40,10 @@ from backend.app.schemas.attendance import (
     DepartmentCreate,
     DepartmentRead,
     DepartmentUpdate,
+    EmployeeCareerEntryRead,
     EmployeeCreate,
+    EmployeeProfileRead,
+    EmployeeProfileWrite,
     EmployeeRead,
     EmployeeUpdate,
     HikvisionDeviceStatus,
@@ -213,6 +229,176 @@ def unpair_telegram(employee_id: int, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(employee)
     return employee
+
+
+# ---- Obyektivka -----------------------------------------------------------
+#
+# Kadrlar bo'limi obyektivkani qog'ozda yuritardi: xodim haqidagi savol
+# chiqqanda papka titkilanardi. Endi u xodim kartochkasining ichida turadi.
+
+PHOTO_DIR = UPLOADS_DIR / "employees"
+
+MAX_PHOTO_BYTES = 5 * 1024 * 1024
+
+# Brauzer ko'rsata oladigan formatlar. PDF yoki hujjat bu yerga emas,
+# xodimning fayllariga tegishli.
+PHOTO_TYPES = {"image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp"}
+
+PROFILE_FIELDS = tuple(EmployeeProfileWrite.model_fields.keys() - {"career"})
+
+
+def serialize_profile(employee: Employee) -> EmployeeProfileRead:
+    """Obyektivka + kartochkadagi ma'lumot bitta javobda.
+
+    Ism, lavozim va tabel raqami xodim jadvalida turadi, qolgani
+    obyektivkada -- lekin ekranda ular bitta varaq bo'lib ko'rinadi.
+    """
+    profile = employee.profile
+    data = {
+        "employee_id": employee.id,
+        "full_name": employee.full_name,
+        "position": employee.position,
+        "department": employee.department,
+        "badge_number": employee.badge_number,
+        "exists": profile is not None,
+    }
+    if profile is not None:
+        data["photo_url"] = profile.photo_url
+        for field in PROFILE_FIELDS:
+            data[field] = getattr(profile, field)
+        data["career"] = [EmployeeCareerEntryRead.model_validate(entry) for entry in profile.career]
+    return EmployeeProfileRead(**data)
+
+
+def get_or_create_profile(db: Session, employee: Employee) -> EmployeeProfile:
+    if employee.profile is None:
+        employee.profile = EmployeeProfile()
+        db.flush()
+    return employee.profile
+
+
+@employees_router.get("/{employee_id}/profile", response_model=EmployeeProfileRead)
+def read_employee_profile(employee_id: int, db: Session = Depends(get_db)):
+    employee = get_employee_or_404(db, employee_id)
+    return serialize_profile(employee)
+
+
+@employees_router.put(
+    "/{employee_id}/profile",
+    response_model=EmployeeProfileRead,
+    dependencies=[Depends(require_edit("xodimlar"))],
+)
+def save_employee_profile(employee_id: int, payload: EmployeeProfileWrite, db: Session = Depends(get_db)):
+    employee = get_employee_or_404(db, employee_id)
+    profile = get_or_create_profile(db, employee)
+    data = payload.model_dump(exclude_unset=True)
+    career = data.pop("career", None)
+    for key, value in data.items():
+        setattr(profile, key, clean_text(value))
+
+    # Mehnat faoliyati -- to'liq ro'yxat sifatida keladi: qator qo'shilishi,
+    # o'chirilishi va o'rni almashishi mumkin, shuning uchun qatorlarni
+    # bittalab emas, jadvalni butunlay yangilaymiz.
+    if career is not None:
+        profile.career.clear()
+        db.flush()
+        for index, row in enumerate(career):
+            period = clean_text(row.get("period"))
+            if not period:
+                continue
+            profile.career.append(
+                EmployeeCareerEntry(
+                    period=period,
+                    organization=clean_text(row.get("organization")),
+                    position=clean_text(row.get("position")),
+                    sort_order=index,
+                )
+            )
+    db.commit()
+    db.refresh(employee)
+    return serialize_profile(employee)
+
+
+@employees_router.post(
+    "/{employee_id}/profile/photo",
+    response_model=EmployeeProfileRead,
+    dependencies=[Depends(require_edit("xodimlar"))],
+)
+def upload_employee_photo(employee_id: int, file: UploadFile = File(...), db: Session = Depends(get_db)):
+    employee = get_employee_or_404(db, employee_id)
+    if not file.filename:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Fayl talab qilinadi.")
+    if file.content_type not in PHOTO_TYPES:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Rasm formati mos emas. JPG, PNG yoki WEBP yuklang.",
+        )
+    PHOTO_DIR.mkdir(parents=True, exist_ok=True)
+    stored_name = f"{uuid4().hex}{PHOTO_TYPES[file.content_type]}"
+    destination = PHOTO_DIR / stored_name
+    written = 0
+    try:
+        with destination.open("wb") as buffer:
+            # Hajm nusxa olayotganda sanaladi: so'rovdagi Content-Length
+            # yolg'on bo'lishi mumkin.
+            while chunk := file.file.read(1024 * 1024):
+                written += len(chunk)
+                if written > MAX_PHOTO_BYTES:
+                    raise HTTPException(
+                        status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                        detail="Rasm juda katta. Hajmi 5 MB dan oshmasligi kerak.",
+                    )
+                buffer.write(chunk)
+    except Exception:
+        destination.unlink(missing_ok=True)
+        raise
+
+    profile = get_or_create_profile(db, employee)
+    remove_photo_file(profile.photo_url)
+    profile.photo_url = f"/static/uploads/employees/{stored_name}"
+    db.commit()
+    db.refresh(employee)
+    return serialize_profile(employee)
+
+
+@employees_router.delete(
+    "/{employee_id}/profile/photo",
+    response_model=EmployeeProfileRead,
+    dependencies=[Depends(require_edit("xodimlar"))],
+)
+def delete_employee_photo(employee_id: int, db: Session = Depends(get_db)):
+    employee = get_employee_or_404(db, employee_id)
+    profile = employee.profile
+    if profile is not None and profile.photo_url:
+        remove_photo_file(profile.photo_url)
+        profile.photo_url = None
+        db.commit()
+        db.refresh(employee)
+    return serialize_profile(employee)
+
+
+def clean_text(value):
+    if isinstance(value, str):
+        stripped = value.strip()
+        return stripped or None
+    return value
+
+
+def remove_photo_file(photo_url: str | None) -> None:
+    """Eski rasmni diskdan o'chiradi.
+
+    Yo'l nomi tekshiriladi: faqat o'zimiz yozgan papkadagi fayl o'chadi,
+    aks holda bazadagi qiymat orqali begona faylga yetib borish mumkin edi.
+    """
+    if not photo_url:
+        return
+    name = Path(photo_url).name
+    candidate = PHOTO_DIR / name
+    try:
+        if candidate.resolve().parent == PHOTO_DIR.resolve():
+            candidate.unlink(missing_ok=True)
+    except OSError:
+        pass
 
 
 @attendance_router.put("/records", response_model=AttendanceRecordRead, dependencies=[Depends(require_edit("davomat"))])

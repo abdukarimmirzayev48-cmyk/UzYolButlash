@@ -737,6 +737,7 @@ async function renderEmployeesList() {
       <td>${attendanceTimeShort(e.scheduled_check_in) || dash}</td>
       <td><span class="status-badge ${e.is_active ? "success" : "muted"}">${e.is_active ? "Faol" : "Faol emas"}</span></td>
       <td><div class="ops-row-actions">
+        <button class="link-btn" data-employee-profile="${e.id}">Obyektivka</button>
         ${canEdit("xodimlar") ? `<button class="link-btn" data-edit-employee="${e.id}">Tahrirlash</button>
         <button class="link-btn" style="color:var(--danger)" data-delete-employee="${e.id}">O'chirish</button>` : ""}
       </div></td>
@@ -755,6 +756,9 @@ async function renderEmployeesList() {
   }
 
   bindOpsSearch("employees-search-form", "/employees", ["search", "department", "status"]);
+  document.querySelectorAll("[data-employee-profile]").forEach((btn) => btn.addEventListener("click", () => {
+    navigate(`/employees/${btn.dataset.employeeProfile}/obyektivka`);
+  }));
   document.querySelectorAll("[data-edit-employee]").forEach((btn) => btn.addEventListener("click", () => {
     const employee = employees.find((e) => e.id === Number(btn.dataset.editEmployee));
     attendanceEmployeeModal(employee, () => renderEmployeesList());

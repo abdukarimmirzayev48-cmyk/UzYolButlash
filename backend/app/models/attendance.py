@@ -74,9 +74,86 @@ class Employee(Base, TimestampMixin):
 
     department_ref: Mapped[Department | None] = relationship(back_populates="employees")
     user: Mapped[User | None] = relationship()
+    profile: Mapped["EmployeeProfile | None"] = relationship(
+        back_populates="employee", cascade="all, delete-orphan", uselist=False
+    )
     records: Mapped[list["AttendanceRecord"]] = relationship(
         back_populates="employee", cascade="all, delete-orphan", order_by="AttendanceRecord.work_date"
     )
+
+
+class EmployeeProfile(Base, TimestampMixin):
+    """Obyektivka -- xodimning rasmiy shaxsiy varaqasi.
+
+    Kadrlar bo'limi uni qog'ozda yuritardi: har so'rovda qaytadan
+    to'ldiriladigan bir varaq. Xodim kartochkasida esa faqat ism,
+    lavozim va tabel raqami bor edi, ya'ni «tug'ilgan yili qachon»
+    degan savolga tizim javob bera olmasdi.
+
+    Maydonlar rasmiy blankaning tartibida yozilgan -- shu bilan
+    ekrandagi shakl qog'ozdagisiga mos keladi va to'ldirayotgan odam
+    adashmaydi.
+    """
+
+    __tablename__ = "employee_profiles"
+
+    id: Mapped[int] = mapped_column(primary_key=True, index=True)
+    # Bitta xodimga bitta obyektivka. Ikkinchisi ochilsa, qaysi biri
+    # haqiqiy ekani noma'lum bo'lib qolardi.
+    employee_id: Mapped[int] = mapped_column(
+        ForeignKey("attendance_employees.id", ondelete="CASCADE"), unique=True, index=True
+    )
+    photo_url: Mapped[str | None] = mapped_column(Text)
+    birth_date: Mapped[date | None] = mapped_column(Date)
+    birth_place: Mapped[str | None] = mapped_column(String(255))
+    nationality: Mapped[str | None] = mapped_column(String(128))
+    party: Mapped[str | None] = mapped_column(String(128))
+    education_level: Mapped[str | None] = mapped_column(String(128))
+    education_institution: Mapped[str | None] = mapped_column(String(255))
+    education_graduated_year: Mapped[str | None] = mapped_column(String(32))
+    speciality: Mapped[str | None] = mapped_column(String(255))
+    academic_degree: Mapped[str | None] = mapped_column(String(128))
+    academic_title: Mapped[str | None] = mapped_column(String(128))
+    languages: Mapped[str | None] = mapped_column(String(255))
+    state_awards: Mapped[str | None] = mapped_column(Text)
+    deputy_status: Mapped[str | None] = mapped_column(String(255))
+    # Kundalik ish uchun kerak bo'ladigan qism -- blankada yo'q, lekin
+    # kadrlar aynan shularni qidiradi.
+    phone: Mapped[str | None] = mapped_column(String(64))
+    address: Mapped[str | None] = mapped_column(Text)
+    passport: Mapped[str | None] = mapped_column(String(64))
+    pinfl: Mapped[str | None] = mapped_column(String(32), index=True)
+    marital_status: Mapped[str | None] = mapped_column(String(64))
+    notes: Mapped[str | None] = mapped_column(Text)
+
+    employee: Mapped["Employee"] = relationship(back_populates="profile")
+    career: Mapped[list["EmployeeCareerEntry"]] = relationship(
+        back_populates="profile", cascade="all, delete-orphan",
+        order_by="EmployeeCareerEntry.sort_order, EmployeeCareerEntry.id",
+    )
+
+
+class EmployeeCareerEntry(Base, TimestampMixin):
+    """Mehnat faoliyati -- obyektivkaning eng pastki jadvali.
+
+    Sana matn sifatida saqlanadi: blankada ko'pincha «2015 -- 2019»
+    yoki «2020 yildan hozirgacha» deb yoziladi, ya'ni aniq kun har doim
+    ham ma'lum bo'lmaydi va uni majburlash qatorni to'ldirishga
+    to'sqinlik qilardi.
+    """
+
+    __tablename__ = "employee_career_entries"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    profile_id: Mapped[int] = mapped_column(
+        ForeignKey("employee_profiles.id", ondelete="CASCADE"), index=True
+    )
+    period: Mapped[str] = mapped_column(String(128), nullable=False)
+    organization: Mapped[str | None] = mapped_column(String(255))
+    position: Mapped[str | None] = mapped_column(String(255))
+    sort_order: Mapped[int] = mapped_column(default=0, nullable=False)
+
+    profile: Mapped["EmployeeProfile"] = relationship(back_populates="career")
 
 
 class AttendanceRecord(Base, TimestampMixin):

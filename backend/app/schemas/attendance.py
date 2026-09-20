@@ -66,6 +66,89 @@ class EmployeeRead(EmployeeBase):
     updated_at: datetime
 
 
+class EmployeeCareerEntryWrite(BaseModel):
+    """Mehnat faoliyatining bitta qatori.
+
+    Davr matn: blankada «2015 -- 2019» yoki «2020 yildan hozirgacha» deb
+    yoziladi, aniq kun har doim ma'lum bo'lmaydi.
+    """
+
+    id: int | None = None
+    period: str = Field(min_length=1, max_length=128)
+    organization: str | None = Field(default=None, max_length=255)
+    position: str | None = Field(default=None, max_length=255)
+
+
+class EmployeeCareerEntryRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    period: str
+    organization: str | None = None
+    position: str | None = None
+    sort_order: int = 0
+
+
+class EmployeeProfileWrite(BaseModel):
+    """Obyektivka. Maydonlar rasmiy blanka tartibida."""
+
+    birth_date: date | None = None
+    birth_place: str | None = Field(default=None, max_length=255)
+    nationality: str | None = Field(default=None, max_length=128)
+    party: str | None = Field(default=None, max_length=128)
+    education_level: str | None = Field(default=None, max_length=128)
+    education_institution: str | None = Field(default=None, max_length=255)
+    education_graduated_year: str | None = Field(default=None, max_length=32)
+    speciality: str | None = Field(default=None, max_length=255)
+    academic_degree: str | None = Field(default=None, max_length=128)
+    academic_title: str | None = Field(default=None, max_length=128)
+    languages: str | None = Field(default=None, max_length=255)
+    state_awards: str | None = None
+    deputy_status: str | None = Field(default=None, max_length=255)
+    phone: str | None = Field(default=None, max_length=64)
+    address: str | None = None
+    passport: str | None = Field(default=None, max_length=64)
+    pinfl: str | None = Field(default=None, max_length=32)
+    marital_status: str | None = Field(default=None, max_length=64)
+    notes: str | None = None
+    # Berilsa, mehnat faoliyati aynan shu ro'yxatga tenglashtiriladi.
+    career: list[EmployeeCareerEntryWrite] | None = None
+
+
+class EmployeeProfileRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    employee_id: int
+    full_name: str
+    position: str | None = None
+    department: str | None = None
+    badge_number: str | None = None
+    photo_url: str | None = None
+    birth_date: date | None = None
+    birth_place: str | None = None
+    nationality: str | None = None
+    party: str | None = None
+    education_level: str | None = None
+    education_institution: str | None = None
+    education_graduated_year: str | None = None
+    speciality: str | None = None
+    academic_degree: str | None = None
+    academic_title: str | None = None
+    languages: str | None = None
+    state_awards: str | None = None
+    deputy_status: str | None = None
+    phone: str | None = None
+    address: str | None = None
+    passport: str | None = None
+    pinfl: str | None = None
+    marital_status: str | None = None
+    notes: str | None = None
+    career: list[EmployeeCareerEntryRead] = Field(default_factory=list)
+    # Obyektivka hali ochilmagan bo'lsa ham kartochka ochiladi: bo'sh
+    # blanka to'ldirishga taklif bo'ladi.
+    exists: bool = False
+
+
 class TelegramPairingResponse(BaseModel):
     code: str
     deep_link: str

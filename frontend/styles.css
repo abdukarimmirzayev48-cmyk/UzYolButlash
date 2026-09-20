@@ -9908,3 +9908,88 @@ body.map-modal-open {
 .bank-row-foot .check-row {
   margin: 0;
 }
+
+/* ---- Obyektivka ---- */
+
+/* Rasm chapda, asosiy ma'lumot o'ngda -- qog'oz blankadagidek. */
+.obyektivka-top {
+  display: flex;
+  gap: 20px;
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+
+.obyektivka-top-fields {
+  flex: 1 1 320px;
+  min-width: 260px;
+}
+
+.obyektivka-photo-box {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: center;
+}
+
+/* 3x4 -- hujjat rasmining nisbati. */
+.obyektivka-photo {
+  width: 140px;
+  height: 187px;
+  object-fit: cover;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--surface-muted, #f4f5f7);
+}
+
+.obyektivka-photo-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted);
+  font-size: 12.5px;
+  text-align: center;
+  padding: 8px;
+}
+
+.obyektivka-photo-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  align-items: center;
+}
+
+.obyektivka-photo-pick {
+  cursor: pointer;
+}
+
+.obyektivka-career-table input {
+  width: 100%;
+}
+
+.obyektivka-form-actions {
+  justify-content: flex-end;
+  margin-top: 16px;
+}
+
+/* Obyektivka qog'ozga chiqariladigan hujjat: chop etishda menyu, tugma va
+   qidiruv paneli emas, faqat varaqning o'zi kerak. */
+@media print {
+  .app-topbar,
+  .sidebar,
+  .sidebar-toggle,
+  .obyektivka-page .actions,
+  .obyektivka-page .page-header .actions {
+    display: none !important;
+  }
+
+  .app-shell {
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  .obyektivka-page .card {
+    box-shadow: none;
+    border: 1px solid #ddd;
+    break-inside: avoid;
+  }
+}
