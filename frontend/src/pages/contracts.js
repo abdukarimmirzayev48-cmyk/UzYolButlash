@@ -901,10 +901,17 @@ async function renderContractsList() {
     Promise.all([
       api("/api/customer-requests?status=reviewing&page_size=50").catch(() => ({ items: [] })),
       api("/api/customer-requests?status=contract_preparation&page_size=50").catch(() => ({ items: [] })),
+      // «Imzolandi» ham kerak: agar shartnoma tizimga kiritilmagan bo'lsa,
+      // talabnoma bu ro'yxatdan chiqib ketar va o'rniga hech narsa
+      // paydo bo'lmasdi -- ish yarim yo'lda ko'rinmay qolardi.
+      api("/api/customer-requests?status=contract_signed&page_size=50").catch(() => ({ items: [] })),
     ]),
   ]);
-  // Xat kelganlar birinchi: ular bo'yicha ish hali boshlanmagan.
-  const waitingRequests = [...(waiting[0].items || []), ...(waiting[1].items || [])];
+  // Shartnomasi bor talabnoma bu yerda turmaydi: uning ishi tugagan va u
+  // endi shartnomalar ro'yxatida yashaydi.
+  const waitingRequests = waiting
+    .flatMap((group) => group.items || [])
+    .filter((row) => !row.has_contract);
   const editable = canEdit("sotuv");
   const rows = data.items.map((contract) => `<tr>
     <td><button class="clist-number" data-nav="/contracts/${contract.id}">${fmt(contract.contract_number)}</button></td>
@@ -1109,6 +1116,11 @@ async function contractParsedReview(parsedState) {
 }
 
 async function renderContractUpload() {
+  // Talabnomadan kelinganda bog'lanish shu yerda saqlanadi: PDF o'qilgach,
+  // forma o'sha talabnomani oldindan tanlab turadi. Aks holda operator uni
+  // qaytadan qidirishi kerak bo'lardi va ko'pincha unutilardi.
+  const params = new URLSearchParams(location.search);
+  const fromRequest = params.get("customer_request_id");
   app.innerHTML = `<div class="page"><div class="page-header"><div class="page-title"><h1>PDF orqali shartnoma yaratish</h1><p>Shartnoma PDF faylini yuklang. Faqat PDF fayl qabul qilinadi.</p></div><div class="actions"><button class="btn" data-nav="/contracts">Orqaga</button></div></div>${section("Fayl yuklash", `<form id="contract-pdf-form"><div class="grid"><label>Shartnoma PDF faylini yuklang <span class="required-mark">*</span><input type="file" name="file" accept="application/pdf,.pdf" required /></label></div><div class="form-footer"><button class="btn primary" type="submit">Tahlil qilish</button></div></form>`)}<div id="contract-parse-review"></div></div>`;
   document.querySelector("#contract-pdf-form").addEventListener("submit", async (event) => {
     event.preventDefault();
@@ -1116,6 +1128,13 @@ async function renderContractUpload() {
     try {
       const response = await apiForm("/api/contracts/parse-pdf", formData);
       const parsedState = response.data;
+      // PDF ichida talabnoma raqami yo'q -- bog'lanish manzildan keladi.
+      if (fromRequest && !parsedState.customer_request_id) {
+        parsedState.customer_request_id = Number(fromRequest);
+      }
+      if (params.get("client_id") && !parsedState.customer_id) {
+        parsedState.customer_id = Number(params.get("client_id"));
+      }
       document.querySelector("#contract-parse-review").innerHTML = `<div class="page-title"><h1>Shartnoma ma'lumotlarini tekshirish</h1></div>${await contractParsedReview(parsedState)}`;
       setupFormattedNumberInputs(document.querySelector("#contract-parse-review"));
       // This screen is injected outside the router, so bind the pickers here too.
@@ -2225,17 +2244,27 @@ function optionLabel(options, value) {
 // bo'limi uchun ko'rinmas edi va u yerda kutib qolardi.
 function waitingRequestsPanel(requests, editable) {
   if (!requests.length) return "";
+  const stages = {
+    reviewing: "Xat keldi",
+    contract_preparation: "Namuna yuborildi",
+    contract_signed: "Imzolandi -- shartnoma kiritilmagan",
+  };
   const rows = requests.map((request) => {
     const sampleStage = request.status === "reviewing";
+    const link = `client_id=${request.client_id || ""}&customer_request_id=${request.id}`;
+    // Shartnomani ikki yo'l bilan kiritish mumkin: qo'lda to'ldirish yoki
+    // imzolangan PDF ni yuklab, undan o'qitish. Ikkinchisi ko'pincha tezroq
+    // va xatosi kamroq -- shuning uchun u ham shu yerda turadi.
     const action = sampleStage
       ? `<button class="btn" type="button" data-nav="/customer-requests/${request.id}">Namuna biriktirish</button>`
-      : `<button class="btn primary" type="button" data-nav="/contracts/new?client_id=${request.client_id || ""}&customer_request_id=${request.id}">Shartnoma yaratish</button>`;
+      : `<button class="btn" type="button" data-nav="/contracts/upload?${link}">PDF orqali</button>
+         <button class="btn primary" type="button" data-nav="/contracts/new?${link}">Qo'lda kiritish</button>`;
     return `<div class="waiting-row">
     <button class="waiting-number" type="button" data-nav="/customer-requests/${request.id}" data-noloc>${esc(request.request_number)}</button>
     <span class="waiting-company" data-noloc>${esc(request.company_name || "")}</span>
     <span class="waiting-product" data-noloc>${esc(request.product?.name || "")}</span>
     <span class="waiting-qty" data-noloc>${esc(fmtQty(request.total_quantity, request.unit))}</span>
-    <span class="waiting-stage">${sampleStage ? "Xat keldi" : "Namuna yuborildi"}</span>
+    <span class="waiting-stage">${stages[request.status] || ""}</span>
     ${editable ? action : ""}
   </div>`;
   }).join("");

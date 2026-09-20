@@ -263,6 +263,10 @@ class CustomerRequestListItem(BaseModel):
     unit: str
     status: CustomerRequestStatus
     status_label: str
+    # Shu talabnomadan shartnoma yaratilganmi. Shartnomalar sahifasidagi
+    # kutish ro'yxati shunga qarab ishlaydi: shartnomasi bori u yerdan
+    # chiqadi, yo'qi esa holatidan qat'i nazar qoladi.
+    has_contract: bool = False
     created_at: datetime
 
 

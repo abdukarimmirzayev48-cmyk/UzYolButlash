@@ -161,7 +161,7 @@ def serialize_history(item: CustomerRequestStatusHistory) -> CustomerRequestStat
     )
 
 
-def serialize_list_item(request: CustomerRequest) -> CustomerRequestListItem:
+def serialize_list_item(request: CustomerRequest, has_contract: bool = False) -> CustomerRequestListItem:
     return CustomerRequestListItem(
         id=request.id,
         request_number=request.request_number,
@@ -178,6 +178,7 @@ def serialize_list_item(request: CustomerRequest) -> CustomerRequestListItem:
         unit=request.unit,
         status=request.status,
         status_label=enum_label(REQUEST_STATUS_LABELS, request.status),
+        has_contract=has_contract,
         created_at=request.created_at,
     )
 
@@ -498,8 +499,18 @@ def list_customer_requests(
     items = db.scalars(
         stmt.order_by(CustomerRequest.created_at.desc()).offset((page - 1) * page_size).limit(page_size)
     ).unique()
+    rows = list(items)
+    # Qaysi talabnomadan shartnoma yaratilgan -- bitta so'rov bilan.
+    linked: set[int] = set()
+    ids = [row.id for row in rows]
+    if ids:
+        linked = {
+            value for value in db.scalars(
+                select(Contract.customer_request_id).where(Contract.customer_request_id.in_(ids))
+            ) if value
+        }
     return Page(
-        items=[serialize_list_item(item) for item in items],
+        items=[serialize_list_item(item, has_contract=item.id in linked) for item in rows],
         total=total,
         page=page,
         page_size=page_size,
